@@ -1,0 +1,8 @@
+version: "3.4"
+services:
+  db:
+    image: mysql
+    ports:
+      - "${MYSQL_PORT:-3306}:${MYSQL_TCP_PORT:-3306}"
+    env_file:
+      - ".env"

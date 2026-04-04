@@ -1,0 +1,8 @@
+[tool.ruff]
+fix = true
+
+[tool.ruff.lint]
+extend-select = ["S"]
+ignore = [
+    "S101",  # Allow use of assert statements
+]
