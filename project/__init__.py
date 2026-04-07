@@ -5,7 +5,9 @@ import os
 
 from dotenv import load_dotenv
 from flask import Blueprint, Flask
+from flask_bcrypt import Bcrypt
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_restx import Api
 from flask_sqlalchemy import SQLAlchemy
@@ -20,6 +22,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+bcrypt = Bcrypt()
 cors = CORS(
     allow_headers=["Authorization", "Content-Type"],
     supports_credentials=True,
@@ -27,10 +30,26 @@ cors = CORS(
     origins=["*"],
 )
 db = SQLAlchemy()
+jwt = JWTManager()
 migrate = Migrate()
 
 
 def create_app(config_obj=None):
+    """
+    Application factory.
+
+    Creates and configures the Flask application:
+    - Configures the database connection (MySQL in production, SQLite in testing).
+    - Registers all blueprints and namespaces.
+    - Initialises extensions: SQLAlchemy, Flask-Migrate, Flask-JWT-Extended,
+      Flask-Bcrypt, and Flask-CORS.
+
+    Args:
+        config_obj: Optional configuration object to override defaults.
+
+    Returns:
+        A configured Flask application instance.
+    """
     app: Flask = Flask(__name__)
     initialize_loggers(app)
 
@@ -53,8 +72,14 @@ def create_app(config_obj=None):
         logger.info(
             f"Using Database URI: mysql+pymysql://{db_username}:XXX@{db_host}:{db_port}/{db_name}"
         )
+
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    jwt_secret = os.getenv("JWT_SECRET_KEY")
+    if not jwt_secret:
+        raise ValueError("JWT_SECRET_KEY environment variable is not set.")
+    app.config["JWT_SECRET_KEY"] = jwt_secret
 
     if config_obj:
         app.config.from_object(config_obj)
@@ -62,55 +87,54 @@ def create_app(config_obj=None):
     register_blueprints(app)
     db.init_app(app)
     migrate.init_app(app, db)
+    jwt.init_app(app)
+    bcrypt.init_app(app)
 
-    # Importar modelos para que Flask-Migrate los detecte
+    # Import models so Flask-Migrate can detect them
     with app.app_context():
-        from project.models import template_model
+        from project.models import user_model  # noqa: F401
 
-    initialize_services(app)
     cors.init_app(app)
     return app
 
 
 def initialize_loggers(app):
-    # Set up the loggers
+    """Replaces Flask's default handler with the project's logging configuration."""
     from flask.logging import default_handler
 
     app.logger.removeHandler(default_handler)
-
     logging.config.dictConfig(LOGGING_CONFIG)
 
 
 def register_blueprints(app):
-    # Since the application instance is now created, register each Blueprint
-    # with the Flask application instance (app)
-    from project.blueprints.template_blueprint import namespace as template_blueprint
+    """
+    Registers all API namespaces with Flask-RESTX and mounts the blueprint.
+
+    Add new namespaces here as the project grows.
+    """
+    from project.blueprints.auth_blueprint import namespace as auth_namespace
 
     blueprint = Blueprint("api", __name__, url_prefix="/")
 
     api_extension: Api = Api(
         blueprint,
-        title="Template Backend API",
-        version="0.1",
-        description="Documentation of Template Backend API",
+        title="Abricot Backend API",
+        version="1.0",
+        description="Documentation of the Abricot Backend API",
         authorizations={
             "Bearer": {
                 "type": "apiKey",
                 "in": "header",
                 "name": "Authorization",
+                "description": "Enter: Bearer <JWT token>",
             }
         },
-        decorators=[],
         security="Bearer",
     )
 
     register_api_handlers(api_extension)
     register_app_handlers(app)
 
-    api_extension.add_namespace(template_blueprint)
+    api_extension.add_namespace(auth_namespace)
 
     app.register_blueprint(blueprint)
-
-
-def initialize_services(app):
-    """from project.services.email_service import EmailService"""
