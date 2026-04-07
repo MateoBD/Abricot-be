@@ -2,6 +2,7 @@
 import logging
 import logging.config
 import os
+from datetime import timedelta
 
 from dotenv import load_dotenv
 from flask import Blueprint, Flask
@@ -78,6 +79,7 @@ def create_app(config_obj=None):
     if not jwt_secret:
         raise ValueError("JWT_SECRET_KEY environment variable is not set.")
     app.config["JWT_SECRET_KEY"] = jwt_secret
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
 
     if config_obj:
         app.config.from_object(config_obj)
