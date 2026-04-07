@@ -1,6 +1,6 @@
-"""Import the used Models"""
+"""Import all ORM models so Flask-Migrate can detect them during migrations."""
 
-from project.models.template_model import TemplateModel
+from project.models.restaurant_model import RestaurantModel
+from project.models.user_model import UserModel
 
-"""Define which models are exported when importing this package; add more model names here if needed"""
-__all__ = ["TemplateModel"]
+__all__ = ["UserModel", "RestaurantModel"]
