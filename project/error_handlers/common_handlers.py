@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException
 
 from project.exceptions.auth_exception import AuthException
+from project.exceptions.restaurant_exception import RestaurantException
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ def register_api_handlers(api):
 
     Handles:
         - AuthException: Business-logic auth errors (400).
+        - RestaurantException: Business-logic restaurant errors (400).
         - IntegrityError: Database constraint violations (400).
         - HTTPException: Standard HTTP errors (preserves original status code).
         - ValueError: Bad input values (400).
@@ -23,6 +25,11 @@ def register_api_handlers(api):
     @api.errorhandler(AuthException)
     def handle_auth_exception(e):
         logger.warning(f"AuthException: {e}")
+        return {"message": str(e), "errors": e.payload}, 400
+
+    @api.errorhandler(RestaurantException)
+    def handle_restaurant_exception(e):
+        logger.warning(f"RestaurantException: {e}")
         return {"message": str(e), "errors": e.payload}, 400
 
     @api.errorhandler(IntegrityError)

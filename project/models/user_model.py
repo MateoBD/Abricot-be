@@ -11,7 +11,8 @@ class UserModel(db.Model):
         id (int): Auto-incremented primary key.
         email (str): Unique email address used for login.
         password_hash (str): Bcrypt hash of the user's password.
-        name (str): Display name of the user.
+        name (str): First name of the user.
+        surname (str): Last name of the user.
         created_at (datetime): UTC timestamp of when the user was created.
     """
 

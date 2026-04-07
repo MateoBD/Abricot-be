@@ -93,6 +93,7 @@ def create_app(config_obj=None):
     # Import models so Flask-Migrate can detect them
     with app.app_context():
         from project.models import user_model  # noqa: F401
+        from project.models import restaurant_model  # noqa: F401
 
     cors.init_app(app)
     return app
@@ -113,6 +114,9 @@ def register_blueprints(app):
     Add new namespaces here as the project grows.
     """
     from project.blueprints.auth_blueprint import namespace as auth_namespace
+    from project.blueprints.restaurant_blueprint import (
+        namespace as restaurant_namespace,
+    )
 
     blueprint = Blueprint("api", __name__, url_prefix="/")
 
@@ -136,5 +140,6 @@ def register_blueprints(app):
     register_app_handlers(app)
 
     api_extension.add_namespace(auth_namespace)
+    api_extension.add_namespace(restaurant_namespace)
 
     app.register_blueprint(blueprint)

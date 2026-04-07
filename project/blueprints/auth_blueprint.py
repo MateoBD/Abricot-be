@@ -43,7 +43,7 @@ class RegisterEndpoint(Resource):
         """
         Register a new user.
 
-        Accepts email, password, and name. Hashes the password before storing.
+        Accepts email, password, name, and surname. Hashes the password before storing.
         Returns a JWT access token and the user's profile on success.
         """
         data = request.json
