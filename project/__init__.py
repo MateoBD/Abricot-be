@@ -57,20 +57,18 @@ def create_app(config_obj=None):
         db_uri = "sqlite+pysqlite:///:memory:"
         logger.info("Using in-memory SQLite database for testing")
     else:
-        db_username = os.getenv("MYSQL_USER")
-        db_password = os.getenv("MYSQL_PASSWORD")
-        db_host = os.getenv("MYSQL_HOST")
-        db_port = os.getenv("MYSQL_PORT", "3306")
-        db_name = os.getenv("MYSQL_DATABASE")
+        db_username = os.getenv("POSTGRES_USER")
+        db_password = os.getenv("POSTGRES_PASSWORD")
+        db_host = os.getenv("POSTGRES_HOST")
+        db_port = os.getenv("POSTGRES_PORT", "5432")
+        db_name = os.getenv("POSTGRES_DB")
         if not all([db_username, db_password, db_host, db_port, db_name]):
             raise ValueError(
                 "Database configuration environment variables are not fully set."
             )
-        db_uri = (
-            f"mysql+pymysql://{db_username}:{db_password}@{db_host}:{db_port}/{db_name}"
-        )
+        db_uri = f"postgresql+psycopg2://{db_username}:{db_password}@{db_host}:{db_port}/{db_name}"
         logger.info(
-            f"Using Database URI: mysql+pymysql://{db_username}:XXX@{db_host}:{db_port}/{db_name}"
+            f"Using Database URI: postgresql+psycopg2://{db_username}:XXX@{db_host}:{db_port}/{db_name}"
         )
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri

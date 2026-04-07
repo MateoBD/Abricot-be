@@ -1,6 +1,6 @@
-# Backend API Template
+# Abricot Backend API
 
-A clean and modular **Flask-based backend template** for building APIs with database integration, Docker support, and a scalable architecture.
+A modular **Flask-based REST API** with JWT authentication, PostgreSQL, Docker support, and Swagger documentation.
 
 ---
 
@@ -9,42 +9,45 @@ A clean and modular **Flask-based backend template** for building APIs with data
 ```
 project/
 │
-├── blueprints/              # Contains API routes and models
+├── blueprints/              # API routes and Swagger models
 │   ├── models/
-│   │   ├── template_model.py
-│   │   └── template_response_model.py
-│   └── template_blueprint.py
+│   │   ├── auth_models.py
+│   │   └── restaurant_models.py
+│   ├── auth_blueprint.py
+│   └── restaurant_blueprint.py
 │
 ├── error_handlers/          # Centralized error and exception handling
 │   └── common_handlers.py
 │
 ├── exceptions/              # Custom exception classes
-│   └── template_exception.py
+│   ├── auth_exception.py
+│   └── restaurant_exception.py
 │
 ├── helpers/                 # Utility and helper functions
 │   └── authentication.py
 │
-├── models/                  # SQLAlchemy models
+├── models/                  # SQLAlchemy ORM models
 │   ├── __init__.py
-│   └── template_model.py
+│   ├── user_model.py
+│   └── restaurant_model.py
 │
-├── repositories/            # Database access and repository pattern
-│   └── template_repository.py
+├── repositories/            # Database access layer (repository pattern)
+│   ├── user_repository.py
+│   └── restaurant_repository.py
 │
-├── services/                # Business logic layer
-│   ├── __init__.py
-│   └── logging_config.py
-│
-├── tests                    # Tests folder. Must start with test_
+├── tests/                   # Test folder (files must start with test_)
 │   ├── unit/
-│   │   └── test_model.py
-│   └── conftest.py          # testing configuration and fixtures
-├── application.py           # Application entry point
+│   └── conftest.py
+│
+├── __init__.py              # Application factory
 ├── logging_config.py        # Logging configuration
-├── .env                     # Environment and app configuration
-├── requirements.txt         # Python dependencies
-├── migrations/              # Alembic migrations
-└── docker-compose.yml       # Docker services (database, etc.)
+│
+application.py               # Application entry point
+.env                         # Environment variables (not committed)
+.env.example                 # Environment variables template
+requirements.txt             # Python dependencies
+migrations/                  # Alembic migrations
+docker-compose.yml           # Docker services (PostgreSQL)
 ```
 
 ---
@@ -52,133 +55,99 @@ project/
 ## Prerequisites
 
 **Python 3.11+**  
-We will use _Pyenv_ as a the python version manager. Go to https://github.com/pyenv/pyenv and follow the installation instructions.
-NOTE: be careful to install the python build dependencies https://github.com/pyenv/pyenv/wiki#suggested-build-environment before installing any python version.  
-Once installed do in the shell:
+We use _Pyenv_ as the Python version manager. See https://github.com/pyenv/pyenv for installation instructions.  
+Make sure to install the build dependencies first: https://github.com/pyenv/pyenv/wiki#suggested-build-environment
 
 ```sh
 pyenv install 3.13
-pyenv local 3.13 # in the directory of the project.
+pyenv local 3.13
 ```
 
-**Docker** and **Docker Compose**  
+**Docker and Docker Compose**  
 https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
 
 ---
 
 ## Getting Started
 
-### 1. Clone the Repository
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/template-be.git
-cd template-be
+git clone https://github.com/your-username/abricot-be.git
+cd abricot-be
 ```
 
-## Environment Configuration
+### 2. Configure environment variables
 
-An example configuration file is provided as `.env.example`. You can use it as a starting point for your own environment variables.
+```bash
+cp .env.example .env
+```
 
-### How it works
-
-- Copy the example file to create your actual environment configuration:
-  ```bash
-  cp .env.example .env
-  ```
-- The `.env.example` file includes values that allow the application to run locally with a default setup.
-- Before deploying or using the project in production, **you must update these values** (like database credentials, secret keys, and other environment-specific variables) to match your environment.
+Edit `.env` with your values. At minimum set a strong `JWT_SECRET_KEY` before running in production.
 
 ---
 
-### 2. Start Docker Containers
-
-Start all services (like the database):
+### 3. Start Docker containers
 
 ```bash
 docker compose up -d
 ```
 
-### 3. Set Up the Python Environment
+This starts a PostgreSQL 16 container on port `5432`.
 
-#### Create Virtual Environment
+---
+
+### 4. Set up the Python environment
 
 ```bash
 python -m venv .venv
-```
-
-#### Activate Environment
-
-```bash
 source .venv/bin/activate
-```
-
-#### Install Dependencies
-
-```bash
 pip install -r requirements.txt
-```
-
-#### Install pre-commit
-
-```bash
 pre-commit install
 ```
 
 ---
 
-### 4. Database Setup
+### 5. Database setup
 
-Make sure your Docker database container is running before running these commands.
+Make sure the PostgreSQL container is running before running these commands.
 
-#### Initialize migrations folder
+#### Initialize migrations (first time only)
 
 ```bash
 flask db init
 sed -E -i.bak 's/^[[:space:]]*#?[[:space:]]*file_template[[:space:]]*=.*$/file_template = %%(year)d-%%(month).2d-%%(day).2dT%%(hour).2d-%%(minute).2d-%%(second).2d_%%(slug)s/' migrations/alembic.ini
 ```
 
-Where `flask db init` will create the migrations folder and the `sed -E -i.bak...` command will replace the `file_template` format.  
-After both commands the `file_template` in `alembic.ini` should end like this:
+The `file_template` in `alembic.ini` should end up as:
 
 ```ini
-[alembic]
-# template used to generate migration files
 file_template = %%(year)d-%%(month).2d-%%(day).2dT%%(hour).2d-%%(minute).2d-%%(second).2d_%%(slug)s
 ```
 
-And a backup `alembik.ini.bak` should be created with the original configuration.
-
-#### Create an Initial Migration
+#### Create and apply the initial migration
 
 ```bash
 flask db migrate -m "initial migration"
-```
-
-This is also typically run only once to create the initial migration scripts.
-
-#### Apply Migrations
-
-```bash
 flask db upgrade
 ```
 
-This command should be run every time there is a change in the application's database models (after generating a new migration) to apply the latest changes.
+Run `flask db migrate` + `flask db upgrade` every time you change a model.
 
 ---
 
-### 5. Run the Application
+### 6. Run the application
 
 ```bash
 flask run
 ```
 
-The API will be available at:
+The API will be available at `http://localhost:5000`.  
+Swagger UI is available at `http://localhost:5000/`.
 
-```
-http://localhost:5000
-```
+---
 
-### 6. Run tests
+### 7. Run tests
 
 ```bash
 python -m pytest
@@ -186,42 +155,48 @@ python -m pytest
 
 ---
 
-## Customization Guide
+## API Endpoints
 
-| Folder            | Purpose                                | What You Can Change                    |
-| ----------------- | -------------------------------------- | -------------------------------------- |
-| `blueprints/`     | API routes and request/response models | Add new endpoints and namespaces       |
-| `models/`         | Database models                        | Define SQLAlchemy models               |
-| `repositories/`   | Database logic                         | Abstract database queries              |
-| `services/`       | Business logic                         | Implement service-layer functionality  |
-| `helpers/`        | Utilities                              | Add helper or authentication functions |
-| `error_handlers/` | Error handling                         | Customize common exceptions            |
-| `exceptions/`     | Custom exceptions                      | Define new exception types             |
+### Auth — `/auth`
+
+| Method | Endpoint          | Description              | Auth required |
+|--------|-------------------|--------------------------|---------------|
+| POST   | `/auth/register`  | Register a new user      | No            |
+| POST   | `/auth/login`     | Login and get JWT token  | No            |
+
+### Restaurants — `/restaurants`
+
+| Method | Endpoint                  | Description             | Auth required |
+|--------|---------------------------|-------------------------|---------------|
+| GET    | `/restaurants/`           | List all restaurants    | Yes           |
+| POST   | `/restaurants/`           | Create a restaurant     | Yes           |
+| GET    | `/restaurants/<id>`       | Get restaurant by ID    | Yes           |
+| PUT    | `/restaurants/<id>`       | Update restaurant       | Yes           |
+| DELETE | `/restaurants/<id>`       | Delete restaurant       | Yes           |
+
+Protected endpoints require `Authorization: Bearer <token>` in the request header.
 
 ---
 
 ## Branch naming and coding guidelines
 
-There are two pre-commit hooks that check for:
+Two pre-commit hooks enforce:
 
-1.  `.hooks/check-branch-naming.sh`: Branchs should have <type>/<desc> naming convention. Where <type> is one of 'feature', 'bugfix', 'refactor', 'hotfix', 'release', 'chore'.
-2.  `.hooks/check-protected-branches.sh`: That you should not push to protected branches [master main dev staging].
+1. `.hooks/check-branch-naming.sh` — Branch names must follow `<type>/<desc>` where `<type>` is one of: `feature`, `bugfix`, `refactor`, `hotfix`, `release`, `chore`.
+2. `.hooks/check-protected-branches.sh` — Direct commits to `main`, `master`, `dev`, and `staging` are blocked.
 
-This is to enforce cleaner branch naming and to force feature branches that only merge to the protected branches via a Pull Request.  
-If you wish to deactivate it comment the corresponding hooks on `.pre-commit-config.yaml`
+To disable a hook, comment it out in `.pre-commit-config.yaml`.
 
-## Extra configuration
-
-You will find in `.ebextensions/aws.config` the default commands that need the Elastic Beanstalk in order to load the project correctly. This is: activate the virtual environment and run the database migrations.
+---
 
 ## Common Commands
 
-| Command                     | Description                  |
-| --------------------------- | ---------------------------- |
-| `docker compose up -d`      | Start Docker containers      |
-| `docker compose stop`       | Stop Docker containers       |
-| `flask db init`             | Initialize migrations folder |
-| `flask db migrate -m "msg"` | Create migration file        |
-| `flask db upgrade`          | Apply migrations             |
-| `flask run`                 | Start Flask server           |
-| `python -m pytest`          | Run tests                    |
+| Command                     | Description                   |
+|-----------------------------|-------------------------------|
+| `docker compose up -d`      | Start PostgreSQL container    |
+| `docker compose stop`       | Stop containers               |
+| `flask db init`             | Initialize migrations folder  |
+| `flask db migrate -m "msg"` | Generate migration file       |
+| `flask db upgrade`          | Apply migrations              |
+| `flask run`                 | Start Flask server            |
+| `python -m pytest`          | Run tests                     |
