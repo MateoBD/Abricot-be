@@ -21,8 +21,11 @@ class S3Service:
             }
             if _USE_LOCALSTACK:
                 kwargs["endpoint_url"] = _LOCALSTACK_ENDPOINT
-            kwargs["aws_access_key_id"] = os.getenv("AWS_ACCESS_KEY_ID", "test")
-            kwargs["aws_secret_access_key"] = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
+            else:
+                kwargs["aws_access_key_id"] = os.getenv("AWS_ACCESS_KEY_ID", "test")
+                kwargs["aws_secret_access_key"] = os.getenv(
+                    "AWS_SECRET_ACCESS_KEY", "test"
+                )
             cls._client = boto3.client("s3", **kwargs)
         return cls._client
 
@@ -40,6 +43,11 @@ class S3Service:
         """
         bucket = os.getenv("AWS_S3_BUCKET")
         region = os.getenv("AWS_REGION")
+
+        if not bucket:
+            raise ValueError("AWS_S3_BUCKET environment variable is not set.")
+        if not region:
+            raise ValueError("AWS_REGION environment variable is not set.")
 
         ext = _get_extension(file_storage.filename)
         key = f"restaurants/{restaurant_id}/{uuid.uuid4().hex}{ext}"
