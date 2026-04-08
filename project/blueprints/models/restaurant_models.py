@@ -86,6 +86,10 @@ restaurant_response_model = Model(
             description="Description of the restaurant.",
             example="Tradicional restaurante italiano.",
         ),
+        "photoUrl": fields.String(
+            description="URL of the restaurant's photo.",
+            example="https://example.com/photos/laparolaccia.jpg",
+        ),
         "createdAt": fields.String(
             description="ISO 8601 creation timestamp.", example="2026-04-07T00:00:00"
         ),

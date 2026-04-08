@@ -13,3 +13,4 @@ pre-commit==4.3.0
 pytest==9.0.1
 cryptography==46.0.3
 ruff==0.14.7
+boto3==1.38.0
