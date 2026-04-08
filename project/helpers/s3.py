@@ -21,11 +21,13 @@ class S3Service:
             }
             if _USE_LOCALSTACK:
                 kwargs["endpoint_url"] = _LOCALSTACK_ENDPOINT
-            else:
                 kwargs["aws_access_key_id"] = os.getenv("AWS_ACCESS_KEY_ID", "test")
                 kwargs["aws_secret_access_key"] = os.getenv(
                     "AWS_SECRET_ACCESS_KEY", "test"
-                )
+                )  # noqa: S105
+            else:
+                kwargs["aws_access_key_id"] = os.getenv("AWS_ACCESS_KEY_ID")
+                kwargs["aws_secret_access_key"] = os.getenv("AWS_SECRET_ACCESS_KEY")
             cls._client = boto3.client("s3", **kwargs)
         return cls._client
 
