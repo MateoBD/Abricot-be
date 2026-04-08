@@ -89,6 +89,24 @@ class RestaurantRepository:
         return restaurant
 
     @classmethod
+    def update_photo(
+        cls, restaurant: RestaurantModel, photo_url: str
+    ) -> RestaurantModel:
+        """
+        Updates only the photo_url of an existing restaurant.
+
+        Args:
+            restaurant: The RestaurantModel instance to update.
+            photo_url: The new S3 URL.
+
+        Returns:
+            The updated RestaurantModel instance.
+        """
+        restaurant.photo_url = photo_url
+        db.session.commit()
+        return restaurant
+
+    @classmethod
     def delete(cls, restaurant: RestaurantModel) -> None:
         """
         Deletes a restaurant from the database.

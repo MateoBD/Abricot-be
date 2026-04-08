@@ -25,6 +25,7 @@ class RestaurantModel(db.Model):
     phone = db.Column(db.String(30), nullable=False)
     email = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
+    photo_url = db.Column(db.String(500), nullable=True)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
@@ -38,5 +39,6 @@ class RestaurantModel(db.Model):
             "phone": self.phone,
             "email": self.email,
             "description": self.description,
+            "photoUrl": self.photo_url,
             "createdAt": self.created_at.isoformat(),
         }
