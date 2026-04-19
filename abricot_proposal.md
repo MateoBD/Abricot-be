@@ -27,7 +27,7 @@ Este documento describe la totalidad del diseño técnico necesario para impleme
 | Componente | Estado |
 |---|---|
 | `User` (id, email, password_hash, name, surname, created_at) | ✅ Existe — necesita campo `role` |
-| `Restaurant` (id, name, address, phone, email, description, photo_url, created_at) | ✅ Existe — necesita `country`, `city`, `province`, `neighbourhood`, `price_range`, `cuisine_type`, `allow_table_joining`, `default_slot_duration_minutes` |
+| `Restaurant` (id, name, address, phone, email, description, photo_url, created_at) | ✅ Existe — necesita `city_id`, `neighbourhood_id`, `price_range_id` (FKs normalizados), `allow_table_joining`, `default_slot_duration_minutes`; tipos de cocina en `RestaurantCuisine` |
 | `AuthService` — register, login, refresh token | ✅ Completo |
 | `RestaurantService` — CRUD + upload_photo | ✅ Existe — necesita `search()` con filtros, y `create()` debe auto-asignar admin |
 | `S3Client` — carga de fotos para restaurantes y (futuro) ítems de menú | ✅ Correcto, reutilizable |
@@ -39,11 +39,11 @@ Este documento describe la totalidad del diseño técnico necesario para impleme
 | Funcionalidad | Modelos nuevos | Servicios nuevos |
 |---|---|---|
 | F1: Dashboard de Disponibilidad | `Table`, `ReservationTable`, `BusinessHours` | `TableService`, `BusinessHoursService`, `AvailabilityService` |
-| F2: Motor de Reservas | `Reservation` | `ReservationService`, `NotificationService` |
+| F2: Motor de Reservas | `Reservation` (con campos de huésped y `source`) | `ReservationService` (incluyendo `create_for_admin`), `NotificationService` |
 | F3: Pedidos con Seguimiento | `Menu`, `MenuCategory`, `MenuItem`, `Order`, `OrderItem` | `MenuService`, `MenuCategoryService`, `MenuItemService`, `OrderService` |
 | F4: Promociones Ad Hoc | `Promotion`, `PromotionItem` | `PromotionService` (extiende `NotificationService`) |
 | F5: Analítica Predictiva | ninguno (consultas sobre datos existentes) | `AnalyticsService` |
-| Transversal | `RestaurantAdmin`, `NotificationPreference` | `UserService`, `RestaurantAdminService` |
+| Transversal | `RestaurantAdmin`, `NotificationPreference`, `Country`, `Province`, `City`, `Neighbourhood`, `PriceRange`, `CuisineType`, `RestaurantCuisine` | `UserService`, `RestaurantAdminService`, `LookupService` |
 
 ---
 
@@ -64,23 +64,64 @@ erDiagram
         datetime created_at
     }
 
+    COUNTRY {
+        int id PK
+        string name UK
+        string iso_code "ej: AR, US, ES"
+    }
+
+    PROVINCE {
+        int id PK
+        int country_id FK
+        string name
+    }
+
+    CITY {
+        int id PK
+        int province_id FK
+        string name
+    }
+
+    NEIGHBOURHOOD {
+        int id PK
+        int city_id FK
+        string name
+    }
+
+    PRICE_RANGE {
+        int id PK
+        string slug UK "ECONOMICO | MODERADO | ELEGANTE | EXCLUSIVO"
+        string label "$ | $$ | $$$ | $$$$"
+        string description "Menos de $5.000 | ..."
+        int sort_order
+    }
+
+    CUISINE_TYPE {
+        int id PK
+        string slug UK "ARGENTINA | ITALIANA | ..."
+        string label "Parrilla y Criolla | Pasta y Pizza | ..."
+    }
+
     RESTAURANT {
         int id PK
         string name
         string address
-        string country
-        string city
-        string province "nullable — provincia / estado / región"
-        string neighbourhood "nullable — barrio o zona dentro de la ciudad"
+        int city_id FK
+        int neighbourhood_id FK "nullable"
+        int price_range_id FK "nullable"
         string phone
         string email
         string description
         string photo_url
-        enum price_range "ECONOMICO | MODERADO | ELEGANTE | EXCLUSIVO"
-        enum cuisine_type "ARGENTINA | ITALIANA | JAPONESA | ..."
-        bool allow_table_joining "¿Se pueden unir mesas para grupos grandes?"
-        int default_slot_duration_minutes "Duración de cada turno en minutos"
+        bool allow_table_joining
+        int default_slot_duration_minutes
         datetime created_at
+    }
+
+    RESTAURANT_CUISINE {
+        int id PK
+        int restaurant_id FK
+        int cuisine_type_id FK
     }
 
     RESTAURANT_ADMIN {
@@ -95,7 +136,7 @@ erDiagram
         int number
         int capacity
         string name
-        bool is_joinable "¿Esta mesa puede unirse con otras para grupos grandes?"
+        bool is_joinable
         bool is_active
     }
 
@@ -111,7 +152,11 @@ erDiagram
     RESERVATION {
         int id PK
         int restaurant_id FK
-        int user_id FK
+        int user_id FK "nullable — null si el admin reserva por teléfono/evento"
+        string guest_name "nullable — nombre del grupo si no hay user_id"
+        string guest_phone "nullable"
+        string guest_email "nullable"
+        enum source "ONLINE | PHONE | EVENT"
         int party_size
         date date
         time time_slot
@@ -158,11 +203,9 @@ erDiagram
         int id PK
         int restaurant_id FK
         int user_id FK
-        enum status
-        enum order_type "TAKEOUT | DELIVERY"
+        enum status "PENDING | CONFIRMED | IN_PREPARATION | READY | COMPLETED | CANCELLED"
         decimal total_amount
         string notes
-        string delivery_address "nullable — solo DELIVERY"
         datetime estimated_ready_at
         datetime created_at
     }
@@ -205,6 +248,15 @@ erDiagram
         bool receive_reservation_reminders
     }
 
+    COUNTRY ||--o{ PROVINCE : "contiene"
+    PROVINCE ||--o{ CITY : "contiene"
+    CITY ||--o{ NEIGHBOURHOOD : "contiene"
+    CITY ||--o{ RESTAURANT : "ubicado en"
+    NEIGHBOURHOOD ||--o{ RESTAURANT : "ubicado en (opcional)"
+    PRICE_RANGE ||--o{ RESTAURANT : "categoriza"
+    CUISINE_TYPE ||--o{ RESTAURANT_CUISINE : "clasifica"
+    RESTAURANT ||--o{ RESTAURANT_CUISINE : "tiene"
+
     USER ||--o{ RESERVATION : "realiza"
     USER ||--o{ ORDER : "realiza"
     USER ||--o{ NOTIFICATION_PREFERENCE : "configura"
@@ -237,9 +289,11 @@ erDiagram
 | Decisión | Justificación |
 |---|---|
 | Un admin puede crear múltiples restaurantes en distintos momentos | `RESTAURANT_ADMIN` es una tabla de join, no un campo en `USER`. Al crear un restaurante, el sistema inserta automáticamente una fila en `RESTAURANT_ADMIN` para el usuario creador. El mismo usuario puede repetir el proceso para un segundo restaurante sin perder acceso al primero. |
-| Los campos de ubicación se guardan desnormalizados en `Restaurant` | País, ciudad, provincia y barrio se guardan como strings libres en lugar de tablas de referencia normalizadas. Simplifica el modelo y es suficiente para el filtro de búsqueda. Si en el futuro se necesita autocompletado, se puede migrar a tablas de referencia. |
-| `price_range` es un enum de 4 valores | Escala simple e intuitiva (económico → exclusivo). Suficiente para filtrar. Evita coordinar rangos numéricos entre restaurantes de distintos países con distintas monedas. |
-| `cuisine_type` es un enum en el modelo | Un restaurante tiene un tipo de cocina principal declarado. Suficiente para filtrar. Si en el futuro se necesita múltiples categorías por restaurante, se migra a `RESTAURANT_CUISINE` (N:M con `CuisineType`). |
+| Ubicación jerárquica normalizada en tablas propias | `COUNTRY → PROVINCE → CITY → NEIGHBOURHOOD`. `Restaurant` guarda `city_id` (requerido) y `neighbourhood_id` (opcional). Permite filtros exactos, autocompletado en el frontend y consistencia: dos restaurantes en "Palermo" comparten la misma fila, no dos strings distintos. |
+| `PRICE_RANGE` es una tabla de referencia | Mismas 4 categorías pero como filas de BD. Permite mostrar labels y descripciones desde la API sin hardcodear nada en el frontend. El admin selecciona un ID; SUPER_ADMIN puede agregar o renombrar categorías sin deploys. |
+| `CUISINE_TYPE` + `RESTAURANT_CUISINE` es N:M | Un restaurante puede tener múltiples tipos de cocina (ej: Japonesa + Fusión). `CUISINE_TYPE` es una tabla de referencia con slugs estables. `RESTAURANT_CUISINE` es la join. El frontend puede filtrar por uno o varios `cuisineTypeIds`. |
+| No existe `order_type` ni `delivery_address` | El sistema no soporta delivery. Todos los pedidos son para consumir en el local o retirar en persona. Eliminar el campo evita lógica condicional y validaciones innecesarias. |
+| El admin puede crear reservas sin usuario registrado | Para reservas por teléfono o eventos, `user_id` es nullable en `RESERVATION`. El campo `source` (`ONLINE/PHONE/EVENT`) indica el origen. Los campos `guest_name`, `guest_phone`, `guest_email` capturan los datos del grupo cuando no hay cuenta registrada. |
 | Las reservas se auto-confirman al crearse | No hay intervención humana. El sistema valida disponibilidad y confirma inmediatamente. El admin solo cancela si es necesario. |
 | `RESERVATION_TABLE` es una tabla de join N:M | Una reserva puede ocupar múltiples mesas unidas. Una mesa puede aparecer en múltiples reservas (en distintas fechas/horarios). Reemplaza el antiguo `table_id` FK directo en `RESERVATION`. |
 | `TABLE.is_joinable` controla la combinabilidad | No todas las mesas de un restaurante se pueden unir (ej: la barra fija o las mesas de la entrada). El campo permite granularidad por mesa. |
@@ -268,27 +322,82 @@ erDiagram
 | **role** | enum(UserRole) | not null, default=CUSTOMER |
 | created_at | datetime(tz) | not null, default=now() |
 
-#### `Restaurant` — agregar campos de ubicación, `price_range`, `cuisine_type`, `allow_table_joining`, `default_slot_duration_minutes`
+#### `Restaurant` — reemplazar strings de ubicación/cocina/precio por FKs normalizados
 | Campo | Tipo | Constraints |
 |---|---|---|
 | id | int | PK |
 | name | string(150) | not null, index |
 | address | string(255) | not null |
-| **country** | string(100) | not null, index |
-| **city** | string(100) | not null, index |
-| **province** | string(100) | nullable, index |
-| **neighbourhood** | string(100) | nullable, index |
+| **city_id** | int | FK → cities, not null, index |
+| **neighbourhood_id** | int | FK → neighbourhoods, nullable, index |
+| **price_range_id** | int | FK → price_ranges, nullable, index |
 | phone | string(30) | not null |
 | email | string(255) | nullable |
 | description | text | nullable |
 | photo_url | string(500) | nullable |
-| **price_range** | enum(PriceRange) | nullable, index |
-| **cuisine_type** | enum(CuisineType) | nullable, index |
 | **allow_table_joining** | bool | not null, default=False |
 | **default_slot_duration_minutes** | int | not null, default=90 |
 | created_at | datetime(tz) | not null |
+> Los tipos de cocina se almacenan en `RestaurantCuisine` (N:M). Un restaurante puede tener entre 1 y N entradas.
 
 ### 3.2 Modelos nuevos
+
+#### `Country` — tabla de referencia de países
+| Campo | Tipo | Constraints |
+|---|---|---|
+| id | int | PK |
+| name | string(100) | not null, unique |
+| iso_code | string(3) | not null, unique (ej: `AR`, `US`, `ES`) |
+
+#### `Province` — provincia, estado o región dentro de un país
+| Campo | Tipo | Constraints |
+|---|---|---|
+| id | int | PK |
+| country_id | int | FK → countries, not null, index |
+| name | string(100) | not null |
+| | | UNIQUE(country_id, name) |
+
+#### `City` — ciudad o localidad dentro de una provincia
+| Campo | Tipo | Constraints |
+|---|---|---|
+| id | int | PK |
+| province_id | int | FK → provinces, not null, index |
+| name | string(100) | not null |
+| | | UNIQUE(province_id, name) |
+
+#### `Neighbourhood` — barrio o zona dentro de una ciudad
+| Campo | Tipo | Constraints |
+|---|---|---|
+| id | int | PK |
+| city_id | int | FK → cities, not null, index |
+| name | string(100) | not null |
+| | | UNIQUE(city_id, name) |
+
+#### `PriceRange` — tabla de referencia de rangos de precio
+| Campo | Tipo | Constraints |
+|---|---|---|
+| id | int | PK |
+| slug | string(20) | not null, unique (ej: `ECONOMICO`) |
+| label | string(10) | not null (ej: `$`, `$$`) |
+| description | string(200) | nullable (ej: `Menos de $5.000 por persona`) |
+| sort_order | int | not null (controla el orden en filtros y dropdowns) |
+> Pre-poblado con 4 filas en el seed inicial. Solo SUPER_ADMIN puede modificar.
+
+#### `CuisineType` — tabla de referencia de tipos de cocina
+| Campo | Tipo | Constraints |
+|---|---|---|
+| id | int | PK |
+| slug | string(30) | not null, unique (ej: `ARGENTINA`, `JAPONESA`) |
+| label | string(100) | not null (ej: `Parrilla y Criolla`) |
+> Pre-poblado con los tipos iniciales en el seed. Solo SUPER_ADMIN puede agregar o deshabilitar.
+
+#### `RestaurantCuisine` — join N:M entre restaurante y tipos de cocina
+| Campo | Tipo | Constraints |
+|---|---|---|
+| id | int | PK |
+| restaurant_id | int | FK → restaurants, not null, index |
+| cuisine_type_id | int | FK → cuisine_types, not null, index |
+| | | UNIQUE(restaurant_id, cuisine_type_id) |
 
 #### `RestaurantAdmin`
 | Campo | Tipo | Constraints |
@@ -324,12 +433,17 @@ erDiagram
 #### `Reservation`
 > **Sin `table_id` directo.** Las mesas se asignan a través de `ReservationTable`.
 > **Sin estado `PENDING`.** Se auto-confirma al crearse si hay disponibilidad.
+> **`user_id` es nullable.** Cuando un admin crea una reserva por teléfono o evento, no hay usuario registrado.
 
 | Campo | Tipo | Constraints |
 |---|---|---|
 | id | int | PK |
 | restaurant_id | int | FK → restaurants, not null, index |
-| user_id | int | FK → users, not null, index |
+| user_id | int | FK → users, **nullable**, index |
+| **guest_name** | string(150) | nullable — requerido si `user_id` es null |
+| **guest_phone** | string(30) | nullable |
+| **guest_email** | string(255) | nullable |
+| **source** | enum(ReservationSource) | not null, default=ONLINE |
 | party_size | int | not null |
 | date | date | not null, index |
 | time_slot | time | not null |
@@ -337,6 +451,7 @@ erDiagram
 | notes | text | nullable |
 | confirmation_code | string(12) | unique, not null |
 | created_at | datetime(tz) | not null |
+> Constraint de aplicación: exactamente uno de `user_id` o `guest_name` debe ser no-nulo.
 
 #### `ReservationTable` — tabla de join N:M entre reservas y mesas
 | Campo | Tipo | Constraints |
@@ -377,16 +492,16 @@ erDiagram
 | created_at | datetime(tz) | not null |
 
 #### `Order`
+> Sin `order_type` ni `delivery_address`. El sistema no soporta delivery; todos los pedidos son para el local.
+
 | Campo | Tipo | Constraints |
 |---|---|---|
 | id | int | PK |
 | restaurant_id | int | FK → restaurants, not null, index |
 | user_id | int | FK → users, not null, index |
 | status | enum(OrderStatus) | not null, default=PENDING |
-| order_type | enum(OrderType) | not null |
 | total_amount | numeric(10,2) | not null |
 | notes | text | nullable |
-| delivery_address | string(500) | nullable — solo para DELIVERY |
 | estimated_ready_at | datetime(tz) | nullable |
 | created_at | datetime(tz) | not null, index |
 
@@ -438,42 +553,19 @@ erDiagram
 
 ## 4. Enumerados (Enums)
 
-### `PriceRange`
-| Valor | Descripción | Referencia aprox. (ticket promedio por persona) |
-|---|---|---|
-| `ECONOMICO` | Económico ($) | Menos de $5.000 |
-| `MODERADO` | Moderado ($$) | $5.000 – $15.000 |
-| `ELEGANTE` | Elegante ($$$) | $15.000 – $40.000 |
-| `EXCLUSIVO` | Exclusivo ($$$$) | Más de $40.000 |
-
-> Los rangos son orientativos. El admin selecciona uno de los cuatro valores; el sistema no lo valida contra precios reales del menú.
-
-### `CuisineType`
-| Valor | Descripción |
-|---|---|
-| `ARGENTINA` | Parrilla, empanadas, comida criolla |
-| `ITALIANA` | Pasta, pizza, risotto |
-| `JAPONESA` | Sushi, ramen, izakaya |
-| `MEDITERRANEA` | Griega, española, árabe |
-| `MEXICANA` | Tacos, burritos, enchiladas |
-| `PERUANA` | Ceviche, lomo saltado, causa |
-| `AMERICANA` | Hamburguesas, BBQ, wings |
-| `CHINA` | Dim sum, wok, dumplings |
-| `FRANCESA` | Bistró, brasserie, haute cuisine |
-| `CAFE_BAR` | Cafetería, brunch, sándwiches |
-| `VEGANA_VEGETARIANA` | Exclusivamente plant-based |
-| `MARISCOS` | Pescadería, mariscos, cevichería |
-| `FUSIÓN` | Cocina de fusión sin estilo dominante |
-| `OTRA` | Cualquier otra categoría |
-
-> Lista extensible. Agregar valores al enum no requiere migración de datos en columnas existentes.
-
 ### `UserRole`
 | Valor | Descripción |
 |---|---|
 | `CUSTOMER` | Usuario final — puede hacer reservas y pedidos |
 | `RESTAURANT_ADMIN` | Dueño/gerente — administra su restaurante |
 | `SUPER_ADMIN` | Staff de Abricot — acceso global |
+
+### `ReservationSource`
+| Valor | Quién crea | Descripción |
+|---|---|---|
+| `ONLINE` | Cliente (app) | Reserva hecha por el usuario desde la plataforma |
+| `PHONE` | Admin | Admin creó la reserva tomando un llamado telefónico |
+| `EVENT` | Admin | Admin creó la reserva para un evento o grupo grande |
 
 ### `ReservationStatus`
 > No existe `PENDING`. Las reservas se confirman automáticamente al crearse si hay disponibilidad. Si no hay disponibilidad, la creación falla con 409.
@@ -486,21 +578,16 @@ erDiagram
 | `NO_SHOW` | Admin | El cliente no se presentó |
 
 ### `OrderStatus`
+> Sin estados de delivery. El flujo es lineal: recibido → confirmado → en preparación → listo → retirado.
+
 | Valor | Descripción |
 |---|---|
 | `PENDING` | Recibido, el restaurante aún no lo vio |
 | `CONFIRMED` | Confirmado por el restaurante |
 | `IN_PREPARATION` | En cocina |
-| `READY_FOR_PICKUP` | Listo para retirar (TAKEOUT) |
-| `OUT_FOR_DELIVERY` | En camino (DELIVERY) |
-| `DELIVERED` | Entregado / retirado |
+| `READY` | Listo para retirar en el mostrador |
+| `COMPLETED` | Retirado / entregado en mesa — cierre del pedido |
 | `CANCELLED` | Cancelado |
-
-### `OrderType`
-| Valor | Descripción |
-|---|---|
-| `TAKEOUT` | Para retirar en el local |
-| `DELIVERY` | A domicilio |
 
 ### `DiscountType`
 | Valor | Descripción |
@@ -518,7 +605,20 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 - 🔑 = requiere access token (`Authorization: Bearer <accessToken>`)
 - 🔐 = requiere ser admin del restaurante
 
-### 5.1 Autenticación
+### 5.1 Datos de Referencia (lookup tables)
+
+Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos públicos. Las escrituras son exclusivas de SUPER_ADMIN (no listadas aquí por brevedad).
+
+| Método | Path | Auth | Descripción |
+|---|---|---|---|
+| GET | `/cuisines/` | 🔓 | Listar todos los tipos de cocina |
+| GET | `/price-ranges/` | 🔓 | Listar todos los rangos de precio (ordenados por `sort_order`) |
+| GET | `/countries/` | 🔓 | Listar países |
+| GET | `/countries/{id}/provinces/` | 🔓 | Listar provincias de un país |
+| GET | `/provinces/{id}/cities/` | 🔓 | Listar ciudades de una provincia |
+| GET | `/cities/{id}/neighbourhoods/` | 🔓 | Listar barrios de una ciudad |
+
+### 5.2 Autenticación
 
 | Método | Path | Auth | Descripción |
 |---|---|---|---|
@@ -526,7 +626,7 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 | POST | `/auth/login` | 🔓 | Login con email y contraseña |
 | POST | `/auth/refresh` | 🔑 refresh | Obtener nuevo access token |
 
-### 5.2 Restaurantes
+### 5.3 Restaurantes
 
 | Método | Path | Auth | Descripción |
 |---|---|---|---|
@@ -541,19 +641,19 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 
 | Parámetro | Tipo | Descripción |
 |---|---|---|
-| `name` | string | Búsqueda parcial por nombre (case-insensitive, ILIKE `%name%`) |
-| `country` | string | Filtro exacto por país |
-| `city` | string | Filtro exacto por ciudad |
-| `province` | string | Filtro exacto por provincia / región |
-| `neighbourhood` | string | Filtro exacto por barrio |
-| `price_range` | enum | Uno de: `ECONOMICO`, `MODERADO`, `ELEGANTE`, `EXCLUSIVO` |
-| `cuisine_type` | enum | Uno de los valores de `CuisineType` (ej: `ITALIANA`, `JAPONESA`) |
+| `name` | string | Búsqueda parcial por nombre (ILIKE `%name%`, case-insensitive) |
+| `country_id` | int | ID del país |
+| `province_id` | int | ID de la provincia |
+| `city_id` | int | ID de la ciudad |
+| `neighbourhood_id` | int | ID del barrio |
+| `price_range_id` | int | ID del rango de precio (de `GET /price-ranges/`) |
+| `cuisine_type_id` | int | ID del tipo de cocina (de `GET /cuisines/`) — puede repetirse para OR |
 | `page` | int | Página (default: 1) |
 | `per_page` | int | Resultados por página (default: 20, máx: 100) |
 
-> Todos los filtros son opcionales y combinables. Sin filtros, devuelve todos los restaurantes paginados.
+> Todos los filtros son opcionales y combinables. `cuisine_type_id` puede enviarse múltiples veces para filtrar restaurantes que tengan **alguno** de los tipos indicados.
 
-### 5.3 Mesas — F1
+### 5.4 Mesas — F1
 
 | Método | Path | Auth | Descripción |
 |---|---|---|---|
@@ -582,6 +682,7 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 | Método | Path | Auth | Descripción |
 |---|---|---|---|
 | POST | `/restaurants/{id}/reservations/` | 🔑 | Cliente crea reserva — se auto-confirma si hay disponibilidad |
+| **POST** | **`/restaurants/{id}/reservations/admin`** | 🔐 | **Admin crea reserva** para llamado telefónico o evento (puede no tener usuario registrado) |
 | GET | `/restaurants/{id}/reservations/` | 🔐 | Admin lista todas las reservas del restaurante |
 | GET | `/reservations/{reservation_id}` | 🔑 | Ver una reserva (cliente dueño o admin) |
 | PATCH | `/reservations/{reservation_id}/reassign-tables` | 🔐 | Admin reasigna mesas manualmente |
@@ -688,26 +789,42 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 ### 6.2 Restaurante (existente + cambios)
 
 **`RestaurantCreateRequest`** / **`RestaurantUpdateRequest`**:
-| Campo | Requerido | Descripción |
-|---|---|---|
-| `name` | ✅ | Nombre del restaurante |
-| `address` | ✅ | Dirección física completa |
-| `country` | ✅ | País (ej: `"Argentina"`) |
-| `city` | ✅ | Ciudad (ej: `"Buenos Aires"`) |
-| `province` | ❌ | Provincia o región (ej: `"CABA"`) |
-| `neighbourhood` | ❌ | Barrio (ej: `"Palermo"`) |
-| `phone` | ✅ | Teléfono de contacto |
-| `email` | ❌ | Email de contacto |
-| `description` | ❌ | Descripción libre |
-| `priceRange` | ❌ | Enum `PriceRange` |
-| `cuisineType` | ❌ | Enum `CuisineType` |
-| `allowTableJoining` | ❌ | Default `false` |
-| `defaultSlotDurationMinutes` | ❌ | Default `90` |
+| Campo | Requerido | Tipo | Descripción |
+|---|---|---|---|
+| `name` | ✅ | string | Nombre del restaurante |
+| `address` | ✅ | string | Dirección física completa |
+| `cityId` | ✅ | int | ID de la ciudad (de `GET /provinces/{id}/cities/`) |
+| `neighbourhoodId` | ❌ | int | ID del barrio (de `GET /cities/{id}/neighbourhoods/`) |
+| `priceRangeId` | ❌ | int | ID del rango de precio (de `GET /price-ranges/`) |
+| `cuisineTypeIds` | ❌ | int[] | Lista de IDs de tipos de cocina (al menos 1 recomendado) |
+| `phone` | ✅ | string | Teléfono de contacto |
+| `email` | ❌ | string | Email de contacto |
+| `description` | ❌ | string | Descripción libre |
+| `allowTableJoining` | ❌ | bool | Default `false` |
+| `defaultSlotDurationMinutes` | ❌ | int | Default `90` |
 
-**`RestaurantResponse`**: `id`, `name`, `address`, `country`, `city`, `province`, `neighbourhood`, `phone`, `email`, `description`, `photoUrl`, `priceRange`, `cuisineType`, `allowTableJoining`, `defaultSlotDurationMinutes`, `createdAt`
+**`RestaurantResponse`**:
+```
+{
+  id, name, address, phone, email, description, photoUrl,
+  allowTableJoining, defaultSlotDurationMinutes, createdAt,
+  city: { id, name, province: { id, name, country: { id, name, isoCode } } },
+  neighbourhood: { id, name } | null,
+  priceRange: { id, slug, label, description } | null,
+  cuisineTypes: [{ id, slug, label }]
+}
+```
 
 **`RestaurantListResponse`**: `{ data: [RestaurantResponse], total, page, perPage }`
 > El endpoint `GET /restaurants/` siempre devuelve este envelope paginado, incluso sin filtros.
+
+**Schemas de lookup (solo lectura):**
+- **`CuisineTypeResponse`**: `id`, `slug`, `label`
+- **`PriceRangeResponse`**: `id`, `slug`, `label`, `description`, `sortOrder`
+- **`CountryResponse`**: `id`, `name`, `isoCode`
+- **`ProvinceResponse`**: `id`, `name`, `countryId`
+- **`CityResponse`**: `id`, `name`, `provinceId`
+- **`NeighbourhoodResponse`**: `id`, `name`, `cityId`
 
 ### 6.3 Mesas
 
@@ -757,7 +874,20 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 
 ### 6.6 Reservas
 
-**`ReservationCreateRequest`**: `partySize`, `date`, `timeSlot`, `notes?`
+**`ReservationCreateRequest`** (cliente): `partySize`, `date`, `timeSlot`, `notes?`
+
+**`ReservationAdminCreateRequest`** (admin — para teléfono / evento):
+| Campo | Requerido | Descripción |
+|---|---|---|
+| `partySize` | ✅ | Tamaño del grupo |
+| `date` | ✅ | Fecha (YYYY-MM-DD) |
+| `timeSlot` | ✅ | Franja horaria (HH:MM) |
+| `source` | ✅ | `PHONE` o `EVENT` |
+| `guestName` | ✅* | Nombre del grupo — requerido si `userId` es null |
+| `guestPhone` | ❌ | Teléfono de contacto del grupo |
+| `guestEmail` | ❌ | Email del grupo (para envío de confirmación) |
+| `userId` | ❌ | Si el grupo tiene cuenta registrada, el admin puede linkearla |
+| `notes` | ❌ | Notas internas |
 
 **`ReservationReassignTablesRequest`**: `tableIds: [int]`
 > Permite al admin ajustar manualmente qué mesas se usan para una reserva confirmada.
@@ -767,8 +897,9 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 **`ReservationResponse`**:
 ```
 {
-  id, restaurantId, restaurantName, userId,
-  partySize, date, timeSlot, status, notes, confirmationCode, createdAt,
+  id, restaurantId, restaurantName,
+  userId, guestName, guestPhone, guestEmail,
+  source, partySize, date, timeSlot, status, notes, confirmationCode, createdAt,
   tables: [{ tableId, tableNumber, capacity }]
 }
 ```
@@ -803,13 +934,13 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 
 ### 6.10 Pedidos
 
-**`OrderCreateRequest`**: `orderType`, `items: [{ menuItemId, quantity, notes? }]`, `notes?`, `deliveryAddress?`
+**`OrderCreateRequest`**: `items: [{ menuItemId, quantity, notes? }]`, `notes?`
 
 **`OrderStatusUpdateRequest`**: `status`, `estimatedReadyAt?`
 
 **`OrderItemResponse`**: `id`, `menuItemId`, `menuItemName`, `quantity`, `unitPrice`, `notes`
 
-**`OrderResponse`**: `id`, `restaurantId`, `restaurantName`, `userId`, `status`, `orderType`, `totalAmount`, `notes`, `deliveryAddress`, `estimatedReadyAt`, `items: [OrderItemResponse]`, `createdAt`
+**`OrderResponse`**: `id`, `restaurantId`, `restaurantName`, `userId`, `status`, `totalAmount`, `notes`, `estimatedReadyAt`, `items: [OrderItemResponse]`, `createdAt`
 
 **`OrderListResponse`**: `{ data: [OrderResponse], total, page, perPage }`
 
@@ -849,6 +980,20 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 
 ## 7. Servicios y Funciones
 
+### 7.0 `LookupService` 🔴 (nuevo — datos de referencia)
+
+Servicio de solo lectura para poblar dropdowns. No tiene lógica de negocio.
+
+- `get_all_cuisines() → list[dict]`
+- `get_all_price_ranges() → list[dict]` (ordenados por `sort_order`)
+- `get_all_countries() → list[dict]`
+- `get_provinces_by_country(country_id) → list[dict]`
+- `get_cities_by_province(province_id) → list[dict]`
+- `get_neighbourhoods_by_city(city_id) → list[dict]`
+- `get_or_create_city(city_name, province_id) → CityModel`
+  - Upsert interno usado por `RestaurantService.create()` si el cliente envía nombres en lugar de IDs.
+- `get_or_create_neighbourhood(neighbourhood_name, city_id) → NeighbourhoodModel`
+
 ### 7.1 `AuthService` ✅ (completo)
 
 - `register(email, password, name, surname) → dict`
@@ -867,15 +1012,17 @@ La URL base de todos los endpoints es `/`. Convención de auth:
 
 ### 7.3 `RestaurantService` — actualizar con nuevos campos y búsqueda filtrada
 
-- `search(name?, country?, city?, province?, neighbourhood?, price_range?, cuisine_type?, page, per_page) → dict`
+- `search(name?, country_id?, province_id?, city_id?, neighbourhood_id?, price_range_id?, cuisine_type_ids?, page, per_page) → dict`
   - Reemplaza el anterior `get_all()`. Todos los parámetros son opcionales.
-  - `name` aplica `ILIKE %name%` (búsqueda parcial case-insensitive). El resto son filtros exactos.
+  - `name` aplica `ILIKE %name%`. El resto son filtros por FK. `cuisine_type_ids` es una lista: retorna restaurantes que tengan **alguno** de los tipos (JOIN en `RESTAURANT_CUISINE` con `IN`).
   - Retorna `{ data: [dict], total, page, perPage }` siempre paginado.
 - `get_by_id(restaurant_id) → dict`
-- `create(creator_user_id, name, address, country, city, province, neighbourhood, phone, email, description, price_range, cuisine_type, allow_table_joining, default_slot_duration_minutes) → dict`
-  - Crea el `Restaurant` y, en la misma transacción, crea la fila en `RestaurantAdmin` con `user_id=creator_user_id`.
+- `create(creator_user_id, name, address, city_id, neighbourhood_id, price_range_id, cuisine_type_ids, phone, email, description, allow_table_joining, default_slot_duration_minutes) → dict`
+  - Valida que `city_id` exista (y `neighbourhood_id` si se envía).
+  - Crea el `Restaurant`, las filas en `RestaurantCuisine`, y la fila en `RestaurantAdmin` — todo en una transacción.
   - Si el usuario tiene `role=CUSTOMER`, lo eleva a `RESTAURANT_ADMIN` en la misma transacción.
-- `update(restaurant_id, name, address, country, city, province, neighbourhood, phone, email, description, price_range, cuisine_type, allow_table_joining, default_slot_duration_minutes) → dict`
+- `update(restaurant_id, name, address, city_id, neighbourhood_id, price_range_id, cuisine_type_ids, phone, email, description, allow_table_joining, default_slot_duration_minutes) → dict`
+  - Para `cuisine_type_ids`: reemplaza completamente las filas de `RestaurantCuisine` (delete + insert) en una transacción.
 - `delete(restaurant_id) → None`
 - `upload_photo(restaurant_id, file_storage) → dict`
 
@@ -961,22 +1108,29 @@ Dado: `restaurant_id`, `date`, `time_slot`, `party_size`
   - Llama a `AvailabilityService.find_table_assignment()` dentro de una transacción
   - Si no hay mesas disponibles → raise `ConflictError` (409)
   - Genera `confirmation_code` único (8 caracteres alfanuméricos en mayúsculas)
-  - Crea la `Reservation` con `status=CONFIRMED`
+  - Crea la `Reservation` con `status=CONFIRMED`, `source=ONLINE`
   - Crea las filas en `ReservationTable` para las mesas asignadas
   - Todo en una sola transacción atómica
   - Dispara `NotificationService.send_reservation_confirmation()` de forma asíncrona
+- `create_for_admin(restaurant_id, admin_user_id, party_size, date, time_slot, source, guest_name, guest_phone, guest_email, user_id, notes) → dict`
+  - Exclusivo para `POST /restaurants/{id}/reservations/admin` (🔐)
+  - Valida que exactamente uno de `user_id` o `guest_name` sea no-nulo
+  - Valida `source` en `{PHONE, EVENT}` (no puede crear con `source=ONLINE`)
+  - Misma lógica de disponibilidad y asignación que `create()`
+  - Si se envía `guest_email`, dispara la notificación de confirmación al email del huésped
 - `get_by_id(reservation_id, requesting_user_id) → dict`
   - Valida que el solicitante sea el dueño de la reserva o admin del restaurante
 - `get_by_confirmation_code(code) → dict`
   - Público (para el link del email de confirmación)
-- `list_for_restaurant(restaurant_id, date_from, date_to, status, page, per_page) → dict`
+- `list_for_restaurant(restaurant_id, date_from, date_to, status, source, page, per_page) → dict`
+  - Filtrable por `source` además de `status` (ej: ver solo reservas telefónicas)
 - `reassign_tables(reservation_id, table_ids) → dict`
   - Admin puede mover una reserva a otras mesas (ej: para organizar mejor el salón)
   - Valida que las nuevas mesas estén disponibles en ese slot y tengan capacidad suficiente
 - `cancel(reservation_id, requesting_user_id, reason) → dict`
   - Valida que el solicitante sea el dueño de la reserva o admin del restaurante
   - Libera las mesas (elimina filas de `reservation_tables`)
-  - Dispara `NotificationService.send_reservation_cancelled()`
+  - Dispara `NotificationService.send_reservation_cancelled()` (al `user.email` o `guest_email`)
 - `complete(reservation_id) → dict`
 - `mark_no_show(reservation_id) → dict`
   - Libera las mesas de la misma forma que `cancel`
@@ -1014,7 +1168,7 @@ Dado: `restaurant_id`, `date`, `time_slot`, `party_size`
 
 ### 7.12 `OrderService` 🔴 (nuevo — F3)
 
-- `create(restaurant_id, user_id, order_type, items, notes, delivery_address) → dict`
+- `create(restaurant_id, user_id, items, notes) → dict`
   - Valida que cada `menu_item_id` exista, esté disponible y pertenezca al menú activo del restaurante
   - Calcula `total_amount` como suma de `quantity × unit_price` (snapshot del precio actual del ítem)
   - Dispara `NotificationService.send_order_confirmation()`
@@ -1220,6 +1374,8 @@ stateDiagram-v2
 
 ### 9.2 Estados de Pedido
 
+> Sin delivery. El flujo es siempre para consumo en el local o retiro en mostrador.
+
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING : Cliente crea pedido
@@ -1227,11 +1383,9 @@ stateDiagram-v2
     PENDING --> CANCELLED : Cliente cancela\n(única ventana para el cliente)
     CONFIRMED --> IN_PREPARATION : Admin inicia preparación
     CONFIRMED --> CANCELLED : Admin cancela
-    IN_PREPARATION --> READY_FOR_PICKUP : Admin: listo (TAKEOUT)
-    IN_PREPARATION --> OUT_FOR_DELIVERY : Admin: en camino (DELIVERY)
-    READY_FOR_PICKUP --> DELIVERED : Admin confirma retiro
-    OUT_FOR_DELIVERY --> DELIVERED : Admin confirma entrega
-    DELIVERED --> [*]
+    IN_PREPARATION --> READY : Admin: listo para retirar
+    READY --> COMPLETED : Admin confirma retiro / entrega en mesa
+    COMPLETED --> [*]
     CANCELLED --> [*]
 ```
 
@@ -1241,8 +1395,8 @@ stateDiagram-v2
 
 | Prioridad | Funcionalidad | Modelos a crear / modificar | Servicios a crear / modificar |
 |---|---|---|---|
-| 1 | Roles + Admin de Restaurante | `UserRole` enum en `User`, nuevo `RestaurantAdmin` | `RestaurantAdminService` |
-| 2 | F1: Mesas y Horarios | nuevo `Table` (con `is_joinable`), `BusinessHours`; modificar `Restaurant` (agregar `allow_table_joining`, `default_slot_duration_minutes`) | `TableService` (con `create_bulk`), `BusinessHoursService` |
+| 1 | Roles + Admin + Lookup tables | `UserRole` enum en `User`, nuevos `RestaurantAdmin`, `Country`, `Province`, `City`, `Neighbourhood`, `PriceRange`, `CuisineType`, `RestaurantCuisine` | `RestaurantAdminService`, `LookupService` |
+| 2 | F1: Mesas y Horarios | nuevo `Table` (con `is_joinable`), `BusinessHours`; modificar `Restaurant` (FKs de ubicación, precio, cocina; `allow_table_joining`, `default_slot_duration_minutes`) | `TableService` (con `create_bulk`), `BusinessHoursService` |
 | 3 | F1: Disponibilidad con unión de mesas | nuevo `ReservationTable` | `AvailabilityService` (algoritmo de combinación) |
 | 4 | F2: Motor de Reservas | nuevo `Reservation` (sin `table_id`, sin estado PENDING) | `ReservationService`, `NotificationService` (base) |
 | 5 | F3: Menú Digital | nuevos `Menu`, `MenuCategory`, `MenuItem` | `MenuService`, `MenuCategoryService`, `MenuItemService` |

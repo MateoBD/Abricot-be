@@ -1,0 +1,500 @@
+# Abricot — Checklist de Implementación
+
+Cada ítem es una unidad de trabajo atómica. Marcar con `[x]` al completar.
+Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧 existen pero necesitan modificación.
+
+---
+
+## 1. Migraciones de Base de Datos
+
+### 1.1 Modificar tablas existentes
+- [ ] 🔧 `users` — agregar columna `role` (enum: CUSTOMER / RESTAURANT_ADMIN / SUPER_ADMIN, default CUSTOMER)
+- [ ] 🔧 `restaurants` — agregar `city_id FK`, `neighbourhood_id FK` (nullable), `price_range_id FK` (nullable), `allow_table_joining` (bool, default false), `default_slot_duration_minutes` (int, default 90)
+- [ ] 🔧 `restaurants` — eliminar columnas de strings de ubicación si existían (`country`, `city`, `province`, `neighbourhood`)
+
+### 1.2 Tablas de referencia (lookup — pre-seed)
+- [ ] `countries` — id, name, iso_code
+- [ ] `provinces` — id, country_id FK, name
+- [ ] `cities` — id, province_id FK, name
+- [ ] `neighbourhoods` — id, city_id FK, name
+- [ ] `price_ranges` — id, slug, label, description, sort_order
+- [ ] `cuisine_types` — id, slug, label
+
+### 1.3 Tablas transversales
+- [ ] `restaurant_admins` — id, user_id FK, restaurant_id FK, UNIQUE(user_id, restaurant_id)
+- [ ] `restaurant_cuisines` — id, restaurant_id FK, cuisine_type_id FK, UNIQUE(restaurant_id, cuisine_type_id)
+- [ ] `notification_preferences` — id, user_id FK, restaurant_id FK, receive_promotions, receive_order_updates, receive_reservation_reminders, UNIQUE(user_id, restaurant_id)
+
+### 1.4 F1 — Mesas y Horarios
+- [ ] `tables` — id, restaurant_id FK, number, capacity, name, is_joinable, is_active, UNIQUE(restaurant_id, number)
+- [ ] `business_hours` — id, restaurant_id FK, day_of_week, opens_at, closes_at, is_closed, UNIQUE(restaurant_id, day_of_week)
+
+### 1.5 F2 — Reservas
+- [ ] `reservations` — id, restaurant_id FK, user_id FK (nullable), guest_name, guest_phone, guest_email, source (enum), party_size, date, time_slot, status (enum), notes, confirmation_code UK, created_at
+- [ ] `reservation_tables` — id, reservation_id FK, table_id FK, UNIQUE(reservation_id, table_id)
+
+### 1.6 F3 — Menú y Pedidos
+- [ ] `menus` — id, restaurant_id FK, name, is_active, created_at
+- [ ] `menu_categories` — id, menu_id FK, name, display_order, is_active
+- [ ] `menu_items` — id, category_id FK, name, description, price, photo_url, is_available, created_at
+- [ ] `orders` — id, restaurant_id FK, user_id FK, status (enum), total_amount, notes, estimated_ready_at, created_at
+- [ ] `order_items` — id, order_id FK, menu_item_id FK, quantity, unit_price, notes
+
+### 1.7 F4 — Promociones
+- [ ] `promotions` — id, restaurant_id FK, title, description, discount_type (enum), discount_value, start_date, end_date, is_active, notify_users, created_at
+- [ ] `promotion_items` — id, promotion_id FK, menu_item_id FK, UNIQUE(promotion_id, menu_item_id)
+
+### 1.8 Seed inicial
+- [ ] Seed de `price_ranges` (4 filas: ECONOMICO $, MODERADO $$, ELEGANTE $$$, EXCLUSIVO $$$$)
+- [ ] Seed de `cuisine_types` (14 filas: ARGENTINA, ITALIANA, JAPONESA, MEDITERRANEA, MEXICANA, PERUANA, AMERICANA, CHINA, FRANCESA, CAFE_BAR, VEGANA_VEGETARIANA, MARISCOS, FUSION, OTRA)
+
+---
+
+## 2. Modelos SQLAlchemy (app/models/)
+
+### 2.1 Modificar modelos existentes
+- [ ] 🔧 `UserModel` — agregar campo `role: Mapped[UserRole]`
+- [ ] 🔧 `RestaurantModel` — agregar `city_id`, `neighbourhood_id`, `price_range_id`, `allow_table_joining`, `default_slot_duration_minutes`; relaciones ORM con `City`, `Neighbourhood`, `PriceRange`, `RestaurantCuisine`
+
+### 2.2 Nuevos modelos de referencia
+- [ ] `CountryModel` (`app/models/location.py`)
+- [ ] `ProvinceModel` (`app/models/location.py`)
+- [ ] `CityModel` (`app/models/location.py`)
+- [ ] `NeighbourhoodModel` (`app/models/location.py`)
+- [ ] `PriceRangeModel` (`app/models/price_range.py`)
+- [ ] `CuisineTypeModel` (`app/models/cuisine_type.py`)
+
+### 2.3 Nuevos modelos transversales
+- [ ] `RestaurantAdminModel` (`app/models/restaurant_admin.py`)
+- [ ] `RestaurantCuisineModel` (`app/models/restaurant_cuisine.py`)
+- [ ] `NotificationPreferenceModel` (`app/models/notification_preference.py`)
+
+### 2.4 F1 — Mesas y Horarios
+- [ ] `TableModel` (`app/models/table.py`)
+- [ ] `BusinessHoursModel` (`app/models/business_hours.py`)
+
+### 2.5 F2 — Reservas
+- [ ] `ReservationModel` (`app/models/reservation.py`) — con `user_id` nullable, campos de huésped, `source`
+- [ ] `ReservationTableModel` (`app/models/reservation_table.py`)
+
+### 2.6 F3 — Menú y Pedidos
+- [ ] `MenuModel` (`app/models/menu.py`)
+- [ ] `MenuCategoryModel` (`app/models/menu_category.py`)
+- [ ] `MenuItemModel` (`app/models/menu_item.py`)
+- [ ] `OrderModel` (`app/models/order.py`) — sin `order_type` ni `delivery_address`
+- [ ] `OrderItemModel` (`app/models/order_item.py`)
+
+### 2.7 F4 — Promociones
+- [ ] `PromotionModel` (`app/models/promotion.py`)
+- [ ] `PromotionItemModel` (`app/models/promotion_item.py`)
+
+---
+
+## 3. Enums (app/models/enums.py o por módulo)
+
+- [ ] 🔧 `UserRole` — CUSTOMER, RESTAURANT_ADMIN, SUPER_ADMIN
+- [ ] `ReservationSource` — ONLINE, PHONE, EVENT
+- [ ] `ReservationStatus` — CONFIRMED, CANCELLED, COMPLETED, NO_SHOW
+- [ ] `OrderStatus` — PENDING, CONFIRMED, IN_PREPARATION, READY, COMPLETED, CANCELLED
+- [ ] `DiscountType` — PERCENTAGE, FIXED_AMOUNT, FREE_ITEM
+
+---
+
+## 4. Repositorios (app/repositories/)
+
+### 4.1 Modificar repositorios existentes
+- [ ] 🔧 `UserRepository` — agregar `update_role(user_id, role)`
+- [ ] 🔧 `RestaurantRepository` — reemplazar `get_all()` por `search(filters)` con JOINs a `cities`, `price_ranges`, `restaurant_cuisines`; actualizar `create()` y `update()` para manejar `cuisine_type_ids`
+
+### 4.2 Nuevos repositorios de referencia
+- [ ] `LookupRepository` — métodos para countries, provinces, cities, neighbourhoods, price_ranges, cuisine_types; `get_or_create_city`, `get_or_create_neighbourhood`
+
+### 4.3 Transversales
+- [ ] `RestaurantAdminRepository` — `is_admin(user_id, restaurant_id)`, `add(user_id, restaurant_id)`, `remove(user_id, restaurant_id)`, `get_restaurants_for_user(user_id)`
+- [ ] `NotificationPreferenceRepository` — `get_by_user(user_id)`, `get_or_create(user_id, restaurant_id)`, `update(...)`, `get_subscribed_emails(restaurant_id, field)`
+
+### 4.4 F1
+- [ ] `TableRepository` — `get_all(restaurant_id)`, `get_by_id(restaurant_id, table_id)`, `get_max_number(restaurant_id)`, `bulk_insert(tables)`, `get_active(restaurant_id)`
+- [ ] `BusinessHoursRepository` — `get_all(restaurant_id)`, `upsert_bulk(restaurant_id, data)`, `get_for_date(restaurant_id, day_of_week)`
+
+### 4.5 F2
+- [ ] `ReservationRepository` — `create(reservation)`, `get_by_id(id)`, `get_by_code(code)`, `list_for_restaurant(restaurant_id, filters, page, per_page)`, `get_occupied_table_ids_at(restaurant_id, date, time_slot)`
+- [ ] `ReservationTableRepository` — `create_bulk(reservation_id, table_ids)`, `delete_by_reservation(reservation_id)`
+
+### 4.6 F3
+- [ ] `MenuRepository` — `get_all(restaurant_id)`, `get_by_id(restaurant_id, menu_id)`, `get_active(restaurant_id)`, `deactivate_all(restaurant_id)`
+- [ ] `MenuCategoryRepository` — `get_all(menu_id)`, `get_by_id(menu_id, cat_id)`, `bulk_reorder(ordered_ids)`
+- [ ] `MenuItemRepository` — `get_all(category_id)`, `get_by_id(item_id)`, `validate_items_for_restaurant(item_ids, restaurant_id)`
+- [ ] `OrderRepository` — `create(order)`, `get_by_id(order_id)`, `list_for_restaurant(restaurant_id, filters, page, per_page)`, `list_for_user(user_id, page, per_page)`
+- [ ] `OrderItemRepository` — `bulk_insert(order_id, items)`
+
+### 4.7 F4
+- [ ] `PromotionRepository` — `get_active(restaurant_id)`, `get_all(restaurant_id)`, `get_global_feed()`, `get_by_id(restaurant_id, promo_id)`
+- [ ] `PromotionItemRepository` — `replace_items(promotion_id, menu_item_ids)`
+
+---
+
+## 5. Servicios (app/services/)
+
+### 5.1 Modificar servicios existentes
+- [ ] 🔧 `RestaurantService.get_all()` → renombrar a `search(name?, country_id?, province_id?, city_id?, neighbourhood_id?, price_range_id?, cuisine_type_ids?, page, per_page)`
+- [ ] 🔧 `RestaurantService.create()` — aceptar `city_id`, `neighbourhood_id`, `price_range_id`, `cuisine_type_ids`; crear fila en `RestaurantAdmin` y elevar rol en la misma transacción
+- [ ] 🔧 `RestaurantService.update()` — aceptar nuevos campos; reemplazar `RestaurantCuisine` (delete + insert)
+
+### 5.2 LookupService (nuevo)
+- [ ] `LookupService.get_all_cuisines()`
+- [ ] `LookupService.get_all_price_ranges()`
+- [ ] `LookupService.get_all_countries()`
+- [ ] `LookupService.get_provinces_by_country(country_id)`
+- [ ] `LookupService.get_cities_by_province(province_id)`
+- [ ] `LookupService.get_neighbourhoods_by_city(city_id)`
+- [ ] `LookupService.get_or_create_city(city_name, province_id)`
+- [ ] `LookupService.get_or_create_neighbourhood(neighbourhood_name, city_id)`
+
+### 5.3 UserService (nuevo)
+- [ ] `UserService.get_profile(user_id)`
+- [ ] `UserService.update_profile(user_id, name, surname)`
+- [ ] `UserService.change_password(user_id, current_password, new_password)`
+- [ ] `UserService.get_my_reservations(user_id, page, per_page)`
+- [ ] `UserService.get_my_orders(user_id, page, per_page)`
+- [ ] `UserService.get_my_restaurants(user_id)`
+
+### 5.4 RestaurantAdminService (nuevo)
+- [ ] `RestaurantAdminService.is_admin(user_id, restaurant_id)`
+- [ ] `RestaurantAdminService.add_admin(restaurant_id, user_id)` — crea fila + eleva rol si CUSTOMER
+- [ ] `RestaurantAdminService.remove_admin(restaurant_id, user_id)` — baja rol si ya no tiene restaurantes
+- [ ] `RestaurantAdminService.get_restaurants_for_admin(user_id)`
+
+### 5.5 TableService (nuevo — F1)
+- [ ] `TableService.get_all(restaurant_id)`
+- [ ] `TableService.get_by_id(restaurant_id, table_id)`
+- [ ] `TableService.create(restaurant_id, number, capacity, name, is_joinable)`
+- [ ] `TableService.create_bulk(restaurant_id, groups)` — grupos: `[{quantity, capacity, isJoinable?}]`; numeración secuencial; una transacción
+- [ ] `TableService.update(restaurant_id, table_id, ...)`
+- [ ] `TableService.delete(restaurant_id, table_id)` — falla si tiene reservas futuras confirmadas
+- [ ] `TableService.get_total_capacity(restaurant_id)`
+
+### 5.6 BusinessHoursService (nuevo — F1)
+- [ ] `BusinessHoursService.get_all(restaurant_id)`
+- [ ] `BusinessHoursService.bulk_update(restaurant_id, hours_data)` — upsert 7 filas
+- [ ] `BusinessHoursService.is_open_on(restaurant_id, date)`
+- [ ] `BusinessHoursService.get_time_range(restaurant_id, date)` → `(opens_at, closes_at) | None`
+
+### 5.7 AvailabilityService (nuevo — F1, corazón de F2)
+- [ ] `AvailabilityService.get_available_slots(restaurant_id, date, party_size)` — genera todos los slots del día y ejecuta `find_table_assignment` para cada uno
+- [ ] `AvailabilityService.find_table_assignment(restaurant_id, date, time_slot, party_size)` → `list[TableModel] | None` — algoritmo: primero mesa individual; si `allow_table_joining=True`, luego combinaciones de mesas `is_joinable`; mínimo desperdicio
+- [ ] `AvailabilityService.assign_tables_for_reservation(reservation_id, table_ids)` — crea filas en `reservation_tables` dentro de una transacción
+- [ ] `AvailabilityService.get_occupied_table_ids_at(restaurant_id, date, time_slot)` → `set[int]`
+
+### 5.8 ReservationService (nuevo — F2)
+- [ ] `ReservationService.create(restaurant_id, user_id, party_size, date, time_slot, notes)` — `source=ONLINE`; auto-confirma; transacción atómica con `SELECT FOR UPDATE`
+- [ ] `ReservationService.create_for_admin(restaurant_id, admin_user_id, party_size, date, time_slot, source, guest_name, guest_phone, guest_email, user_id, notes)` — valida `user_id XOR guest_name`; `source ∈ {PHONE, EVENT}`
+- [ ] `ReservationService.get_by_id(reservation_id, requesting_user_id)` — valida ownership o admin
+- [ ] `ReservationService.get_by_confirmation_code(code)` — público
+- [ ] `ReservationService.list_for_restaurant(restaurant_id, date_from, date_to, status, source, page, per_page)`
+- [ ] `ReservationService.reassign_tables(reservation_id, table_ids)` — valida disponibilidad en el slot
+- [ ] `ReservationService.cancel(reservation_id, requesting_user_id, reason)` — libera mesas; notifica
+- [ ] `ReservationService.complete(reservation_id)`
+- [ ] `ReservationService.mark_no_show(reservation_id)` — libera mesas
+
+### 5.9 MenuService (nuevo — F3)
+- [ ] `MenuService.get_all(restaurant_id)`
+- [ ] `MenuService.get_by_id(restaurant_id, menu_id)`
+- [ ] `MenuService.get_detail(restaurant_id, menu_id)` — incluye categorías e ítems anidados
+- [ ] `MenuService.create(restaurant_id, name)`
+- [ ] `MenuService.update(restaurant_id, menu_id, name)`
+- [ ] `MenuService.delete(restaurant_id, menu_id)`
+- [ ] `MenuService.activate(restaurant_id, menu_id)` — desactiva el anterior en la misma transacción
+- [ ] `MenuService.get_active_menu(restaurant_id)`
+
+### 5.10 MenuCategoryService (nuevo — F3)
+- [ ] `MenuCategoryService.get_all(menu_id)`
+- [ ] `MenuCategoryService.create(menu_id, name, display_order)`
+- [ ] `MenuCategoryService.update(menu_id, category_id, name, display_order, is_active)`
+- [ ] `MenuCategoryService.delete(menu_id, category_id)`
+- [ ] `MenuCategoryService.reorder(menu_id, ordered_ids)` — asigna `display_order = índice`
+
+### 5.11 MenuItemService (nuevo — F3)
+- [ ] `MenuItemService.get_all(category_id)`
+- [ ] `MenuItemService.get_by_id(item_id)`
+- [ ] `MenuItemService.create(category_id, name, description, price, is_available)`
+- [ ] `MenuItemService.update(item_id, name, description, price, is_available)`
+- [ ] `MenuItemService.delete(item_id)`
+- [ ] `MenuItemService.upload_photo(item_id, file_storage)` — reutiliza `S3Client`
+- [ ] `MenuItemService.set_availability(item_id, is_available)`
+
+### 5.12 OrderService (nuevo — F3)
+- [ ] `OrderService.create(restaurant_id, user_id, items, notes)` — sin `order_type`; snapshot de precios; valida ítems en menú activo
+- [ ] `OrderService.get_by_id(order_id, requesting_user_id)`
+- [ ] `OrderService.list_for_restaurant(restaurant_id, status_filter, page, per_page)`
+- [ ] `OrderService.update_status(order_id, new_status, estimated_ready_at)` — valida transición válida
+- [ ] `OrderService.cancel(order_id, requesting_user_id)` — solo si `status=PENDING`
+
+### 5.13 PromotionService (nuevo — F4)
+- [ ] `PromotionService.get_all_active(restaurant_id)`
+- [ ] `PromotionService.get_all_for_admin(restaurant_id)` — incluye inactivas
+- [ ] `PromotionService.get_feed()` — todas las activas en la plataforma
+- [ ] `PromotionService.get_by_id(restaurant_id, promotion_id)`
+- [ ] `PromotionService.create(restaurant_id, title, description, discount_type, discount_value, start_date, end_date, notify_users, menu_item_ids)` — si `notify_users=True`, dispara notificación asíncrona
+- [ ] `PromotionService.update(restaurant_id, promotion_id, ...)`
+- [ ] `PromotionService.deactivate(restaurant_id, promotion_id)`
+- [ ] `PromotionService.activate(restaurant_id, promotion_id)`
+- [ ] `PromotionService.delete(restaurant_id, promotion_id)`
+
+### 5.14 NotificationService (nuevo — F2, F3, F4)
+- [ ] `NotificationService.send_reservation_confirmation(reservation_id)` — a `user.email` o `guest_email`
+- [ ] `NotificationService.send_reservation_cancelled(reservation_id)`
+- [ ] `NotificationService.send_order_confirmation(order_id)`
+- [ ] `NotificationService.send_order_status_update(order_id)`
+- [ ] `NotificationService.send_promotion_notification(promotion_id)` — a todos los suscriptos con `receive_promotions=True`
+- [ ] `NotificationService._get_subscribed_user_emails(restaurant_id, preference_field)` — interno
+
+### 5.15 NotificationPreferenceService (nuevo)
+- [ ] `NotificationPreferenceService.get_all_for_user(user_id)`
+- [ ] `NotificationPreferenceService.get_or_create(user_id, restaurant_id)`
+- [ ] `NotificationPreferenceService.update(user_id, restaurant_id, receive_promotions, receive_order_updates, receive_reservation_reminders)`
+
+### 5.16 AnalyticsService (nuevo — F5)
+- [ ] `AnalyticsService.get_occupancy_report(restaurant_id, date_from, date_to)`
+- [ ] `AnalyticsService.get_orders_report(restaurant_id, date_from, date_to)`
+- [ ] `AnalyticsService.get_popular_items(restaurant_id, date_from, date_to, limit)`
+- [ ] `AnalyticsService.get_promotions_report(restaurant_id, date_from, date_to)`
+- [ ] `AnalyticsService.get_peak_hours(restaurant_id, date_from, date_to)`
+
+---
+
+## 6. Middleware y Guards (app/middleware/)
+
+- [ ] ✅ `require_authentication()` — verifica access token
+- [ ] ✅ `require_refresh_token()` — verifica refresh token
+- [ ] `require_restaurant_admin(restaurant_id_param)` — verifica que el usuario autenticado sea admin del restaurante indicado en el path; usa `RestaurantAdminService.is_admin()`
+
+---
+
+## 7. Schemas Flask-RESTX (app/api/.../schemas.py)
+
+### 7.1 Lookup
+- [ ] `CuisineTypeResponse`
+- [ ] `PriceRangeResponse`
+- [ ] `CountryResponse`
+- [ ] `ProvinceResponse`
+- [ ] `CityResponse`
+- [ ] `NeighbourhoodResponse`
+
+### 7.2 Restaurante
+- [ ] 🔧 `RestaurantCreateRequest` — agregar `cityId`, `neighbourhoodId?`, `priceRangeId?`, `cuisineTypeIds[]`; quitar strings de ubicación
+- [ ] 🔧 `RestaurantUpdateRequest` — ídem
+- [ ] 🔧 `RestaurantResponse` — anidar objetos `city`, `neighbourhood`, `priceRange`, `cuisineTypes[]`
+- [ ] `RestaurantListResponse`
+
+### 7.3 Mesas
+- [ ] `TableCreateRequest`
+- [ ] `TableUpdateRequest`
+- [ ] `TableBulkCreateRequest`
+- [ ] `TableResponse`
+- [ ] `TableBulkCreateResponse`
+
+### 7.4 Horarios
+- [ ] `BusinessHoursBulkUpdateRequest`
+- [ ] `BusinessHoursResponse`
+
+### 7.5 Disponibilidad
+- [ ] `AvailabilityResponse` — con `slots[].tableAssignment`
+
+### 7.6 Reservas
+- [ ] `ReservationCreateRequest` — cliente
+- [ ] `ReservationAdminCreateRequest` — admin (incluye `guestName`, `guestPhone`, `guestEmail`, `source`, `userId?`)
+- [ ] `ReservationReassignTablesRequest`
+- [ ] `ReservationCancelRequest`
+- [ ] `ReservationResponse`
+- [ ] `ReservationListResponse`
+
+### 7.7 Menús
+- [ ] `MenuCreateRequest` / `MenuUpdateRequest`
+- [ ] `MenuResponse`
+- [ ] `MenuDetailResponse` — con categorías e ítems anidados
+
+### 7.8 Categorías
+- [ ] `MenuCategoryCreateRequest` / `MenuCategoryUpdateRequest`
+- [ ] `MenuCategoryReorderRequest`
+- [ ] `MenuCategoryResponse`
+- [ ] `MenuCategoryDetailResponse` — con ítems anidados
+
+### 7.9 Ítems de Menú
+- [ ] `MenuItemCreateRequest` / `MenuItemUpdateRequest`
+- [ ] `MenuItemAvailabilityRequest`
+- [ ] `MenuItemResponse`
+
+### 7.10 Pedidos
+- [ ] `OrderCreateRequest` — sin `orderType` ni `deliveryAddress`
+- [ ] `OrderStatusUpdateRequest`
+- [ ] `OrderItemResponse`
+- [ ] `OrderResponse`
+- [ ] `OrderListResponse`
+
+### 7.11 Promociones
+- [ ] `PromotionCreateRequest` / `PromotionUpdateRequest`
+- [ ] `PromotionResponse`
+
+### 7.12 Notificaciones
+- [ ] `NotificationPreferenceUpdateRequest`
+- [ ] `NotificationPreferenceResponse`
+
+### 7.13 Usuario
+- [ ] `UserProfileUpdateRequest`
+- [ ] `UserPasswordChangeRequest`
+- [ ] `UserProfileResponse`
+
+### 7.14 Analytics
+- [ ] `OccupancyReportResponse`
+- [ ] `OrdersReportResponse`
+- [ ] `PopularItemsResponse`
+- [ ] `PromotionsReportResponse`
+- [ ] `PeakHoursResponse`
+
+---
+
+## 8. Endpoints REST (app/api/.../routes.py)
+
+### 8.1 Lookup (nuevo namespace)
+- [ ] `GET /cuisines/`
+- [ ] `GET /price-ranges/`
+- [ ] `GET /countries/`
+- [ ] `GET /countries/{id}/provinces/`
+- [ ] `GET /provinces/{id}/cities/`
+- [ ] `GET /cities/{id}/neighbourhoods/`
+
+### 8.2 Auth (existente)
+- [ ] ✅ `POST /auth/register`
+- [ ] ✅ `POST /auth/login`
+- [ ] ✅ `POST /auth/refresh`
+
+### 8.3 Restaurantes
+- [ ] 🔧 `GET /restaurants/` — agregar todos los query params de filtrado (IDs)
+- [ ] 🔧 `POST /restaurants/` — aceptar nuevos campos; auto-crear `RestaurantAdmin`
+- [ ] ✅ `GET /restaurants/{id}`
+- [ ] 🔧 `PUT /restaurants/{id}` — aceptar nuevos campos; reemplazar cuisines
+- [ ] ✅ `DELETE /restaurants/{id}`
+- [ ] ✅ `POST /restaurants/{id}/photo`
+
+### 8.4 Mesas — F1
+- [ ] `GET /restaurants/{id}/tables/`
+- [ ] `POST /restaurants/{id}/tables/`
+- [ ] `POST /restaurants/{id}/tables/bulk`
+- [ ] `GET /restaurants/{id}/tables/{table_id}`
+- [ ] `PUT /restaurants/{id}/tables/{table_id}`
+- [ ] `DELETE /restaurants/{id}/tables/{table_id}`
+
+### 8.5 Horarios — F1
+- [ ] `GET /restaurants/{id}/business-hours/`
+- [ ] `PUT /restaurants/{id}/business-hours/`
+
+### 8.6 Disponibilidad — F1
+- [ ] `GET /restaurants/{id}/availability/`
+
+### 8.7 Reservas — F2
+- [ ] `POST /restaurants/{id}/reservations/`
+- [ ] `POST /restaurants/{id}/reservations/admin`
+- [ ] `GET /restaurants/{id}/reservations/`
+- [ ] `GET /reservations/{reservation_id}`
+- [ ] `PATCH /reservations/{reservation_id}/reassign-tables`
+- [ ] `PATCH /reservations/{reservation_id}/cancel`
+- [ ] `PATCH /reservations/{reservation_id}/complete`
+- [ ] `PATCH /reservations/{reservation_id}/no-show`
+- [ ] `GET /reservations/lookup`
+
+### 8.8 Menús — F3
+- [ ] `GET /restaurants/{id}/menus/`
+- [ ] `POST /restaurants/{id}/menus/`
+- [ ] `GET /restaurants/{id}/menus/{menu_id}`
+- [ ] `PUT /restaurants/{id}/menus/{menu_id}`
+- [ ] `DELETE /restaurants/{id}/menus/{menu_id}`
+- [ ] `PATCH /restaurants/{id}/menus/{menu_id}/activate`
+
+### 8.9 Categorías de Menú — F3
+- [ ] `GET /menus/{menu_id}/categories/`
+- [ ] `POST /menus/{menu_id}/categories/`
+- [ ] `PUT /menus/{menu_id}/categories/{cat_id}`
+- [ ] `DELETE /menus/{menu_id}/categories/{cat_id}`
+- [ ] `PATCH /menus/{menu_id}/categories/reorder`
+
+### 8.10 Ítems de Menú — F3
+- [ ] `GET /categories/{cat_id}/items/`
+- [ ] `POST /categories/{cat_id}/items/`
+- [ ] `GET /items/{item_id}`
+- [ ] `PUT /items/{item_id}`
+- [ ] `DELETE /items/{item_id}`
+- [ ] `POST /items/{item_id}/photo`
+- [ ] `PATCH /items/{item_id}/availability`
+
+### 8.11 Pedidos — F3
+- [ ] `POST /restaurants/{id}/orders/`
+- [ ] `GET /restaurants/{id}/orders/`
+- [ ] `GET /orders/{order_id}`
+- [ ] `PATCH /orders/{order_id}/status`
+- [ ] `PATCH /orders/{order_id}/cancel`
+
+### 8.12 Promociones — F4
+- [ ] `GET /restaurants/{id}/promotions/`
+- [ ] `POST /restaurants/{id}/promotions/`
+- [ ] `GET /restaurants/{id}/promotions/{promo_id}`
+- [ ] `PUT /restaurants/{id}/promotions/{promo_id}`
+- [ ] `PATCH /restaurants/{id}/promotions/{promo_id}/deactivate`
+- [ ] `PATCH /restaurants/{id}/promotions/{promo_id}/activate`
+- [ ] `DELETE /restaurants/{id}/promotions/{promo_id}`
+- [ ] `GET /promotions/feed`
+
+### 8.13 Perfil de Usuario
+- [ ] `GET /users/me`
+- [ ] `PUT /users/me`
+- [ ] `PUT /users/me/password`
+- [ ] `GET /users/me/reservations/`
+- [ ] `GET /users/me/orders/`
+- [ ] `GET /users/me/restaurants/`
+
+### 8.14 Preferencias de Notificación
+- [ ] `GET /users/me/notification-preferences/`
+- [ ] `PUT /users/me/notification-preferences/{restaurant_id}`
+
+### 8.15 Analytics — F5
+- [ ] `GET /restaurants/{id}/analytics/occupancy`
+- [ ] `GET /restaurants/{id}/analytics/orders`
+- [ ] `GET /restaurants/{id}/analytics/popular-items`
+- [ ] `GET /restaurants/{id}/analytics/promotions`
+- [ ] `GET /restaurants/{id}/analytics/peak-hours`
+
+---
+
+## 9. Integrations (app/integrations/)
+
+- [ ] ✅ `S3Client.get()` — singleton, soporta LocalStack
+- [ ] ✅ `S3Client.upload_restaurant_photo(file_storage, restaurant_id)`
+- [ ] `S3Client.upload_menu_item_photo(file_storage, item_id)` — nuevo path en S3
+- [ ] `SESClient` (o mock) — envío de emails para `NotificationService`
+  - [ ] `SESClient.send(to, subject, html_body)`
+  - [ ] `MockSESClient` — loguea en consola en entornos `TESTING`/`DEVELOPMENT`
+
+---
+
+## 10. Configuración y Variables de Entorno
+
+- [ ] 🔧 `.env.example` — agregar `AWS_SES_REGION`, `FROM_EMAIL`, `FRONTEND_URL` (para links en emails)
+- [ ] 🔧 `app/config.py` — agregar variables SES; validar en `ProductionConfig.validate()`
+
+---
+
+## Conteo de ítems por categoría
+
+| Categoría | Total | ✅ Ya hecho | 🔧 Modificar | 🔴 Nuevo |
+|---|---|---|---|---|
+| Migraciones | 24 | 0 | 3 | 21 |
+| Modelos | 22 | 2 | 2 | 18 |
+| Enums | 5 | 0 | 1 | 4 |
+| Repositorios | 30 | 2 | 2 | 26 |
+| Servicios / Funciones | 70 | 3 | 3 | 64 |
+| Middleware | 3 | 2 | 0 | 1 |
+| Schemas | 42 | 5 | 4 | 33 |
+| Endpoints | 57 | 3 | 4 | 50 |
+| Integrations | 5 | 2 | 0 | 3 |
+| Config / .env | 2 | 0 | 2 | 0 |
+| **Total** | **260** | **19** | **21** | **220** |
