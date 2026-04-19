@@ -3,43 +3,34 @@ import uuid
 
 import boto3
 
-
 _USE_LOCALSTACK = os.getenv("USE_LOCALSTACK", "false").lower() == "true"
 _LOCALSTACK_ENDPOINT = os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
 
 
-class S3Service:
-    """Handles file uploads to AWS S3 (or LocalStack in local dev)."""
-
-    _client = None
+class S3Client:
+    _instance: "S3Client | None" = None
+    _boto_client = None
 
     @classmethod
-    def _get_client(cls):
-        if cls._client is None:
-            kwargs = {
-                "region_name": os.getenv("AWS_REGION"),
-            }
+    def get(cls) -> "S3Client":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    @property
+    def _client(self):
+        if self._boto_client is None:
+            kwargs: dict = {"region_name": os.getenv("AWS_REGION")}
             if _USE_LOCALSTACK:
                 kwargs["endpoint_url"] = _LOCALSTACK_ENDPOINT
                 kwargs["aws_access_key_id"] = os.getenv("AWS_ACCESS_KEY_ID", "test")
-                kwargs["aws_secret_access_key"] = os.getenv(
+                kwargs["aws_secret_access_key"] = os.getenv(  # noqa: S105
                     "AWS_SECRET_ACCESS_KEY", "test"
-                )  # noqa: S105
-            cls._client = boto3.client("s3", **kwargs)
-        return cls._client
+                )
+            self._boto_client = boto3.client("s3", **kwargs)
+        return self._boto_client
 
-    @classmethod
-    def upload_restaurant_photo(cls, file_storage, restaurant_id: int) -> str:
-        """
-        Uploads a photo to S3 under restaurants/<restaurant_id>/<uuid>.<ext>.
-
-        Args:
-            file_storage: A Werkzeug FileStorage object.
-            restaurant_id: The restaurant's ID (used as folder prefix).
-
-        Returns:
-            The public URL of the uploaded object.
-        """
+    def upload_restaurant_photo(self, file_storage, restaurant_id: int) -> str:
         bucket = os.getenv("AWS_S3_BUCKET")
         region = os.getenv("AWS_REGION")
 
@@ -51,8 +42,7 @@ class S3Service:
         ext = _get_extension(file_storage.filename)
         key = f"restaurants/{restaurant_id}/{uuid.uuid4().hex}{ext}"
 
-        client = cls._get_client()
-        client.upload_fileobj(
+        self._client.upload_fileobj(
             file_storage,
             bucket,
             key,
@@ -61,7 +51,6 @@ class S3Service:
 
         if _USE_LOCALSTACK:
             return f"{_LOCALSTACK_ENDPOINT}/{bucket}/{key}"
-
         return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
 
 

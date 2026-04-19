@@ -1,23 +1,38 @@
+name: abricot
+
 services:
-  db:
+  abricot-db:
+    container_name: abricot-db
     image: postgres:16
+    restart: unless-stopped
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
-    env_file:
-      - ".env"
+    environment:
+      # Values are taken from your project `.env` (Compose substitutes ${...} automatically).
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example}
+      POSTGRES_DB: ${POSTGRES_DB:-dbname}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - abricot_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
 
-  localstack:
+  abricot-localstack:
+    container_name: abricot-localstack
     image: localstack/localstack:3
+    restart: unless-stopped
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=s3
-      - AWS_DEFAULT_REGION=${AWS_REGION:-us-east-1}
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
     volumes:
-      - localstack_data:/var/lib/localstack
+      - abricot_localstack_data:/var/lib/localstack
 
 volumes:
-  postgres_data:
-  localstack_data:
+  abricot_postgres_data:
+  abricot_localstack_data:

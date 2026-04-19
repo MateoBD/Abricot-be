@@ -1,17 +1,13 @@
-"""
-Creates the logging configuration for the application.
-"""
-
 import logging
 
 import dotenv
 
 
-def filter_maker(level):
-    level = getattr(logging, level)
+def _filter_maker(level: str):
+    level_int = getattr(logging, level)
 
     def filter(record):
-        return record.levelno <= level
+        return record.levelno <= level_int
 
     return filter
 
@@ -29,13 +25,13 @@ LOGGING_CONFIG = {
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
-    "filters": {"warnings_and_below": {"()": filter_maker, "level": "WARNING"}},
+    "filters": {"warnings_and_below": {"()": _filter_maker, "level": "WARNING"}},
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "level": dotenv.get_key(dotenv.find_dotenv(), "LOGGER_LEVEL") or "INFO",
             "formatter": "verbose"
-            if (dotenv.get_key(dotenv.find_dotenv(), "LOGGER_VERBOSE"))
+            if dotenv.get_key(dotenv.find_dotenv(), "LOGGER_VERBOSE")
             else "default",
             "stream": "ext://sys.stdout",
             "filters": ["warnings_and_below"],

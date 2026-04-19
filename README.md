@@ -93,7 +93,7 @@ Edit `.env` with your values. At minimum set a strong `JWT_SECRET_KEY` before ru
 docker compose up -d
 ```
 
-This starts a PostgreSQL 16 container on port `5432`.
+This starts **PostgreSQL 16** (`abricot-db`) on port `5432` and **LocalStack** (`abricot-localstack`) on `4566`. Run this before `flask db upgrade` or `flask run` so `POSTGRES_HOST=localhost` can connect.
 
 ---
 
@@ -193,7 +193,7 @@ To disable a hook, comment it out in `.pre-commit-config.yaml`.
 
 | Command                     | Description                   |
 |-----------------------------|-------------------------------|
-| `docker compose up -d`      | Start PostgreSQL container    |
+| `docker compose up -d`      | Start `abricot-db` and LocalStack |
 | `docker compose stop`       | Stop containers               |
 | `flask db init`             | Initialize migrations folder  |
 | `flask db migrate -m "msg"` | Generate migration file       |
