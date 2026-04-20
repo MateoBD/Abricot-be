@@ -2,6 +2,7 @@ import logging
 
 from app.exceptions.errors import NotFoundError, ValidationError
 from app.integrations.s3 import S3Client
+from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.restaurant_repository import RestaurantRepository
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class RestaurantService:
         phone: str,
         email: str | None = None,
         description: str | None = None,
+        creator_user_id: int | None = None,
     ) -> dict:
         name = name.strip()
         address = address.strip()
@@ -39,6 +41,13 @@ class RestaurantService:
         restaurant = RestaurantRepository.create(
             name=name, address=address, phone=phone, email=email, description=description
         )
+
+        if creator_user_id is not None:
+            RestaurantAdminRepository.add_if_missing(
+                user_id=creator_user_id,
+                restaurant_id=restaurant.id,
+            )
+
         logger.info(f"Restaurant created: id={restaurant.id} name={restaurant.name}")
         return restaurant.to_dict()
 

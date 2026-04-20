@@ -28,4 +28,4 @@ def init_extensions(app: Flask) -> None:
 
     # Import models so Flask-Migrate can detect schema changes
     with app.app_context():
-        from app.models import restaurant, user  # noqa: F401
+        from app import models  # noqa: F401

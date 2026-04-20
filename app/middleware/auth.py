@@ -7,6 +7,7 @@ from flask_jwt_extended.exceptions import JWTExtendedException
 from jwt.exceptions import PyJWTError
 
 from app.models.enums import UserRole
+from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
@@ -121,14 +122,26 @@ def require_roles(*allowed_roles: UserRole):
 
 def require_restaurant_admin(restaurant_id_param: str):
     """
-    Validates that the caller is a restaurant admin (or super admin).
+    Validates that the caller is a restaurant admin for the target restaurant.
 
-    Until `restaurant_admins` is introduced, this base guard validates by role.
+    SUPER_ADMIN bypasses ownership checks.
     """
 
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
+            try:
+                verify_jwt_in_request()
+            except (JWTExtendedException, PyJWTError) as e:
+                logger.warning(f"Access token validation failed: {e}")
+                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+
+            user_id = get_current_user_id()
+            user = UserRepository.get_by_id(user_id)
+            if not user:
+                logger.warning(f"Authenticated user does not exist: user_id={user_id}")
+                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+
             restaurant_id = kwargs.get(restaurant_id_param)
             if restaurant_id is None:
                 logger.warning(
@@ -137,9 +150,26 @@ def require_restaurant_admin(restaurant_id_param: str):
                 )
                 return jsonify(_FORBIDDEN_RESPONSE), 403
 
-            return require_roles(UserRole.RESTAURANT_ADMIN, UserRole.SUPER_ADMIN)(f)(
-                *args, **kwargs
-            )
+            if user.role == UserRole.SUPER_ADMIN:
+                return f(*args, **kwargs)
+
+            if user.role != UserRole.RESTAURANT_ADMIN:
+                logger.warning(
+                    "Restaurant admin check failed for user_id=%s role=%s",
+                    user_id,
+                    user.role.value,
+                )
+                return jsonify(_FORBIDDEN_RESPONSE), 403
+
+            if not RestaurantAdminRepository.is_admin(user_id, int(restaurant_id)):
+                logger.warning(
+                    "Restaurant ownership check failed for user_id=%s restaurant_id=%s",
+                    user_id,
+                    restaurant_id,
+                )
+                return jsonify(_FORBIDDEN_RESPONSE), 403
+
+            return f(*args, **kwargs)
 
         return wrapper
 

@@ -13,13 +13,13 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 - [x] Crear autenticacion con JWT (login, registro y refresh) — `POST /auth/register`, `/auth/login`, `/auth/refresh` + `AuthService` + refresh en header
 - [x] Crear endpoint de perfil de usuario (ver/editar datos basicos y cambio de contraseña) — `GET/PUT /users/me`, `PUT /users/me/password` en `app/api/users/routes.py` + `app/services/user_service.py`
 - [x] Crear endpoint de healthcheck y version de API — `GET /health` y `GET /version` en `app/api/system/routes.py`
-- [x] Crear capa base de permisos por rol en endpoints protegidos — `require_roles()` + `require_restaurant_admin()` en `app/middleware/auth.py`, aplicado a mutaciones de restaurantes en `app/api/restaurants/routes.py`
+- [x] Crear capa base de permisos por rol en endpoints protegidos — `require_roles()` + `require_restaurant_admin()` en `app/middleware/auth.py`, con verificación estricta por restaurante en `restaurant_admins` y bypass de `SUPER_ADMIN`
 
 ### Chores
 - [x] Configurar manejo centralizado de errores y respuestas estandar — `AppError` + `@api.errorhandler` en `app/api/__init__.py` (formato `message`, `code`, `errors`)
 - [x] Configurar logging estructurado para requests y errores — `app/logging_config.py` + inicialización en factory
 - [x] Configurar validaciones base de schemas (auth, usuarios, payloads comunes) — Flask-RESTX `expect(..., validate=True)` en auth + patrones en `app/api/auth/schemas.py` (`UserSummary` incluye `role`; pendiente schemas de `/users/me` cuando exista el namespace)
-- [x] Agregar migraciones iniciales de tablas base — `users` + `restaurants` (Alembic en `migrations/versions/`); pendientes las migraciones del resto del dominio (ver checklist §1)
+- [x] Agregar migraciones iniciales de tablas base — `users` + `restaurants` + migración de esquema de dominio (`migrations/versions/2026-04-19T20-30-00_add_full_domain_schema.py`)
 - [x] Documentar contratos principales de API (auth + usuarios) — Swagger en `/` vía Flask-RESTX, incluyendo `/users/me` y `/users/me/password`
 
 ---

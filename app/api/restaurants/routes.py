@@ -8,7 +8,12 @@ from app.api.restaurants.schemas import (
     restaurant_update_model,
 )
 from app.exceptions.errors import ValidationError
-from app.middleware.auth import require_authentication, require_restaurant_admin, require_roles
+from app.middleware.auth import (
+    get_current_user_id,
+    require_authentication,
+    require_restaurant_admin,
+    require_roles,
+)
 from app.models.enums import UserRole
 from app.services.restaurant_service import RestaurantService
 
@@ -54,6 +59,7 @@ class RestaurantList(Resource):
             phone=data.get("phone", ""),
             email=data.get("email"),
             description=data.get("description"),
+            creator_user_id=get_current_user_id(),
         ), 201
 
 

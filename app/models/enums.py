@@ -7,3 +7,31 @@ class UserRole(str, Enum):
     CUSTOMER = "CUSTOMER"
     RESTAURANT_ADMIN = "RESTAURANT_ADMIN"
     SUPER_ADMIN = "SUPER_ADMIN"
+
+
+class ReservationSource(str, Enum):
+    ONLINE = "ONLINE"
+    PHONE = "PHONE"
+    EVENT = "EVENT"
+
+
+class ReservationStatus(str, Enum):
+    CONFIRMED = "CONFIRMED"
+    CANCELLED = "CANCELLED"
+    COMPLETED = "COMPLETED"
+    NO_SHOW = "NO_SHOW"
+
+
+class OrderStatus(str, Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    IN_PREPARATION = "IN_PREPARATION"
+    READY = "READY"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
+
+class DiscountType(str, Enum):
+    PERCENTAGE = "PERCENTAGE"
+    FIXED_AMOUNT = "FIXED_AMOUNT"
+    FREE_ITEM = "FREE_ITEM"
