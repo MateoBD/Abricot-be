@@ -122,3 +122,44 @@ restaurant_admin_response_model = Model(
         ),
     },
 )
+
+analytics_period_model = Model(
+    "AnalyticsPeriod",
+    {
+        "start": fields.String(
+            description="Fecha de inicio del período (YYYY-MM-DD).",
+            example="2026-04-01",
+        ),
+        "end": fields.String(
+            description="Fecha de fin del período (YYYY-MM-DD).",
+            example="2026-04-30",
+        ),
+    },
+)
+
+restaurant_general_metrics_response_model = Model(
+    "RestaurantGeneralMetricsResponse",
+    {
+        "restaurantId": fields.Integer(
+            description="ID del restaurante.",
+            example=1,
+        ),
+        "period": fields.Nested(
+            analytics_period_model,
+            description="Período aplicado para calcular métricas.",
+        ),
+        "totalReservations": fields.Integer(
+            description="Cantidad de reservas del período.",
+            example=128,
+        ),
+        "totalOrders": fields.Integer(
+            description="Cantidad de pedidos del período.",
+            example=340,
+        ),
+        "totalRevenue": fields.String(
+            description="Ingresos por pedidos completados en el período.",
+            example="125400.50",
+            pattern=r"^\d+(\.\d{2})$",
+        ),
+    },
+)

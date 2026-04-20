@@ -3,6 +3,7 @@ from flask_restx import Namespace, Resource, reqparse
 from werkzeug.datastructures import FileStorage
 
 from app.api.restaurants.schemas import (
+    restaurant_general_metrics_response_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
     restaurant_create_model,
@@ -18,6 +19,7 @@ from app.middleware.auth import (
 )
 from app.models.enums import UserRole
 from app.services.restaurant_service import RestaurantService
+from app.services.analytics_service import AnalyticsService
 from app.services.restaurant_admin_service import RestaurantAdminService
 
 namespace = Namespace(
@@ -33,6 +35,7 @@ for _model in (
     restaurant_response_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
+    restaurant_general_metrics_response_model,
 ):
     namespace.models[_model.name] = _model
 
@@ -166,3 +169,23 @@ class RestaurantAdminDetail(Resource):
         """Remove a user from the administrators of a restaurant."""
         RestaurantAdminService.remove_admin(restaurant_id=restaurant_id, user_id=user_id)
         return "", 204
+
+
+@namespace.route("/<int:restaurant_id>/analytics/general-metrics")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID."})
+class RestaurantGeneralMetrics(Resource):
+    @namespace.response(
+        200,
+        "Restaurant general metrics retrieved successfully.",
+        restaurant_general_metrics_response_model,
+    )
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: int):
+        """Get general metrics for a restaurant: reservations, orders, and revenue."""
+        return AnalyticsService.get_general_metrics(
+            restaurant_id=restaurant_id,
+            start=request.args.get("start"),
+            end=request.args.get("end"),
+        ), 200

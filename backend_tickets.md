@@ -27,7 +27,7 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 ## Backend: Admin Dashboard
 
 ### Features
-- [ ] Crear endpoint de metricas generales por restaurante (reservas, ordenes, ingresos)
+- [x] Crear endpoint de metricas generales por restaurante (reservas, ordenes, ingresos) — `GET /restaurants/{id}/analytics/general-metrics?start=&end=` en `app/api/restaurants/routes.py` + `app/services/analytics_service.py`
 - [ ] Crear endpoint de resumen diario/semanal para panel admin
 - [ ] Crear endpoint de actividad reciente (ultimas reservas y pedidos)
 - [ ] Crear endpoint de estado operativo del restaurante (capacidad, slots, ordenes activas)
