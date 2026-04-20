@@ -205,3 +205,81 @@ orders_report_response_model = Model(
         ),
     },
 )
+
+reservations_by_status_item_model = Model(
+    "ReservationsByStatusItem",
+    {
+        "status": fields.String(
+            description="Estado de la reserva.",
+            example="CONFIRMED",
+        ),
+        "count": fields.Integer(
+            description="Cantidad de reservas en ese estado.",
+            example=42,
+        ),
+    },
+)
+
+orders_metrics_model = Model(
+    "OrdersMetrics",
+    {
+        "total": fields.Integer(
+            description="Cantidad total de pedidos.",
+            example=340,
+        ),
+        "totalRevenue": fields.String(
+            description="Ingresos totales de pedidos.",
+            example="850000.00",
+            pattern=r"^\d+(\.\d{2})$",
+        ),
+        "averageOrderValue": fields.String(
+            description="Ticket promedio de pedidos.",
+            example="2500.00",
+            pattern=r"^\d+(\.\d{2})$",
+        ),
+        "byStatus": fields.List(
+            fields.Nested(orders_by_status_item_model),
+            description="Desglose de pedidos por estado.",
+        ),
+    },
+)
+
+reservations_metrics_model = Model(
+    "ReservationsMetrics",
+    {
+        "total": fields.Integer(
+            description="Cantidad total de reservas.",
+            example=145,
+        ),
+        "totalGuests": fields.Integer(
+            description="Cantidad total de comensales.",
+            example=582,
+        ),
+        "byStatus": fields.List(
+            fields.Nested(reservations_by_status_item_model),
+            description="Desglose de reservas por estado.",
+        ),
+    },
+)
+
+general_metrics_response_model = Model(
+    "GeneralMetricsResponse",
+    {
+        "restaurantId": fields.Integer(
+            description="ID del restaurante.",
+            example=1,
+        ),
+        "period": fields.Nested(
+            analytics_period_model,
+            description="Período aplicado para calcular métricas.",
+        ),
+        "orders": fields.Nested(
+            orders_metrics_model,
+            description="Métricas de pedidos.",
+        ),
+        "reservations": fields.Nested(
+            reservations_metrics_model,
+            description="Métricas de reservas.",
+        ),
+    },
+)

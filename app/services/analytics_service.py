@@ -90,5 +90,49 @@ class AnalyticsService:
         return start_date, end_date
 
     @staticmethod
+    def get_general_metrics(
+        restaurant_id: int,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> dict:
+        """Get general metrics for a restaurant (orders, reservations, revenue)."""
+        restaurant = RestaurantRepository.get_by_id(restaurant_id)
+        if not restaurant:
+            raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+
+        start_date, end_date = AnalyticsService._parse_date_range(start=start, end=end)
+
+        orders_data = AnalyticsRepository.get_orders_report(
+            restaurant_id=restaurant_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        reservations_data = AnalyticsRepository.get_reservations_metrics(
+            restaurant_id=restaurant_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        return {
+            "restaurantId": restaurant_id,
+            "period": {
+                "start": start_date.isoformat() if start_date else None,
+                "end": end_date.isoformat() if end_date else None,
+            },
+            "orders": {
+                "total": orders_data["totalOrders"],
+                "totalRevenue": orders_data["totalRevenue"],
+                "averageOrderValue": orders_data["averageOrderValue"],
+                "byStatus": orders_data["ordersByStatus"],
+            },
+            "reservations": {
+                "total": reservations_data["totalReservations"],
+                "totalGuests": reservations_data["totalGuests"],
+                "byStatus": reservations_data["reservationsByStatus"],
+            },
+        }
+
+    @staticmethod
     def _format_money(value: Decimal) -> str:
         return f"{value:.2f}"

@@ -137,3 +137,46 @@ class AnalyticsRepository:
             "recentReservations": int(row.recent_reservations or 0),
             "recentOrders": int(row.recent_orders or 0),
         }
+
+    @staticmethod
+    def get_reservations_metrics(
+        restaurant_id: int,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> dict:
+        """Get reservations metrics for a restaurant within a date range."""
+        reservation_day = func.date(ReservationModel.created_at)
+        base_filters = [ReservationModel.restaurant_id == restaurant_id]
+        if start_date is not None:
+            base_filters.append(reservation_day >= start_date)
+        if end_date is not None:
+            base_filters.append(reservation_day <= end_date)
+
+        totals = db.session.execute(
+            db.select(
+                func.count(ReservationModel.id).label("total_reservations"),
+                func.coalesce(func.sum(ReservationModel.party_size), 0).label("total_guests"),
+            ).where(*base_filters)
+        ).one()
+
+        status_rows = db.session.execute(
+            db.select(
+                ReservationModel.status.label("status"),
+                func.count(ReservationModel.id).label("count"),
+            )
+            .where(*base_filters)
+            .group_by(ReservationModel.status)
+            .order_by(ReservationModel.status)
+        ).all()
+
+        return {
+            "totalReservations": int(totals.total_reservations or 0),
+            "totalGuests": int(totals.total_guests or 0),
+            "reservationsByStatus": [
+                {
+                    "status": row.status.value if hasattr(row.status, "value") else str(row.status),
+                    "count": int(row.count or 0),
+                }
+                for row in status_rows
+            ],
+        }
