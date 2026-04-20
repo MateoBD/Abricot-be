@@ -3,6 +3,8 @@ from flask_restx import Namespace, Resource, reqparse
 from werkzeug.datastructures import FileStorage
 
 from app.api.restaurants.schemas import (
+    restaurant_admin_add_model,
+    restaurant_admin_response_model,
     restaurant_create_model,
     restaurant_response_model,
     restaurant_update_model,
@@ -16,6 +18,7 @@ from app.middleware.auth import (
 )
 from app.models.enums import UserRole
 from app.services.restaurant_service import RestaurantService
+from app.services.restaurant_admin_service import RestaurantAdminService
 
 namespace = Namespace(
     name="Restaurants",
@@ -24,7 +27,13 @@ namespace = Namespace(
     decorators=[require_authentication()],
 )
 
-for _model in (restaurant_create_model, restaurant_update_model, restaurant_response_model):
+for _model in (
+    restaurant_create_model,
+    restaurant_update_model,
+    restaurant_response_model,
+    restaurant_admin_add_model,
+    restaurant_admin_response_model,
+):
     namespace.models[_model.name] = _model
 
 _photo_parser = reqparse.RequestParser()
@@ -116,3 +125,44 @@ class RestaurantPhoto(Resource):
         if not file:
             raise ValidationError("No file provided.")
         return RestaurantService.upload_photo(restaurant_id, file), 200
+
+
+@namespace.route("/<int:restaurant_id>/admins")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID."})
+class RestaurantAdmins(Resource):
+    @namespace.response(200, "Restaurant admins retrieved successfully.", [restaurant_admin_response_model])
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: int):
+        """List all administrators assigned to a restaurant."""
+        return RestaurantAdminService.list_admins(restaurant_id), 200
+
+    @namespace.expect(restaurant_admin_add_model, validate=True)
+    @namespace.response(201, "Restaurant admin added successfully.", restaurant_admin_response_model)
+    @namespace.response(404, "Restaurant or user not found.")
+    @namespace.response(409, "User is already an admin for this restaurant.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: int):
+        """Assign a user as administrator of a restaurant."""
+        data = request.json
+        return RestaurantAdminService.add_admin(
+            restaurant_id=restaurant_id,
+            user_id=data.get("userId"),
+        ), 201
+
+
+@namespace.route("/<int:restaurant_id>/admins/<int:user_id>")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID.",
+        "user_id": "The user ID to remove as restaurant admin.",
+    }
+)
+class RestaurantAdminDetail(Resource):
+    @namespace.response(204, "Restaurant admin removed successfully.")
+    @namespace.response(404, "Restaurant, user, or admin relation not found.")
+    @require_restaurant_admin("restaurant_id")
+    def delete(self, restaurant_id: int, user_id: int):
+        """Remove a user from the administrators of a restaurant."""
+        RestaurantAdminService.remove_admin(restaurant_id=restaurant_id, user_id=user_id)
+        return "", 204

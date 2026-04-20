@@ -38,6 +38,13 @@ class RestaurantAdminRepository:
         return [row[0] for row in db.session.execute(stmt).all()]
 
     @staticmethod
+    def get_admin_user_ids_for_restaurant(restaurant_id: int) -> list[int]:
+        stmt = db.select(RestaurantAdminModel.user_id).where(
+            RestaurantAdminModel.restaurant_id == restaurant_id
+        )
+        return [row[0] for row in db.session.execute(stmt).all()]
+
+    @staticmethod
     def remove(user_id: int, restaurant_id: int) -> bool:
         relation = db.session.execute(
             db.select(RestaurantAdminModel).where(

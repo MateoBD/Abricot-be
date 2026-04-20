@@ -31,7 +31,7 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 - [ ] Crear endpoint de resumen diario/semanal para panel admin
 - [ ] Crear endpoint de actividad reciente (ultimas reservas y pedidos)
 - [ ] Crear endpoint de estado operativo del restaurante (capacidad, slots, ordenes activas)
-- [ ] Crear endpoint para gestionar administradores de restaurante
+- [x] Crear endpoint para gestionar administradores de restaurante — `GET/POST /restaurants/{id}/admins`, `DELETE /restaurants/{id}/admins/{user_id}` en `app/api/restaurants/routes.py` + `app/services/restaurant_admin_service.py`
 
 ### Chores
 - [ ] Definir queries agregadas optimizadas para dashboard

@@ -89,3 +89,36 @@ restaurant_response_model = Model(
         ),
     },
 )
+
+restaurant_admin_add_model = Model(
+    "RestaurantAdminAddRequest",
+    {
+        "userId": fields.Integer(
+            required=True,
+            description="ID del usuario a asignar como administrador.",
+            example=42,
+            min=1,
+        )
+    },
+)
+
+restaurant_admin_response_model = Model(
+    "RestaurantAdminResponse",
+    {
+        "id": fields.Integer(description="ID del usuario.", example=42),
+        "email": fields.String(
+            description="Correo electrónico del usuario.",
+            example="admin@ejemplo.com",
+        ),
+        "name": fields.String(description="Nombre del usuario.", example="Ana"),
+        "surname": fields.String(description="Apellido del usuario.", example="Pérez"),
+        "role": fields.String(
+            description="Rol actual del usuario.",
+            example="RESTAURANT_ADMIN",
+        ),
+        "createdAt": fields.String(
+            description="Fecha de creación en formato ISO 8601 UTC.",
+            example="2026-04-07T19:00:00+00:00",
+        ),
+    },
+)
