@@ -34,7 +34,7 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 - [x] Crear endpoint para gestionar administradores de restaurante — `GET/POST /restaurants/{id}/admins`, `DELETE /restaurants/{id}/admins/{user_id}` en `app/api/restaurants/routes.py` + `app/services/restaurant_admin_service.py`
 
 ### Chores
-- [ ] Definir queries agregadas optimizadas para dashboard
+- [x] Definir queries agregadas optimizadas para dashboard — `AnalyticsRepository.get_general_metrics()` consolidado en un solo round-trip + queries agregadas reutilizables (`get_daily_summary`, `get_recent_activity`) en `app/repositories/analytics_repository.py`
 - [ ] Agregar indices en columnas usadas por metricas y filtros
 - [ ] Estandarizar filtros por rango de fechas
 - [ ] Agregar tests de integracion para endpoints de dashboard

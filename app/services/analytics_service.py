@@ -26,17 +26,7 @@ class AnalyticsService:
                 {"start": "Must be <= end"},
             )
 
-        total_reservations = AnalyticsRepository.count_reservations(
-            restaurant_id=restaurant_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        total_orders = AnalyticsRepository.count_orders(
-            restaurant_id=restaurant_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        total_revenue = AnalyticsRepository.sum_revenue(
+        metrics = AnalyticsRepository.get_general_metrics(
             restaurant_id=restaurant_id,
             start_date=start_date,
             end_date=end_date,
@@ -48,9 +38,9 @@ class AnalyticsService:
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None,
             },
-            "totalReservations": total_reservations,
-            "totalOrders": total_orders,
-            "totalRevenue": AnalyticsService._format_money(total_revenue),
+            "totalReservations": metrics["totalReservations"],
+            "totalOrders": metrics["totalOrders"],
+            "totalRevenue": AnalyticsService._format_money(metrics["totalRevenue"]),
         }
 
     @staticmethod
