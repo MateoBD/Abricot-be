@@ -137,8 +137,41 @@ analytics_period_model = Model(
     },
 )
 
-restaurant_general_metrics_response_model = Model(
-    "RestaurantGeneralMetricsResponse",
+orders_by_status_item_model = Model(
+    "OrdersByStatusItem",
+    {
+        "status": fields.String(
+            description="Estado del pedido.",
+            example="COMPLETED",
+        ),
+        "count": fields.Integer(
+            description="Cantidad de pedidos en ese estado.",
+            example=310,
+        ),
+    },
+)
+
+revenue_by_day_item_model = Model(
+    "RevenueByDayItem",
+    {
+        "date": fields.String(
+            description="Fecha (YYYY-MM-DD).",
+            example="2026-04-01",
+        ),
+        "revenue": fields.String(
+            description="Ingresos del día.",
+            example="28000.00",
+            pattern=r"^\d+(\.\d{2})$",
+        ),
+        "orders": fields.Integer(
+            description="Cantidad de pedidos del día.",
+            example=11,
+        ),
+    },
+)
+
+orders_report_response_model = Model(
+    "OrdersReportResponse",
     {
         "restaurantId": fields.Integer(
             description="ID del restaurante.",
@@ -148,18 +181,27 @@ restaurant_general_metrics_response_model = Model(
             analytics_period_model,
             description="Período aplicado para calcular métricas.",
         ),
-        "totalReservations": fields.Integer(
-            description="Cantidad de reservas del período.",
-            example=128,
-        ),
         "totalOrders": fields.Integer(
             description="Cantidad de pedidos del período.",
             example=340,
         ),
         "totalRevenue": fields.String(
-            description="Ingresos por pedidos completados en el período.",
-            example="125400.50",
+            description="Ingresos totales de pedidos en el período.",
+            example="850000.00",
             pattern=r"^\d+(\.\d{2})$",
+        ),
+        "averageOrderValue": fields.String(
+            description="Ticket promedio de pedidos en el período.",
+            example="2500.00",
+            pattern=r"^\d+(\.\d{2})$",
+        ),
+        "ordersByStatus": fields.List(
+            fields.Nested(orders_by_status_item_model),
+            description="Desglose de pedidos por estado.",
+        ),
+        "revenueByDay": fields.List(
+            fields.Nested(revenue_by_day_item_model),
+            description="Ingresos y pedidos agrupados por día.",
         ),
     },
 )

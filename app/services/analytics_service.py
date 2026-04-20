@@ -8,7 +8,7 @@ from app.repositories.restaurant_repository import RestaurantRepository
 
 class AnalyticsService:
     @staticmethod
-    def get_general_metrics(
+    def get_orders_report(
         restaurant_id: int,
         start: str | None = None,
         end: str | None = None,
@@ -17,16 +17,9 @@ class AnalyticsService:
         if not restaurant:
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
 
-        start_date = AnalyticsService._parse_optional_date(start, "start")
-        end_date = AnalyticsService._parse_optional_date(end, "end")
+        start_date, end_date = AnalyticsService._parse_date_range(start=start, end=end)
 
-        if start_date and end_date and start_date > end_date:
-            raise ValidationError(
-                "The start date must be before or equal to the end date.",
-                {"start": "Must be <= end"},
-            )
-
-        metrics = AnalyticsRepository.get_general_metrics(
+        report = AnalyticsRepository.get_orders_report(
             restaurant_id=restaurant_id,
             start_date=start_date,
             end_date=end_date,
@@ -38,9 +31,18 @@ class AnalyticsService:
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None,
             },
-            "totalReservations": metrics["totalReservations"],
-            "totalOrders": metrics["totalOrders"],
-            "totalRevenue": AnalyticsService._format_money(metrics["totalRevenue"]),
+            "totalOrders": report["totalOrders"],
+            "totalRevenue": AnalyticsService._format_money(report["totalRevenue"]),
+            "averageOrderValue": AnalyticsService._format_money(report["averageOrderValue"]),
+            "ordersByStatus": report["ordersByStatus"],
+            "revenueByDay": [
+                {
+                    "date": row["date"],
+                    "revenue": AnalyticsService._format_money(row["revenue"]),
+                    "orders": row["orders"],
+                }
+                for row in report["revenueByDay"]
+            ],
         }
 
     @staticmethod
@@ -55,6 +57,37 @@ class AnalyticsService:
                 f"Invalid {field_name}. Expected format: YYYY-MM-DD.",
                 {field_name: "Invalid date format"},
             ) from error
+
+    @staticmethod
+    def _parse_date_range(start: str | None, end: str | None) -> tuple[date | None, date | None]:
+        if start is None and end is None:
+            raise ValidationError(
+                "Both start and end are required.",
+                {
+                    "start": "Required",
+                    "end": "Required",
+                },
+            )
+
+        if (start is None) != (end is None):
+            raise ValidationError(
+                "Both start and end must be provided together.",
+                {
+                    "start": "Required together with end",
+                    "end": "Required together with start",
+                },
+            )
+
+        start_date = AnalyticsService._parse_optional_date(start, "start")
+        end_date = AnalyticsService._parse_optional_date(end, "end")
+
+        if start_date and end_date and start_date > end_date:
+            raise ValidationError(
+                "The start date must be before or equal to the end date.",
+                {"start": "Must be <= end"},
+            )
+
+        return start_date, end_date
 
     @staticmethod
     def _format_money(value: Decimal) -> str:

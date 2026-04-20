@@ -3,7 +3,7 @@ from flask_restx import Namespace, Resource, reqparse
 from werkzeug.datastructures import FileStorage
 
 from app.api.restaurants.schemas import (
-    restaurant_general_metrics_response_model,
+    orders_report_response_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
     restaurant_create_model,
@@ -35,7 +35,7 @@ for _model in (
     restaurant_response_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
-    restaurant_general_metrics_response_model,
+    orders_report_response_model,
 ):
     namespace.models[_model.name] = _model
 
@@ -46,6 +46,22 @@ _photo_parser.add_argument(
     location="files",
     required=True,
     help="Image file to upload.",
+)
+
+_analytics_date_range_parser = reqparse.RequestParser()
+_analytics_date_range_parser.add_argument(
+    "start",
+    type=str,
+    location="args",
+    required=True,
+    help="Start date in YYYY-MM-DD format.",
+)
+_analytics_date_range_parser.add_argument(
+    "end",
+    type=str,
+    location="args",
+    required=True,
+    help="End date in YYYY-MM-DD format.",
 )
 
 
@@ -171,21 +187,23 @@ class RestaurantAdminDetail(Resource):
         return "", 204
 
 
-@namespace.route("/<int:restaurant_id>/analytics/general-metrics")
+@namespace.route("/<int:restaurant_id>/analytics/orders")
 @namespace.doc(params={"restaurant_id": "The restaurant's ID."})
-class RestaurantGeneralMetrics(Resource):
+class RestaurantOrdersReport(Resource):
     @namespace.response(
         200,
-        "Restaurant general metrics retrieved successfully.",
-        restaurant_general_metrics_response_model,
+        "Orders analytics retrieved successfully.",
+        orders_report_response_model,
     )
     @namespace.response(400, "Validation error.")
     @namespace.response(404, "Restaurant not found.")
+    @namespace.expect(_analytics_date_range_parser)
     @require_restaurant_admin("restaurant_id")
     def get(self, restaurant_id: int):
-        """Get general metrics for a restaurant: reservations, orders, and revenue."""
-        return AnalyticsService.get_general_metrics(
+        """Get orders analytics report for a restaurant within a date range."""
+        args = _analytics_date_range_parser.parse_args()
+        return AnalyticsService.get_orders_report(
             restaurant_id=restaurant_id,
-            start=request.args.get("start"),
-            end=request.args.get("end"),
+            start=args.get("start"),
+            end=args.get("end"),
         ), 200

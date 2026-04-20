@@ -2,51 +2,77 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func
-from sqlalchemy.sql import Select
 
 from app.extensions import db
-from app.models.enums import OrderStatus
 from app.models.order import OrderModel
 from app.models.reservation import ReservationModel
 
 
 class AnalyticsRepository:
     @staticmethod
-    def get_general_metrics(
+    def get_orders_report(
         restaurant_id: int,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> dict:
-        reservations_count = AnalyticsRepository._build_reservations_count_query(
-            restaurant_id=restaurant_id,
-            start_date=start_date,
-            end_date=end_date,
-        ).scalar_subquery()
+        order_day = func.date(OrderModel.created_at)
+        base_filters = [OrderModel.restaurant_id == restaurant_id]
+        if start_date is not None:
+            base_filters.append(order_day >= start_date)
+        if end_date is not None:
+            base_filters.append(order_day <= end_date)
 
-        orders_count = AnalyticsRepository._build_orders_count_query(
-            restaurant_id=restaurant_id,
-            start_date=start_date,
-            end_date=end_date,
-        ).scalar_subquery()
-
-        completed_revenue = AnalyticsRepository._build_completed_revenue_query(
-            restaurant_id=restaurant_id,
-            start_date=start_date,
-            end_date=end_date,
-        ).scalar_subquery()
-
-        row = db.session.execute(
+        totals = db.session.execute(
             db.select(
-                reservations_count.label("total_reservations"),
-                orders_count.label("total_orders"),
-                completed_revenue.label("total_revenue"),
-            )
+                func.count(OrderModel.id).label("total_orders"),
+                func.coalesce(func.sum(OrderModel.total_amount), 0).label("total_revenue"),
+            ).where(*base_filters)
         ).one()
 
+        status_rows = db.session.execute(
+            db.select(
+                OrderModel.status.label("status"),
+                func.count(OrderModel.id).label("count"),
+            )
+            .where(*base_filters)
+            .group_by(OrderModel.status)
+            .order_by(OrderModel.status)
+        ).all()
+
+        by_day_rows = db.session.execute(
+            db.select(
+                order_day.label("date"),
+                func.coalesce(func.sum(OrderModel.total_amount), 0).label("revenue"),
+                func.count(OrderModel.id).label("orders"),
+            )
+            .where(*base_filters)
+            .group_by(order_day)
+            .order_by(order_day)
+        ).all()
+
+        total_orders = int(totals.total_orders or 0)
+        total_revenue = Decimal(totals.total_revenue or 0)
+        average_order_value = total_revenue / total_orders if total_orders else Decimal("0")
+
         return {
-            "totalReservations": int(row.total_reservations or 0),
-            "totalOrders": int(row.total_orders or 0),
-            "totalRevenue": Decimal(row.total_revenue or 0),
+            "totalOrders": total_orders,
+            "totalRevenue": total_revenue,
+            "averageOrderValue": average_order_value,
+            "ordersByStatus": [
+                {
+                    "status": row.status.value if hasattr(row.status, "value") else str(row.status),
+                    "count": int(row.count or 0),
+                }
+                for row in status_rows
+            ],
+            "revenueByDay": [
+                {
+                    "date": row.date.isoformat() if row.date else None,
+                    "revenue": Decimal(row.revenue or 0),
+                    "orders": int(row.orders or 0),
+                }
+                for row in by_day_rows
+            ],
         }
 
     @staticmethod
@@ -111,49 +137,3 @@ class AnalyticsRepository:
             "recentReservations": int(row.recent_reservations or 0),
             "recentOrders": int(row.recent_orders or 0),
         }
-
-    @staticmethod
-    def _build_reservations_count_query(
-        restaurant_id: int,
-        start_date: date | None,
-        end_date: date | None,
-    ) -> Select:
-        stmt = db.select(func.count(ReservationModel.id)).where(
-            ReservationModel.restaurant_id == restaurant_id
-        )
-        if start_date is not None:
-            stmt = stmt.where(ReservationModel.date >= start_date)
-        if end_date is not None:
-            stmt = stmt.where(ReservationModel.date <= end_date)
-        return stmt
-
-    @staticmethod
-    def _build_orders_count_query(
-        restaurant_id: int,
-        start_date: date | None,
-        end_date: date | None,
-    ) -> Select:
-        order_day = func.date(OrderModel.created_at)
-        stmt = db.select(func.count(OrderModel.id)).where(OrderModel.restaurant_id == restaurant_id)
-        if start_date is not None:
-            stmt = stmt.where(order_day >= start_date)
-        if end_date is not None:
-            stmt = stmt.where(order_day <= end_date)
-        return stmt
-
-    @staticmethod
-    def _build_completed_revenue_query(
-        restaurant_id: int,
-        start_date: date | None,
-        end_date: date | None,
-    ) -> Select:
-        order_day = func.date(OrderModel.created_at)
-        stmt = db.select(func.coalesce(func.sum(OrderModel.total_amount), 0)).where(
-            OrderModel.restaurant_id == restaurant_id,
-            OrderModel.status == OrderStatus.COMPLETED,
-        )
-        if start_date is not None:
-            stmt = stmt.where(order_day >= start_date)
-        if end_date is not None:
-            stmt = stmt.where(order_day <= end_date)
-        return stmt
