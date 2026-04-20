@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 def register_blueprints(app: Flask) -> None:
     from app.api.auth.routes import namespace as auth_namespace
     from app.api.restaurants.routes import namespace as restaurant_namespace
+    from app.api.system.routes import namespace as system_namespace
+    from app.api.users.routes import namespace as users_namespace
 
     blueprint = Blueprint("api", __name__, url_prefix="/")
 
@@ -34,6 +36,8 @@ def register_blueprints(app: Flask) -> None:
 
     _register_api_error_handlers(api)
     api.add_namespace(auth_namespace)
+    api.add_namespace(system_namespace)
+    api.add_namespace(users_namespace)
     api.add_namespace(restaurant_namespace)
     app.register_blueprint(blueprint)
 

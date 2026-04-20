@@ -5,44 +5,75 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 
 ---
 
+## 0. Basics (cimientos — alineado con `backend_tickets.md` § Basics)
+
+> Objetivo: cerrar el “módulo Basics” antes o en paralelo con el resto del dominio. Ver también **Backend: Basics** en `backend_tickets.md`.
+
+### 0.1 Auth y tokens
+- [x] `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` (`app/api/auth/routes.py`, `AuthService`)
+- [x] JWT access + refresh configurados (`app/config.py`, Flask-JWT-Extended)
+- [x] `require_authentication()` y `require_refresh_token()` (`app/middleware/auth.py`)
+
+### 0.2 Usuario, roles y perfil (pendiente de propuesta completa)
+- [x] `UserModel` — columna `role` + enum `UserRole` (`app/models/enums.py`, default `CUSTOMER`)
+- [x] `user_summary` / respuestas auth — campo `role` en JSON (`app/api/auth/schemas.py`, `UserModel.to_dict()`); `id` sigue siendo int hasta migración UUID (§1)
+- [x] `UserService` + rutas `GET /users/me`, `PUT /users/me`, `PUT /users/me/password` (schemas §7.13)
+- [ ] `GET /users/me/restaurants/` — depende de `RestaurantAdmin` (puede moverse a ticket Admin si se prefiere)
+
+### 0.3 Operación y permisos
+- [x] `GET /health` (o `/status`) — liveness para balanceadores / k8s
+- [x] `GET /version` — semver o git sha expuesto de forma segura
+- [x] `require_restaurant_admin(restaurant_id_param)` — §6; guard base implementado por rol (`RESTAURANT_ADMIN` / `SUPER_ADMIN`) hasta incorporar `restaurant_admins`
+
+### 0.4 Infra transversal ya cubierta (Basics / chores)
+- [x] Manejo centralizado de errores API (`AppError`, handlers en `app/api/__init__.py`)
+- [x] Logging (`app/logging_config.py`)
+- [x] Migraciones Alembic existentes para `users` y `restaurants` (más allá: §1 del checklist)
+- [x] Swagger en raíz (`Flask-RESTX` en `register_blueprints`)
+
+---
+
 ## 1. Migraciones de Base de Datos
 
+> **Todos los campos `id` son UUID v7** (tipo `UUID` en PostgreSQL, generado en la capa de aplicación o con `gen_random_uuid()` en PG ≥ 13 + extensión `pgcrypto`). Todas las FK referencian esos UUIDs. No usar `SERIAL` ni `BIGSERIAL`.
+
 ### 1.1 Modificar tablas existentes
-- [ ] 🔧 `users` — agregar columna `role` (enum: CUSTOMER / RESTAURANT_ADMIN / SUPER_ADMIN, default CUSTOMER)
-- [ ] 🔧 `restaurants` — agregar `city_id FK`, `neighbourhood_id FK` (nullable), `price_range_id FK` (nullable), `allow_table_joining` (bool, default false), `default_slot_duration_minutes` (int, default 90)
+- [x] `users` — columna `role` (string `UserRole`, default `CUSTOMER`, índice) — migración `c8f4a2b91d3e` (`2026-04-19T12-00-00_add_user_role.py`)
+- [ ] 🔧 `users` — cambiar `id` de `int` a `uuid v7` (PK)
+- [ ] 🔧 `restaurants` — cambiar `id` de `int` a `uuid v7` (PK); agregar `city_id FK (uuid)`, `neighbourhood_id FK (uuid, nullable)`, `price_range_id FK (uuid, nullable)`, `allow_table_joining` (bool, default false), `default_slot_duration_minutes` (int, default 90)
 - [ ] 🔧 `restaurants` — eliminar columnas de strings de ubicación si existían (`country`, `city`, `province`, `neighbourhood`)
 
 ### 1.2 Tablas de referencia (lookup — pre-seed)
-- [ ] `countries` — id, name, iso_code
-- [ ] `provinces` — id, country_id FK, name
-- [ ] `cities` — id, province_id FK, name
-- [ ] `neighbourhoods` — id, city_id FK, name
-- [ ] `price_ranges` — id, slug, label, description, sort_order
-- [ ] `cuisine_types` — id, slug, label
+- [ ] `countries` — id (uuid v7), name, iso_code
+- [ ] `provinces` — id (uuid v7), country_id (uuid FK), name
+- [ ] `cities` — id (uuid v7), province_id (uuid FK), name
+- [ ] `neighbourhoods` — id (uuid v7), city_id (uuid FK), name
+- [ ] `price_ranges` — id (uuid v7), slug, label, description, sort_order
+- [ ] `cuisine_types` — id (uuid v7), slug, label
 
 ### 1.3 Tablas transversales
-- [ ] `restaurant_admins` — id, user_id FK, restaurant_id FK, UNIQUE(user_id, restaurant_id)
-- [ ] `restaurant_cuisines` — id, restaurant_id FK, cuisine_type_id FK, UNIQUE(restaurant_id, cuisine_type_id)
-- [ ] `notification_preferences` — id, user_id FK, restaurant_id FK, receive_promotions, receive_order_updates, receive_reservation_reminders, UNIQUE(user_id, restaurant_id)
+- [ ] `restaurant_admins` — id (uuid v7), user_id (uuid FK), restaurant_id (uuid FK), UNIQUE(user_id, restaurant_id)
+- [ ] `restaurant_cuisines` — id (uuid v7), restaurant_id (uuid FK), cuisine_type_id (uuid FK), UNIQUE(restaurant_id, cuisine_type_id)
+- [ ] `notification_preferences` — id (uuid v7), user_id (uuid FK), restaurant_id (uuid FK), receive_promotions, receive_order_updates, receive_reservation_reminders, UNIQUE(user_id, restaurant_id)
 
 ### 1.4 F1 — Mesas y Horarios
-- [ ] `tables` — id, restaurant_id FK, number, capacity, name, is_joinable, is_active, UNIQUE(restaurant_id, number)
-- [ ] `business_hours` — id, restaurant_id FK, day_of_week, opens_at, closes_at, is_closed, UNIQUE(restaurant_id, day_of_week)
+- [ ] `tables` — id (uuid v7), restaurant_id (uuid FK), number, capacity, name, is_joinable, is_active, UNIQUE(restaurant_id, number)
+- [ ] `business_hours` — id (uuid v7), restaurant_id (uuid FK), day_of_week, opens_at, closes_at, is_closed, UNIQUE(restaurant_id, day_of_week)
 
 ### 1.5 F2 — Reservas
-- [ ] `reservations` — id, restaurant_id FK, user_id FK (nullable), guest_name, guest_phone, guest_email, source (enum), party_size, date, time_slot, status (enum), notes, confirmation_code UK, created_at
-- [ ] `reservation_tables` — id, reservation_id FK, table_id FK, UNIQUE(reservation_id, table_id)
+- [ ] `reservations` — id (uuid v7), restaurant_id (uuid FK), user_id (uuid FK, nullable), guest_name, guest_phone, guest_email, source (enum), party_size, date, time_slot, status (enum), notes, confirmation_code UK, created_at
+- [ ] `reservation_tables` — id (uuid v7), reservation_id (uuid FK), table_id (uuid FK), UNIQUE(reservation_id, table_id)
 
 ### 1.6 F3 — Menú y Pedidos
-- [ ] `menus` — id, restaurant_id FK, name, is_active, created_at
-- [ ] `menu_categories` — id, menu_id FK, name, display_order, is_active
-- [ ] `menu_items` — id, category_id FK, name, description, price, photo_url, is_available, created_at
-- [ ] `orders` — id, restaurant_id FK, user_id FK, status (enum), total_amount, notes, estimated_ready_at, created_at
-- [ ] `order_items` — id, order_id FK, menu_item_id FK, quantity, unit_price, notes
+- [ ] `menus` — id (uuid v7), restaurant_id (uuid FK), name, is_active, created_at
+- [ ] `menu_categories` — id (uuid v7), menu_id (uuid FK), name, display_order, is_active
+- [ ] `menu_items` — id (uuid v7), category_id (uuid FK), name, description, price, photo_url, is_available, created_at
+- [ ] `orders` — id (uuid v7), restaurant_id (uuid FK), user_id (uuid FK), status (enum), total_amount, notes, estimated_ready_at, created_at
+- [ ] `order_items` — id (uuid v7), order_id (uuid FK), menu_item_id (uuid FK), quantity, unit_price, notes
 
 ### 1.7 F4 — Promociones
-- [ ] `promotions` — id, restaurant_id FK, title, description, discount_type (enum), discount_value, start_date, end_date, is_active, notify_users, created_at
-- [ ] `promotion_items` — id, promotion_id FK, menu_item_id FK, UNIQUE(promotion_id, menu_item_id)
+- [ ] `promotions` — id (uuid v7), restaurant_id (uuid FK), title, description, discount_type (enum), discount_value, start_date, end_date, is_active, notify_users, created_at
+- [ ] `promotion_items` — id (uuid v7), promotion_id (uuid FK), menu_item_id (uuid FK), UNIQUE(promotion_id, menu_item_id)
 
 ### 1.8 Seed inicial
 - [ ] Seed de `price_ranges` (4 filas: ECONOMICO $, MODERADO $$, ELEGANTE $$$, EXCLUSIVO $$$$)
@@ -53,8 +84,9 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 ## 2. Modelos SQLAlchemy (app/models/)
 
 ### 2.1 Modificar modelos existentes
-- [ ] 🔧 `UserModel` — agregar campo `role: Mapped[UserRole]`
-- [ ] 🔧 `RestaurantModel` — agregar `city_id`, `neighbourhood_id`, `price_range_id`, `allow_table_joining`, `default_slot_duration_minutes`; relaciones ORM con `City`, `Neighbourhood`, `PriceRange`, `RestaurantCuisine`
+- [x] `UserModel` — `role: Mapped[UserRole]` + `app/models/enums.py`
+- [ ] 🔧 `UserModel` — cambiar `id` a `Mapped[uuid]` con `default=uuid7` (pendiente §1)
+- [ ] 🔧 `RestaurantModel` — cambiar `id` a `Mapped[uuid]` con `default=uuid7`; agregar `city_id (uuid FK)`, `neighbourhood_id (uuid FK)`, `price_range_id (uuid FK)`, `allow_table_joining`, `default_slot_duration_minutes`; relaciones ORM con `City`, `Neighbourhood`, `PriceRange`, `RestaurantCuisine`
 
 ### 2.2 Nuevos modelos de referencia
 - [ ] `CountryModel` (`app/models/location.py`)
@@ -92,7 +124,7 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 
 ## 3. Enums (app/models/enums.py o por módulo)
 
-- [ ] 🔧 `UserRole` — CUSTOMER, RESTAURANT_ADMIN, SUPER_ADMIN
+- [x] `UserRole` — CUSTOMER, RESTAURANT_ADMIN, SUPER_ADMIN (`app/models/enums.py`)
 - [ ] `ReservationSource` — ONLINE, PHONE, EVENT
 - [ ] `ReservationStatus` — CONFIRMED, CANCELLED, COMPLETED, NO_SHOW
 - [ ] `OrderStatus` — PENDING, CONFIRMED, IN_PREPARATION, READY, COMPLETED, CANCELLED
@@ -103,7 +135,7 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 ## 4. Repositorios (app/repositories/)
 
 ### 4.1 Modificar repositorios existentes
-- [ ] 🔧 `UserRepository` — agregar `update_role(user_id, role)`
+- [x] `UserRepository` — `update_role(user_id, role)`; `create(..., role=...)` opcional (default `CUSTOMER`)
 - [ ] 🔧 `RestaurantRepository` — reemplazar `get_all()` por `search(filters)` con JOINs a `cities`, `price_ranges`, `restaurant_cuisines`; actualizar `create()` y `update()` para manejar `cuisine_type_ids`
 
 ### 4.2 Nuevos repositorios de referencia
@@ -184,7 +216,7 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 - [ ] `AvailabilityService.get_available_slots(restaurant_id, date, party_size)` — genera todos los slots del día y ejecuta `find_table_assignment` para cada uno
 - [ ] `AvailabilityService.find_table_assignment(restaurant_id, date, time_slot, party_size)` → `list[TableModel] | None` — algoritmo: primero mesa individual; si `allow_table_joining=True`, luego combinaciones de mesas `is_joinable`; mínimo desperdicio
 - [ ] `AvailabilityService.assign_tables_for_reservation(reservation_id, table_ids)` — crea filas en `reservation_tables` dentro de una transacción
-- [ ] `AvailabilityService.get_occupied_table_ids_at(restaurant_id, date, time_slot)` → `set[int]`
+- [ ] `AvailabilityService.get_occupied_table_ids_at(restaurant_id, date, time_slot)` → `set[uuid]`
 
 ### 5.8 ReservationService (nuevo — F2)
 - [ ] `ReservationService.create(restaurant_id, user_id, party_size, date, time_slot, notes)` — `source=ONLINE`; auto-confirma; transacción atómica con `SELECT FOR UPDATE`
@@ -265,9 +297,9 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 
 ## 6. Middleware y Guards (app/middleware/)
 
-- [ ] ✅ `require_authentication()` — verifica access token
-- [ ] ✅ `require_refresh_token()` — verifica refresh token
-- [ ] `require_restaurant_admin(restaurant_id_param)` — verifica que el usuario autenticado sea admin del restaurante indicado en el path; usa `RestaurantAdminService.is_admin()`
+- [x] ✅ `require_authentication()` — verifica access token
+- [x] ✅ `require_refresh_token()` — verifica refresh token
+- [x] `require_restaurant_admin(restaurant_id_param)` — guard base implementado (rol) hasta `RestaurantAdminService.is_admin()`
 
 ---
 
@@ -341,9 +373,9 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 - [ ] `NotificationPreferenceResponse`
 
 ### 7.13 Usuario
-- [ ] `UserProfileUpdateRequest`
-- [ ] `UserPasswordChangeRequest`
-- [ ] `UserProfileResponse`
+- [x] `UserProfileUpdateRequest`
+- [x] `UserPasswordChangeRequest`
+- [x] `UserProfileResponse`
 
 ### 7.14 Analytics
 - [ ] `OccupancyReportResponse`
@@ -487,14 +519,15 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 
 | Categoría | Total | ✅ Ya hecho | 🔧 Modificar | 🔴 Nuevo |
 |---|---|---|---|---|
-| Migraciones | 24 | 0 | 3 | 21 |
-| Modelos | 22 | 2 | 2 | 18 |
-| Enums | 5 | 0 | 1 | 4 |
-| Repositorios | 30 | 2 | 2 | 26 |
+| Basics (§0) | 14 | 9 | 0 | 5 |
+| Migraciones | 25 | 1 | 3 | 21 |
+| Modelos | 23 | 3 | 2 | 18 |
+| Enums | 5 | 1 | 0 | 4 |
+| Repositorios | 30 | 3 | 1 | 26 |
 | Servicios / Funciones | 70 | 3 | 3 | 64 |
 | Middleware | 3 | 2 | 0 | 1 |
 | Schemas | 42 | 5 | 4 | 33 |
 | Endpoints | 57 | 3 | 4 | 50 |
 | Integrations | 5 | 2 | 0 | 3 |
 | Config / .env | 2 | 0 | 2 | 0 |
-| **Total** | **260** | **19** | **21** | **220** |
+| **Total** | **276** | **32** | **19** | **225** |

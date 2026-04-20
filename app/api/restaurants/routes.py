@@ -8,7 +8,8 @@ from app.api.restaurants.schemas import (
     restaurant_update_model,
 )
 from app.exceptions.errors import ValidationError
-from app.middleware.auth import require_authentication
+from app.middleware.auth import require_authentication, require_restaurant_admin, require_roles
+from app.models.enums import UserRole
 from app.services.restaurant_service import RestaurantService
 
 namespace = Namespace(
@@ -43,6 +44,7 @@ class RestaurantList(Resource):
     @namespace.expect(restaurant_create_model, validate=True)
     @namespace.response(201, "Restaurant created successfully.", restaurant_response_model)
     @namespace.response(400, "Validation error.")
+    @require_roles(UserRole.RESTAURANT_ADMIN, UserRole.SUPER_ADMIN)
     def post(self):
         """Create a new restaurant."""
         data = request.json
@@ -69,6 +71,7 @@ class RestaurantDetail(Resource):
     @namespace.expect(restaurant_update_model, validate=True)
     @namespace.response(200, "Restaurant updated successfully.", restaurant_response_model)
     @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
     def put(self, restaurant_id: int):
         """Replace all fields of a restaurant. Omitting optional fields clears them."""
         data = request.json
@@ -83,6 +86,7 @@ class RestaurantDetail(Resource):
 
     @namespace.response(204, "Restaurant deleted successfully.")
     @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
     def delete(self, restaurant_id: int):
         """Delete a restaurant by ID."""
         RestaurantService.delete(restaurant_id)
@@ -98,6 +102,7 @@ class RestaurantPhoto(Resource):
     @namespace.response(200, "Photo uploaded successfully.", restaurant_response_model)
     @namespace.response(400, "No file provided.")
     @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
     def post(self, restaurant_id: int):
         """Upload a photo for a restaurant via multipart/form-data."""
         args = _photo_parser.parse_args()

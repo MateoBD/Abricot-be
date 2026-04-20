@@ -4,6 +4,8 @@ from datetime import timedelta
 
 class BaseConfig:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    API_VERSION = "1.0.0"
+    GIT_SHA = "unknown"
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     # Enforce that ALL JWT lookups read exclusively from the Authorization header.
@@ -21,6 +23,8 @@ class TestingConfig(BaseConfig):
 
 
 class ProductionConfig(BaseConfig):
+    API_VERSION = os.environ.get("API_VERSION", BaseConfig.API_VERSION)
+    GIT_SHA = os.environ.get("GIT_SHA", BaseConfig.GIT_SHA)
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "")
     ALLOWED_ORIGINS = [
         o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")

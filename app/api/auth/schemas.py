@@ -76,6 +76,11 @@ user_summary_model = Model(
             description="Apellido.",
             example="García",
         ),
+        "role": fields.String(
+            required=True,
+            description="Rol: CUSTOMER | RESTAURANT_ADMIN | SUPER_ADMIN.",
+            example="CUSTOMER",
+        ),
         "createdAt": fields.String(
             description="Fecha de creación en formato ISO 8601 UTC.",
             example="2026-04-07T19:00:00+00:00",

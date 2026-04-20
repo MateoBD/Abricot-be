@@ -1,12 +1,24 @@
 from app.extensions import db
+from app.models.enums import UserRole
 from app.models.user import UserModel
 
 
 class UserRepository:
     @staticmethod
-    def create(email: str, password_hash: str, name: str, surname: str) -> UserModel:
+    def create(
+        email: str,
+        password_hash: str,
+        name: str,
+        surname: str,
+        *,
+        role: UserRole = UserRole.CUSTOMER,
+    ) -> UserModel:
         user = UserModel(
-            email=email, password_hash=password_hash, name=name, surname=surname
+            email=email,
+            password_hash=password_hash,
+            name=name,
+            surname=surname,
+            role=role,
         )
         db.session.add(user)
         db.session.commit()
@@ -21,3 +33,25 @@ class UserRepository:
     @staticmethod
     def get_by_id(user_id: int) -> UserModel | None:
         return db.session.get(UserModel, user_id)
+
+    @staticmethod
+    def update_role(user_id: int, role: UserRole) -> UserModel | None:
+        user = UserRepository.get_by_id(user_id)
+        if not user:
+            return None
+        user.role = role
+        db.session.commit()
+        return user
+
+    @staticmethod
+    def update_profile(user: UserModel, *, name: str, surname: str) -> UserModel:
+        user.name = name
+        user.surname = surname
+        db.session.commit()
+        return user
+
+    @staticmethod
+    def update_password_hash(user: UserModel, *, password_hash: str) -> UserModel:
+        user.password_hash = password_hash
+        db.session.commit()
+        return user

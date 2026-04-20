@@ -55,7 +55,7 @@ Este documento describe la totalidad del diseño técnico necesario para impleme
 erDiagram
 
     USER {
-        int id PK
+        uuid id PK
         string email UK
         string password_hash
         string name
@@ -65,31 +65,31 @@ erDiagram
     }
 
     COUNTRY {
-        int id PK
+        uuid id PK
         string name UK
         string iso_code "ej: AR, US, ES"
     }
 
     PROVINCE {
-        int id PK
-        int country_id FK
+        uuid id PK
+        uuid country_id FK
         string name
     }
 
     CITY {
-        int id PK
-        int province_id FK
+        uuid id PK
+        uuid province_id FK
         string name
     }
 
     NEIGHBOURHOOD {
-        int id PK
-        int city_id FK
+        uuid id PK
+        uuid city_id FK
         string name
     }
 
     PRICE_RANGE {
-        int id PK
+        uuid id PK
         string slug UK "ECONOMICO | MODERADO | ELEGANTE | EXCLUSIVO"
         string label "$ | $$ | $$$ | $$$$"
         string description "Menos de $5.000 | ..."
@@ -97,18 +97,18 @@ erDiagram
     }
 
     CUISINE_TYPE {
-        int id PK
+        uuid id PK
         string slug UK "ARGENTINA | ITALIANA | ..."
         string label "Parrilla y Criolla | Pasta y Pizza | ..."
     }
 
     RESTAURANT {
-        int id PK
+        uuid id PK
         string name
         string address
-        int city_id FK
-        int neighbourhood_id FK "nullable"
-        int price_range_id FK "nullable"
+        uuid city_id FK
+        uuid neighbourhood_id FK "nullable"
+        uuid price_range_id FK "nullable"
         string phone
         string email
         string description
@@ -119,20 +119,20 @@ erDiagram
     }
 
     RESTAURANT_CUISINE {
-        int id PK
-        int restaurant_id FK
-        int cuisine_type_id FK
+        uuid id PK
+        uuid restaurant_id FK
+        uuid cuisine_type_id FK
     }
 
     RESTAURANT_ADMIN {
-        int id PK
-        int user_id FK
-        int restaurant_id FK
+        uuid id PK
+        uuid user_id FK
+        uuid restaurant_id FK
     }
 
     TABLE {
-        int id PK
-        int restaurant_id FK
+        uuid id PK
+        uuid restaurant_id FK
         int number
         int capacity
         string name
@@ -141,8 +141,8 @@ erDiagram
     }
 
     BUSINESS_HOURS {
-        int id PK
-        int restaurant_id FK
+        uuid id PK
+        uuid restaurant_id FK
         int day_of_week "0=Lun … 6=Dom"
         time opens_at
         time closes_at
@@ -150,9 +150,9 @@ erDiagram
     }
 
     RESERVATION {
-        int id PK
-        int restaurant_id FK
-        int user_id FK "nullable — null si el admin reserva por teléfono/evento"
+        uuid id PK
+        uuid restaurant_id FK
+        uuid user_id FK "nullable — null si el admin reserva por teléfono/evento"
         string guest_name "nullable — nombre del grupo si no hay user_id"
         string guest_phone "nullable"
         string guest_email "nullable"
@@ -167,30 +167,30 @@ erDiagram
     }
 
     RESERVATION_TABLE {
-        int id PK
-        int reservation_id FK
-        int table_id FK
+        uuid id PK
+        uuid reservation_id FK
+        uuid table_id FK
     }
 
     MENU {
-        int id PK
-        int restaurant_id FK
+        uuid id PK
+        uuid restaurant_id FK
         string name
         bool is_active
         datetime created_at
     }
 
     MENU_CATEGORY {
-        int id PK
-        int menu_id FK
+        uuid id PK
+        uuid menu_id FK
         string name
         int display_order
         bool is_active
     }
 
     MENU_ITEM {
-        int id PK
-        int category_id FK
+        uuid id PK
+        uuid category_id FK
         string name
         string description
         decimal price
@@ -200,9 +200,9 @@ erDiagram
     }
 
     ORDER {
-        int id PK
-        int restaurant_id FK
-        int user_id FK
+        uuid id PK
+        uuid restaurant_id FK
+        uuid user_id FK
         enum status "PENDING | CONFIRMED | IN_PREPARATION | READY | COMPLETED | CANCELLED"
         decimal total_amount
         string notes
@@ -211,17 +211,17 @@ erDiagram
     }
 
     ORDER_ITEM {
-        int id PK
-        int order_id FK
-        int menu_item_id FK
+        uuid id PK
+        uuid order_id FK
+        uuid menu_item_id FK
         int quantity
         decimal unit_price "snapshot del precio al momento del pedido"
         string notes
     }
 
     PROMOTION {
-        int id PK
-        int restaurant_id FK
+        uuid id PK
+        uuid restaurant_id FK
         string title
         string description
         enum discount_type "PERCENTAGE | FIXED_AMOUNT | FREE_ITEM"
@@ -234,15 +234,15 @@ erDiagram
     }
 
     PROMOTION_ITEM {
-        int id PK
-        int promotion_id FK
-        int menu_item_id FK
+        uuid id PK
+        uuid promotion_id FK
+        uuid menu_item_id FK
     }
 
     NOTIFICATION_PREFERENCE {
-        int id PK
-        int user_id FK
-        int restaurant_id FK
+        uuid id PK
+        uuid user_id FK
+        uuid restaurant_id FK
         bool receive_promotions
         bool receive_order_updates
         bool receive_reservation_reminders
@@ -314,7 +314,7 @@ erDiagram
 #### `User` — agregar `role`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK, autoincrement |
+| id | uuid v7 | PK, generated |
 | email | string(255) | unique, not null, index |
 | password_hash | string(255) | not null |
 | name | string(100) | not null |
@@ -325,12 +325,12 @@ erDiagram
 #### `Restaurant` — reemplazar strings de ubicación/cocina/precio por FKs normalizados
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
+| id | uuid v7 | PK, generated |
 | name | string(150) | not null, index |
 | address | string(255) | not null |
-| **city_id** | int | FK → cities, not null, index |
-| **neighbourhood_id** | int | FK → neighbourhoods, nullable, index |
-| **price_range_id** | int | FK → price_ranges, nullable, index |
+| **city_id** | uuid | FK → cities, not null, index |
+| **neighbourhood_id** | uuid | FK → neighbourhoods, nullable, index |
+| **price_range_id** | uuid | FK → price_ranges, nullable, index |
 | phone | string(30) | not null |
 | email | string(255) | nullable |
 | description | text | nullable |
@@ -345,38 +345,38 @@ erDiagram
 #### `Country` — tabla de referencia de países
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
+| id | uuid v7 | PK, generated |
 | name | string(100) | not null, unique |
 | iso_code | string(3) | not null, unique (ej: `AR`, `US`, `ES`) |
 
 #### `Province` — provincia, estado o región dentro de un país
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| country_id | int | FK → countries, not null, index |
+| id | uuid v7 | PK, generated |
+| country_id | uuid | FK → countries, not null, index |
 | name | string(100) | not null |
 | | | UNIQUE(country_id, name) |
 
 #### `City` — ciudad o localidad dentro de una provincia
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| province_id | int | FK → provinces, not null, index |
+| id | uuid v7 | PK, generated |
+| province_id | uuid | FK → provinces, not null, index |
 | name | string(100) | not null |
 | | | UNIQUE(province_id, name) |
 
 #### `Neighbourhood` — barrio o zona dentro de una ciudad
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| city_id | int | FK → cities, not null, index |
+| id | uuid v7 | PK, generated |
+| city_id | uuid | FK → cities, not null, index |
 | name | string(100) | not null |
 | | | UNIQUE(city_id, name) |
 
 #### `PriceRange` — tabla de referencia de rangos de precio
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
+| id | uuid v7 | PK, generated |
 | slug | string(20) | not null, unique (ej: `ECONOMICO`) |
 | label | string(10) | not null (ej: `$`, `$$`) |
 | description | string(200) | nullable (ej: `Menos de $5.000 por persona`) |
@@ -386,7 +386,7 @@ erDiagram
 #### `CuisineType` — tabla de referencia de tipos de cocina
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
+| id | uuid v7 | PK, generated |
 | slug | string(30) | not null, unique (ej: `ARGENTINA`, `JAPONESA`) |
 | label | string(100) | not null (ej: `Parrilla y Criolla`) |
 > Pre-poblado con los tipos iniciales en el seed. Solo SUPER_ADMIN puede agregar o deshabilitar.
@@ -394,24 +394,24 @@ erDiagram
 #### `RestaurantCuisine` — join N:M entre restaurante y tipos de cocina
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| restaurant_id | int | FK → restaurants, not null, index |
-| cuisine_type_id | int | FK → cuisine_types, not null, index |
+| id | uuid v7 | PK, generated |
+| restaurant_id | uuid | FK → restaurants, not null, index |
+| cuisine_type_id | uuid | FK → cuisine_types, not null, index |
 | | | UNIQUE(restaurant_id, cuisine_type_id) |
 
 #### `RestaurantAdmin`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| user_id | int | FK → users, not null, index |
-| restaurant_id | int | FK → restaurants, not null, index |
+| id | uuid v7 | PK, generated |
+| user_id | uuid | FK → users, not null, index |
+| restaurant_id | uuid | FK → restaurants, not null, index |
 | | | UNIQUE(user_id, restaurant_id) |
 
 #### `Table`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| restaurant_id | int | FK → restaurants, not null, index |
+| id | uuid v7 | PK, generated |
+| restaurant_id | uuid | FK → restaurants, not null, index |
 | number | int | not null |
 | capacity | int | not null |
 | name | string(50) | nullable (ej: "Mesa VIP", "Terraza 3") |
@@ -422,8 +422,8 @@ erDiagram
 #### `BusinessHours`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| restaurant_id | int | FK → restaurants, not null, index |
+| id | uuid v7 | PK, generated |
+| restaurant_id | uuid | FK → restaurants, not null, index |
 | day_of_week | int | not null (0=Lun, 6=Dom) |
 | opens_at | time | nullable |
 | closes_at | time | nullable |
@@ -437,9 +437,9 @@ erDiagram
 
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| restaurant_id | int | FK → restaurants, not null, index |
-| user_id | int | FK → users, **nullable**, index |
+| id | uuid v7 | PK, generated |
+| restaurant_id | uuid | FK → restaurants, not null, index |
+| user_id | uuid | FK → users, **nullable**, index |
 | **guest_name** | string(150) | nullable — requerido si `user_id` es null |
 | **guest_phone** | string(30) | nullable |
 | **guest_email** | string(255) | nullable |
@@ -456,16 +456,16 @@ erDiagram
 #### `ReservationTable` — tabla de join N:M entre reservas y mesas
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| reservation_id | int | FK → reservations, not null, index |
-| table_id | int | FK → tables, not null, index |
+| id | uuid v7 | PK, generated |
+| reservation_id | uuid | FK → reservations, not null, index |
+| table_id | uuid | FK → tables, not null, index |
 | | | UNIQUE(reservation_id, table_id) |
 
 #### `Menu`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| restaurant_id | int | FK → restaurants, not null, index |
+| id | uuid v7 | PK, generated |
+| restaurant_id | uuid | FK → restaurants, not null, index |
 | name | string(150) | not null |
 | is_active | bool | not null, default=True |
 | created_at | datetime(tz) | not null |
@@ -473,8 +473,8 @@ erDiagram
 #### `MenuCategory`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| menu_id | int | FK → menus, not null, index |
+| id | uuid v7 | PK, generated |
+| menu_id | uuid | FK → menus, not null, index |
 | name | string(100) | not null |
 | display_order | int | not null, default=0 |
 | is_active | bool | not null, default=True |
@@ -482,8 +482,8 @@ erDiagram
 #### `MenuItem`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| category_id | int | FK → menu_categories, not null, index |
+| id | uuid v7 | PK, generated |
+| category_id | uuid | FK → menu_categories, not null, index |
 | name | string(150) | not null |
 | description | text | nullable |
 | price | numeric(10,2) | not null |
@@ -496,9 +496,9 @@ erDiagram
 
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| restaurant_id | int | FK → restaurants, not null, index |
-| user_id | int | FK → users, not null, index |
+| id | uuid v7 | PK, generated |
+| restaurant_id | uuid | FK → restaurants, not null, index |
+| user_id | uuid | FK → users, not null, index |
 | status | enum(OrderStatus) | not null, default=PENDING |
 | total_amount | numeric(10,2) | not null |
 | notes | text | nullable |
@@ -508,9 +508,9 @@ erDiagram
 #### `OrderItem`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| order_id | int | FK → orders, not null, index |
-| menu_item_id | int | FK → menu_items, not null |
+| id | uuid v7 | PK, generated |
+| order_id | uuid | FK → orders, not null, index |
+| menu_item_id | uuid | FK → menu_items, not null |
 | quantity | int | not null |
 | unit_price | numeric(10,2) | not null (snapshot del precio actual) |
 | notes | text | nullable |
@@ -518,8 +518,8 @@ erDiagram
 #### `Promotion`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| restaurant_id | int | FK → restaurants, not null, index |
+| id | uuid v7 | PK, generated |
+| restaurant_id | uuid | FK → restaurants, not null, index |
 | title | string(200) | not null |
 | description | text | nullable |
 | discount_type | enum(DiscountType) | not null |
@@ -533,17 +533,17 @@ erDiagram
 #### `PromotionItem`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| promotion_id | int | FK → promotions, not null, index |
-| menu_item_id | int | FK → menu_items, not null |
+| id | uuid v7 | PK, generated |
+| promotion_id | uuid | FK → promotions, not null, index |
+| menu_item_id | uuid | FK → menu_items, not null |
 | | | UNIQUE(promotion_id, menu_item_id) |
 
 #### `NotificationPreference`
 | Campo | Tipo | Constraints |
 |---|---|---|
-| id | int | PK |
-| user_id | int | FK → users, not null, index |
-| restaurant_id | int | FK → restaurants, not null, index |
+| id | uuid v7 | PK, generated |
+| user_id | uuid | FK → users, not null, index |
+| restaurant_id | uuid | FK → restaurants, not null, index |
 | receive_promotions | bool | not null, default=True |
 | receive_order_updates | bool | not null, default=True |
 | receive_reservation_reminders | bool | not null, default=True |
@@ -642,12 +642,12 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 | Parámetro | Tipo | Descripción |
 |---|---|---|
 | `name` | string | Búsqueda parcial por nombre (ILIKE `%name%`, case-insensitive) |
-| `country_id` | int | ID del país |
-| `province_id` | int | ID de la provincia |
-| `city_id` | int | ID de la ciudad |
-| `neighbourhood_id` | int | ID del barrio |
-| `price_range_id` | int | ID del rango de precio (de `GET /price-ranges/`) |
-| `cuisine_type_id` | int | ID del tipo de cocina (de `GET /cuisines/`) — puede repetirse para OR |
+| `country_id` | string (uuid) | ID del país |
+| `province_id` | string (uuid) | ID de la provincia |
+| `city_id` | string (uuid) | ID de la ciudad |
+| `neighbourhood_id` | string (uuid) | ID del barrio |
+| `price_range_id` | string (uuid) | ID del rango de precio (de `GET /price-ranges/`) |
+| `cuisine_type_id` | string (uuid) | ID del tipo de cocina (de `GET /cuisines/`) — puede repetirse para OR |
 | `page` | int | Página (default: 1) |
 | `per_page` | int | Resultados por página (default: 20, máx: 100) |
 
@@ -793,10 +793,10 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 |---|---|---|---|
 | `name` | ✅ | string | Nombre del restaurante |
 | `address` | ✅ | string | Dirección física completa |
-| `cityId` | ✅ | int | ID de la ciudad (de `GET /provinces/{id}/cities/`) |
-| `neighbourhoodId` | ❌ | int | ID del barrio (de `GET /cities/{id}/neighbourhoods/`) |
-| `priceRangeId` | ❌ | int | ID del rango de precio (de `GET /price-ranges/`) |
-| `cuisineTypeIds` | ❌ | int[] | Lista de IDs de tipos de cocina (al menos 1 recomendado) |
+| `cityId` | ✅ | string (uuid) | ID de la ciudad (de `GET /provinces/{id}/cities/`) |
+| `neighbourhoodId` | ❌ | string (uuid) | ID del barrio (de `GET /cities/{id}/neighbourhoods/`) |
+| `priceRangeId` | ❌ | string (uuid) | ID del rango de precio (de `GET /price-ranges/`) |
+| `cuisineTypeIds` | ❌ | string[] (uuid[]) | Lista de IDs de tipos de cocina (al menos 1 recomendado) |
 | `phone` | ✅ | string | Teléfono de contacto |
 | `email` | ❌ | string | Email de contacto |
 | `description` | ❌ | string | Descripción libre |
@@ -861,7 +861,7 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
       timeSlot,
       isAvailable,
       tableAssignment: {
-        tableIds: [int],
+        tableIds: [string],
         tableNumbers: [int],
         totalCapacity: int,
         isJoined: bool   ← true si se combinaron múltiples mesas
@@ -886,10 +886,10 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 | `guestName` | ✅* | Nombre del grupo — requerido si `userId` es null |
 | `guestPhone` | ❌ | Teléfono de contacto del grupo |
 | `guestEmail` | ❌ | Email del grupo (para envío de confirmación) |
-| `userId` | ❌ | Si el grupo tiene cuenta registrada, el admin puede linkearla |
+| `userId` | ❌ | string (uuid). Si el grupo tiene cuenta registrada, el admin puede linkearla |
 | `notes` | ❌ | Notas internas |
 
-**`ReservationReassignTablesRequest`**: `tableIds: [int]`
+**`ReservationReassignTablesRequest`**: `tableIds: [string]` (uuid[])
 > Permite al admin ajustar manualmente qué mesas se usan para una reserva confirmada.
 
 **`ReservationCancelRequest`**: `reason?`
@@ -918,7 +918,7 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 
 **`MenuCategoryCreateRequest`** / **`MenuCategoryUpdateRequest`**: `name`, `displayOrder?`, `isActive?`
 
-**`MenuCategoryReorderRequest`**: `orderedIds: [int]`
+**`MenuCategoryReorderRequest`**: `orderedIds: [string]` (uuid[])
 
 **`MenuCategoryResponse`**: `id`, `menuId`, `name`, `displayOrder`, `isActive`
 
@@ -946,7 +946,7 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 
 ### 6.11 Promociones
 
-**`PromotionCreateRequest`** / **`PromotionUpdateRequest`**: `title`, `description?`, `discountType`, `discountValue`, `startDate`, `endDate`, `notifyUsers?`, `menuItemIds?: [int]`
+**`PromotionCreateRequest`** / **`PromotionUpdateRequest`**: `title`, `description?`, `discountType`, `discountValue`, `startDate`, `endDate`, `notifyUsers?`, `menuItemIds?: [string]` (uuid[])
 
 **`PromotionResponse`**: `id`, `restaurantId`, `restaurantName`, `title`, `description`, `discountType`, `discountValue`, `startDate`, `endDate`, `isActive`, `notifyUsers`, `items?: [MenuItemResponse]`, `createdAt`
 
@@ -1098,7 +1098,7 @@ Dado: `restaurant_id`, `date`, `time_slot`, `party_size`
   - Retorna la lista de mesas a asignar, o `None` si no hay disponibilidad
 - `assign_tables_for_reservation(reservation_id, table_ids) → None`
   - Crea las filas en `reservation_tables` dentro de una transacción
-- `get_occupied_table_ids_at(restaurant_id, date, time_slot) → set[int]`
+- `get_occupied_table_ids_at(restaurant_id, date, time_slot) → set[uuid]`
   - Consulta `reservation_tables` JOIN `reservations` para obtener mesas ocupadas en ese slot
 
 ### 7.8 `ReservationService` 🔴 (nuevo — F2)
