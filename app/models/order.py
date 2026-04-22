@@ -1,21 +1,25 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
 from app.models.enums import OrderStatus
+from app.utils.uuid7 import new_uuid7
 
 
 class OrderModel(db.Model):
     __tablename__ = "orders"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    restaurant_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
+    restaurant_id: Mapped[UUID] = mapped_column(
         ForeignKey("restaurants.id"), nullable=False, index=True
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus, native_enum=False, validate_strings=True, length=32),
         nullable=False,

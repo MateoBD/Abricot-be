@@ -1,7 +1,10 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, Time, UniqueConstraint
+from uuid import UUID
+
+from sqlalchemy import Boolean, ForeignKey, Integer, Time, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
+from app.utils.uuid7 import new_uuid7
 
 
 class BusinessHoursModel(db.Model):
@@ -14,8 +17,10 @@ class BusinessHoursModel(db.Model):
         ),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    restaurant_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
+    restaurant_id: Mapped[UUID] = mapped_column(
         ForeignKey("restaurants.id"), nullable=False, index=True
     )
     day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)

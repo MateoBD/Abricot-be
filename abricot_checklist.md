@@ -17,8 +17,8 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 ### 0.2 Usuario, roles y perfil (pendiente de propuesta completa)
 - [x] `UserModel` — columna `role` + enum `UserRole` (`app/models/enums.py`, default `CUSTOMER`)
 - [x] `user_summary` / respuestas auth — campo `role` en JSON (`app/api/auth/schemas.py`, `UserModel.to_dict()`); `id` sigue siendo int hasta migración UUID (§1)
-- [x] `UserService` + rutas `GET /users/me`, `PUT /users/me`, `PUT /users/me/password` (schemas §7.13)
-- [ ] `GET /users/me/restaurants/` — depende de `RestaurantAdmin` (puede moverse a ticket Admin si se prefiere)
+- [x] `UserService` + rutas `GET /users/{user_id}`, `PUT /users/{user_id}`, `PUT /users/{user_id}/password` (schemas §7.13); el `user_id` de la URL debe coincidir con el sujeto del JWT (`require_path_user_matches_jwt`)
+- [ ] `GET /users/{user_id}/restaurants/` — depende de `RestaurantAdmin` (puede moverse a ticket Admin si se prefiere)
 
 ### 0.3 Operación y permisos
 - [x] `GET /health` (o `/status`) — liveness para balanceadores / k8s
@@ -478,16 +478,16 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 - [ ] `GET /promotions/feed`
 
 ### 8.13 Perfil de Usuario
-- [ ] `GET /users/me`
-- [ ] `PUT /users/me`
-- [ ] `PUT /users/me/password`
-- [ ] `GET /users/me/reservations/`
-- [ ] `GET /users/me/orders/`
-- [ ] `GET /users/me/restaurants/`
+- [ ] `GET /users/{user_id}`
+- [ ] `PUT /users/{user_id}`
+- [ ] `PUT /users/{user_id}/password`
+- [ ] `GET /users/{user_id}/reservations/`
+- [ ] `GET /users/{user_id}/orders/`
+- [ ] `GET /users/{user_id}/restaurants/`
 
 ### 8.14 Preferencias de Notificación
-- [ ] `GET /users/me/notification-preferences/`
-- [ ] `PUT /users/me/notification-preferences/{restaurant_id}`
+- [ ] `GET /users/{user_id}/notification-preferences/`
+- [ ] `PUT /users/{user_id}/notification-preferences/{restaurant_id}`
 
 ### 8.15 Analytics — F5
 - [ ] `GET /restaurants/{id}/analytics/occupancy`

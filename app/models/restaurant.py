@@ -1,24 +1,28 @@
 from datetime import UTC, datetime
+from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
+from app.utils.uuid7 import new_uuid7
 
 
 class RestaurantModel(db.Model):
     __tablename__ = "restaurants"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)
-    city_id: Mapped[int] = mapped_column(ForeignKey("cities.id"), nullable=False, index=True)
-    neighbourhood_id: Mapped[int | None] = mapped_column(
+    city_id: Mapped[UUID] = mapped_column(ForeignKey("cities.id"), nullable=False, index=True)
+    neighbourhood_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("neighbourhoods.id"),
         nullable=True,
         index=True,
     )
-    price_range_id: Mapped[int | None] = mapped_column(
+    price_range_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("price_ranges.id"),
         nullable=True,
         index=True,
@@ -45,12 +49,16 @@ class RestaurantModel(db.Model):
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
+            "id": str(self.id),
             "name": self.name,
             "address": self.address,
-            "cityId": self.city_id,
-            "neighbourhoodId": self.neighbourhood_id,
-            "priceRangeId": self.price_range_id,
+            "cityId": str(self.city_id),
+            "neighbourhoodId": str(self.neighbourhood_id)
+            if self.neighbourhood_id is not None
+            else None,
+            "priceRangeId": str(self.price_range_id)
+            if self.price_range_id is not None
+            else None,
             "phone": self.phone,
             "email": self.email,
             "description": self.description,

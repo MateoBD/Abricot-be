@@ -1,5 +1,6 @@
 import logging
 from functools import wraps
+from uuid import UUID
 
 from flask import jsonify
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
@@ -81,9 +82,9 @@ def require_refresh_token():
     return decorator
 
 
-def get_current_user_id() -> int:
+def get_current_user_id() -> UUID:
     """Returns the authenticated user's ID. Only valid inside a protected route."""
-    return int(get_jwt_identity())
+    return UUID(get_jwt_identity())
 
 
 def require_roles(*allowed_roles: UserRole):
@@ -161,11 +162,51 @@ def require_restaurant_admin(restaurant_id_param: str):
                 )
                 return jsonify(_FORBIDDEN_RESPONSE), 403
 
-            if not RestaurantAdminRepository.is_admin(user_id, int(restaurant_id)):
+            if not RestaurantAdminRepository.is_admin(
+                user_id,
+                restaurant_id if isinstance(restaurant_id, UUID) else UUID(str(restaurant_id)),
+            ):
                 logger.warning(
                     "Restaurant ownership check failed for user_id=%s restaurant_id=%s",
                     user_id,
                     restaurant_id,
+                )
+                return jsonify(_FORBIDDEN_RESPONSE), 403
+
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def require_path_user_matches_jwt(user_id_param: str = "user_id"):
+    """
+    Ensures the URL user id equals the JWT subject (authenticated user).
+
+    Use on ``/users/<user_id>/...`` so a client cannot read or change another
+    user's profile. Assumes JWT was already verified (e.g. namespace
+    ``require_authentication()``).
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            path_uid = kwargs.get(user_id_param)
+            if path_uid is None:
+                logger.warning(
+                    "Missing path param '%s' for user ownership check.",
+                    user_id_param,
+                )
+                return jsonify(_FORBIDDEN_RESPONSE), 403
+
+            token_uid = get_current_user_id()
+            path_uuid = path_uid if isinstance(path_uid, UUID) else UUID(str(path_uid))
+            if path_uuid != token_uid:
+                logger.warning(
+                    "User id mismatch: path=%s jwt=%s",
+                    path_uuid,
+                    token_uid,
                 )
                 return jsonify(_FORBIDDEN_RESPONSE), 403
 

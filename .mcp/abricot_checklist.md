@@ -16,9 +16,9 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 
 ### 0.2 Usuario, roles y perfil (pendiente de propuesta completa)
 - [x] `UserModel` — columna `role` + enum `UserRole` (`app/models/enums.py`, default `CUSTOMER`)
-- [x] `user_summary` / respuestas auth — campo `role` en JSON (`app/api/auth/schemas.py`, `UserModel.to_dict()`); `id` sigue siendo int hasta migración UUID (§1)
-- [x] `UserService` + rutas `GET /users/me`, `PUT /users/me`, `PUT /users/me/password` (schemas §7.13)
-- [ ] `GET /users/me/restaurants/` — depende de `RestaurantAdmin` (puede moverse a ticket Admin si se prefiere)
+- [x] `user_summary` / respuestas auth — campo `role` en JSON (`app/api/auth/schemas.py`, `UserModel.to_dict()`); `id` como UUID string (§1)
+- [x] `UserService` + rutas `GET /users/{user_id}`, `PUT /users/{user_id}`, `PUT /users/{user_id}/password` (schemas §7.13); el `user_id` de la URL debe coincidir con el sujeto del JWT (`require_path_user_matches_jwt`)
+- [ ] `GET /users/{user_id}/restaurants/` — depende de `RestaurantAdmin` (puede moverse a ticket Admin si se prefiere)
 
 ### 0.3 Operación y permisos
 - [x] `GET /health` (o `/status`) — liveness para balanceadores / k8s
@@ -36,13 +36,13 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 ## 1. Migraciones de Base de Datos
 
 > **Todos los campos `id` son UUID v7** (tipo `UUID` en PostgreSQL, generado en la capa de aplicación o con `gen_random_uuid()` en PG ≥ 13 + extensión `pgcrypto`). Todas las FK referencian esos UUIDs. No usar `SERIAL` ni `BIGSERIAL`.
-> Estado actual: en esta iteración se crearon todas las tablas del dominio para destrabar desarrollo, manteniendo IDs `int` por compatibilidad con el esquema existente; la migración completa a UUID sigue pendiente en §1.1.
+> Estado actual: migración a UUID v7 aplicada en modelos y migración Alembic; ver §1.1.
 
 ### 1.1 Modificar tablas existentes
 - [x] `users` — columna `role` (string `UserRole`, default `CUSTOMER`, índice) — migración `c8f4a2b91d3e` (`2026-04-19T12-00-00_add_user_role.py`)
-- [ ] 🔧 `users` — cambiar `id` de `int` a `uuid v7` (PK)
-- [ ] 🔧 `restaurants` — cambiar `id` de `int` a `uuid v7` (PK); agregar `city_id FK (uuid)`, `neighbourhood_id FK (uuid, nullable)`, `price_range_id FK (uuid, nullable)`, `allow_table_joining` (bool, default false), `default_slot_duration_minutes` (int, default 90)
-- [ ] 🔧 `restaurants` — eliminar columnas de strings de ubicación si existían (`country`, `city`, `province`, `neighbourhood`)
+- [x] `users` — cambiar `id` de `int` a `uuid v7` (PK)
+- [x] `restaurants` — cambiar `id` de `int` a `uuid v7` (PK); agregar `city_id FK (uuid)`, `neighbourhood_id FK (uuid, nullable)`, `price_range_id FK (uuid, nullable)`, `allow_table_joining` (bool, default false), `default_slot_duration_minutes` (int, default 90)
+- [x] `restaurants` — eliminar columnas de strings de ubicación si existían (`country`, `city`, `province`, `neighbourhood`)
 
 ### 1.2 Tablas de referencia (lookup — pre-seed)
 - [x] `countries` — id (uuid v7), name, iso_code
@@ -86,8 +86,8 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 
 ### 2.1 Modificar modelos existentes
 - [x] `UserModel` — `role: Mapped[UserRole]` + `app/models/enums.py`
-- [ ] 🔧 `UserModel` — cambiar `id` a `Mapped[uuid]` con `default=uuid7` (pendiente §1)
-- [ ] 🔧 `RestaurantModel` — cambiar `id` a `Mapped[uuid]` con `default=uuid7`; agregar `city_id (uuid FK)`, `neighbourhood_id (uuid FK)`, `price_range_id (uuid FK)`, `allow_table_joining`, `default_slot_duration_minutes`; relaciones ORM con `City`, `Neighbourhood`, `PriceRange`, `RestaurantCuisine`
+- [x] `UserModel` — cambiar `id` a `Mapped[uuid]` con `default=uuid7` (pendiente §1)
+- [x] `RestaurantModel` — cambiar `id` a `Mapped[uuid]` con `default=uuid7`; agregar `city_id (uuid FK)`, `neighbourhood_id (uuid FK)`, `price_range_id (uuid FK)`, `allow_table_joining`, `default_slot_duration_minutes`; relaciones ORM con `City`, `Neighbourhood`, `PriceRange`, `RestaurantCuisine`
 
 ### 2.2 Nuevos modelos de referencia
 - [x] `CountryModel` (`app/models/location.py`)
@@ -137,33 +137,33 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 
 ### 4.1 Modificar repositorios existentes
 - [x] `UserRepository` — `update_role(user_id, role)`; `create(..., role=...)` opcional (default `CUSTOMER`)
-- [ ] 🔧 `RestaurantRepository` — reemplazar `get_all()` por `search(filters)` con JOINs a `cities`, `price_ranges`, `restaurant_cuisines`; actualizar `create()` y `update()` para manejar `cuisine_type_ids`
+- [x] `RestaurantRepository` — reemplazar `get_all()` por `search(filters)` con JOINs a `cities`, `price_ranges`, `restaurant_cuisines`; actualizar `create()` y `update()` para manejar `cuisine_type_ids`
 
 ### 4.2 Nuevos repositorios de referencia
-- [ ] `LookupRepository` — métodos para countries, provinces, cities, neighbourhoods, price_ranges, cuisine_types; `get_or_create_city`, `get_or_create_neighbourhood`
+- [x] `LookupRepository` — métodos para countries, provinces, cities, neighbourhoods, price_ranges, cuisine_types; `get_or_create_city`, `get_or_create_neighbourhood`
 
 ### 4.3 Transversales
 - [x] `RestaurantAdminRepository` — `is_admin(user_id, restaurant_id)`, `add(user_id, restaurant_id)`, `remove(user_id, restaurant_id)`, `get_restaurants_for_user(user_id)`
-- [ ] `NotificationPreferenceRepository` — `get_by_user(user_id)`, `get_or_create(user_id, restaurant_id)`, `update(...)`, `get_subscribed_emails(restaurant_id, field)`
+- [x] `NotificationPreferenceRepository` — `get_by_user(user_id)`, `get_or_create(user_id, restaurant_id)`, `update(...)`, `get_subscribed_emails(restaurant_id, field)`
 
 ### 4.4 F1
-- [ ] `TableRepository` — `get_all(restaurant_id)`, `get_by_id(restaurant_id, table_id)`, `get_max_number(restaurant_id)`, `bulk_insert(tables)`, `get_active(restaurant_id)`
-- [ ] `BusinessHoursRepository` — `get_all(restaurant_id)`, `upsert_bulk(restaurant_id, data)`, `get_for_date(restaurant_id, day_of_week)`
+- [x] `TableRepository` — `get_all(restaurant_id)`, `get_by_id(restaurant_id, table_id)`, `get_max_number(restaurant_id)`, `bulk_insert(tables)`, `get_active(restaurant_id)`
+- [x] `BusinessHoursRepository` — `get_all(restaurant_id)`, `upsert_bulk(restaurant_id, data)`, `get_for_date(restaurant_id, day_of_week)`
 
 ### 4.5 F2
-- [ ] `ReservationRepository` — `create(reservation)`, `get_by_id(id)`, `get_by_code(code)`, `list_for_restaurant(restaurant_id, filters, page, per_page)`, `get_occupied_table_ids_at(restaurant_id, date, time_slot)`
-- [ ] `ReservationTableRepository` — `create_bulk(reservation_id, table_ids)`, `delete_by_reservation(reservation_id)`
+- [x] `ReservationRepository` — `create(reservation)`, `get_by_id(id)`, `get_by_code(code)`, `list_for_restaurant(restaurant_id, filters, page, per_page)`, `get_occupied_table_ids_at(restaurant_id, date, time_slot)`
+- [x] `ReservationTableRepository` — `create_bulk(reservation_id, table_ids)`, `delete_by_reservation(reservation_id)`
 
 ### 4.6 F3
-- [ ] `MenuRepository` — `get_all(restaurant_id)`, `get_by_id(restaurant_id, menu_id)`, `get_active(restaurant_id)`, `deactivate_all(restaurant_id)`
-- [ ] `MenuCategoryRepository` — `get_all(menu_id)`, `get_by_id(menu_id, cat_id)`, `bulk_reorder(ordered_ids)`
-- [ ] `MenuItemRepository` — `get_all(category_id)`, `get_by_id(item_id)`, `validate_items_for_restaurant(item_ids, restaurant_id)`
-- [ ] `OrderRepository` — `create(order)`, `get_by_id(order_id)`, `list_for_restaurant(restaurant_id, filters, page, per_page)`, `list_for_user(user_id, page, per_page)`
-- [ ] `OrderItemRepository` — `bulk_insert(order_id, items)`
+- [x] `MenuRepository` — `get_all(restaurant_id)`, `get_by_id(restaurant_id, menu_id)`, `get_active(restaurant_id)`, `deactivate_all(restaurant_id)`
+- [x] `MenuCategoryRepository` — `get_all(menu_id)`, `get_by_id(menu_id, cat_id)`, `bulk_reorder(ordered_ids)`
+- [x] `MenuItemRepository` — `get_all(category_id)`, `get_by_id(item_id)`, `validate_items_for_restaurant(item_ids, restaurant_id)`
+- [x] `OrderRepository` — `create(order)`, `get_by_id(order_id)`, `list_for_restaurant(restaurant_id, filters, page, per_page)`, `list_for_user(user_id, page, per_page)`
+- [x] `OrderItemRepository` — `bulk_insert(order_id, items)`
 
 ### 4.7 F4
-- [ ] `PromotionRepository` — `get_active(restaurant_id)`, `get_all(restaurant_id)`, `get_global_feed()`, `get_by_id(restaurant_id, promo_id)`
-- [ ] `PromotionItemRepository` — `replace_items(promotion_id, menu_item_ids)`
+- [x] `PromotionRepository` — `get_active(restaurant_id)`, `get_all(restaurant_id)`, `get_global_feed()`, `get_by_id(restaurant_id, promo_id)`
+- [x] `PromotionItemRepository` — `replace_items(promotion_id, menu_item_ids)`
 
 ---
 
@@ -478,16 +478,16 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 - [ ] `GET /promotions/feed`
 
 ### 8.13 Perfil de Usuario
-- [ ] `GET /users/me`
-- [ ] `PUT /users/me`
-- [ ] `PUT /users/me/password`
-- [ ] `GET /users/me/reservations/`
-- [ ] `GET /users/me/orders/`
-- [ ] `GET /users/me/restaurants/`
+- [ ] `GET /users/{user_id}`
+- [ ] `PUT /users/{user_id}`
+- [ ] `PUT /users/{user_id}/password`
+- [ ] `GET /users/{user_id}/reservations/`
+- [ ] `GET /users/{user_id}/orders/`
+- [ ] `GET /users/{user_id}/restaurants/`
 
 ### 8.14 Preferencias de Notificación
-- [ ] `GET /users/me/notification-preferences/`
-- [ ] `PUT /users/me/notification-preferences/{restaurant_id}`
+- [ ] `GET /users/{user_id}/notification-preferences/`
+- [ ] `PUT /users/{user_id}/notification-preferences/{restaurant_id}`
 
 ### 8.15 Analytics — F5
 - [ ] `GET /restaurants/{id}/analytics/occupancy`

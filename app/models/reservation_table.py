@@ -1,7 +1,10 @@
-from sqlalchemy import ForeignKey, UniqueConstraint
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
+from app.utils.uuid7 import new_uuid7
 
 
 class ReservationTableModel(db.Model):
@@ -14,8 +17,10 @@ class ReservationTableModel(db.Model):
         ),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    reservation_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
+    reservation_id: Mapped[UUID] = mapped_column(
         ForeignKey("reservations.id"), nullable=False, index=True
     )
-    table_id: Mapped[int] = mapped_column(ForeignKey("tables.id"), nullable=False, index=True)
+    table_id: Mapped[UUID] = mapped_column(ForeignKey("tables.id"), nullable=False, index=True)

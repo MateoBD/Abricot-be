@@ -1,20 +1,26 @@
 from datetime import UTC, datetime
+from uuid import UUID
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String, Text, Time, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
 from app.models.enums import ReservationSource, ReservationStatus
+from app.utils.uuid7 import new_uuid7
 
 
 class ReservationModel(db.Model):
     __tablename__ = "reservations"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    restaurant_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
+    restaurant_id: Mapped[UUID] = mapped_column(
         ForeignKey("restaurants.id"), nullable=False, index=True
     )
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
     guest_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
     guest_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     guest_email: Mapped[str | None] = mapped_column(String(255), nullable=True)

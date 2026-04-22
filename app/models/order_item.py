@@ -1,17 +1,21 @@
 from decimal import Decimal
+from uuid import UUID
 
-from sqlalchemy import ForeignKey, Integer, Numeric, Text
+from sqlalchemy import ForeignKey, Integer, Numeric, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
+from app.utils.uuid7 import new_uuid7
 
 
 class OrderItemModel(db.Model):
     __tablename__ = "order_items"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
-    menu_item_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
+    order_id: Mapped[UUID] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
+    menu_item_id: Mapped[UUID] = mapped_column(
         ForeignKey("menu_items.id"), nullable=False, index=True
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)

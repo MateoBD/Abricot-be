@@ -1,10 +1,12 @@
+from uuid import UUID
+
 from app.extensions import db
 from app.models.restaurant_admin import RestaurantAdminModel
 
 
 class RestaurantAdminRepository:
     @staticmethod
-    def is_admin(user_id: int, restaurant_id: int) -> bool:
+    def is_admin(user_id: UUID, restaurant_id: UUID) -> bool:
         stmt = db.select(RestaurantAdminModel.id).where(
             RestaurantAdminModel.user_id == user_id,
             RestaurantAdminModel.restaurant_id == restaurant_id,
@@ -12,14 +14,14 @@ class RestaurantAdminRepository:
         return db.session.execute(stmt).scalar_one_or_none() is not None
 
     @staticmethod
-    def add(user_id: int, restaurant_id: int) -> RestaurantAdminModel:
+    def add(user_id: UUID, restaurant_id: UUID) -> RestaurantAdminModel:
         relation = RestaurantAdminModel(user_id=user_id, restaurant_id=restaurant_id)
         db.session.add(relation)
         db.session.commit()
         return relation
 
     @staticmethod
-    def add_if_missing(user_id: int, restaurant_id: int) -> RestaurantAdminModel:
+    def add_if_missing(user_id: UUID, restaurant_id: UUID) -> RestaurantAdminModel:
         existing = db.session.execute(
             db.select(RestaurantAdminModel).where(
                 RestaurantAdminModel.user_id == user_id,
@@ -31,21 +33,21 @@ class RestaurantAdminRepository:
         return RestaurantAdminRepository.add(user_id=user_id, restaurant_id=restaurant_id)
 
     @staticmethod
-    def get_restaurants_for_user(user_id: int) -> list[int]:
+    def get_restaurants_for_user(user_id: UUID) -> list[UUID]:
         stmt = db.select(RestaurantAdminModel.restaurant_id).where(
             RestaurantAdminModel.user_id == user_id
         )
         return [row[0] for row in db.session.execute(stmt).all()]
 
     @staticmethod
-    def get_admin_user_ids_for_restaurant(restaurant_id: int) -> list[int]:
+    def get_admin_user_ids_for_restaurant(restaurant_id: UUID) -> list[UUID]:
         stmt = db.select(RestaurantAdminModel.user_id).where(
             RestaurantAdminModel.restaurant_id == restaurant_id
         )
         return [row[0] for row in db.session.execute(stmt).all()]
 
     @staticmethod
-    def remove(user_id: int, restaurant_id: int) -> bool:
+    def remove(user_id: UUID, restaurant_id: UUID) -> bool:
         relation = db.session.execute(
             db.select(RestaurantAdminModel).where(
                 RestaurantAdminModel.user_id == user_id,

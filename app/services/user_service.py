@@ -1,4 +1,5 @@
 import logging
+from uuid import UUID
 
 from app.exceptions.errors import NotFoundError, UnauthorizedError, ValidationError
 from app.extensions import bcrypt
@@ -9,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 class UserService:
     @staticmethod
-    def get_profile(user_id: int) -> dict:
+    def get_profile(user_id: UUID) -> dict:
         user = UserRepository.get_by_id(user_id)
         if not user:
             raise NotFoundError(f"User with id={user_id} not found.")
         return user.to_dict()
 
     @staticmethod
-    def update_profile(user_id: int, name: str, surname: str) -> dict:
+    def update_profile(user_id: UUID, name: str, surname: str) -> dict:
         user = UserRepository.get_by_id(user_id)
         if not user:
             raise NotFoundError(f"User with id={user_id} not found.")
@@ -34,7 +35,7 @@ class UserService:
         return user.to_dict()
 
     @staticmethod
-    def change_password(user_id: int, current_password: str, new_password: str) -> None:
+    def change_password(user_id: UUID, current_password: str, new_password: str) -> None:
         user = UserRepository.get_by_id(user_id)
         if not user:
             raise NotFoundError(f"User with id={user_id} not found.")

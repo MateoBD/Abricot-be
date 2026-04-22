@@ -689,7 +689,7 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 | PATCH | `/reservations/{reservation_id}/cancel` | 🔑 | Cliente o admin cancela |
 | PATCH | `/reservations/{reservation_id}/complete` | 🔐 | Admin marca como completada |
 | PATCH | `/reservations/{reservation_id}/no-show` | 🔐 | Admin marca como no-show |
-| GET | `/users/me/reservations/` | 🔑 | Cliente lista sus propias reservas |
+| GET | `/users/{user_id}/reservations/` | 🔑 | Cliente lista sus propias reservas (`user_id` = JWT) |
 | GET | `/reservations/lookup` | 🔓 | Consultar reserva por código de confirmación (`?code=XXXX`) |
 
 ### 5.7 Menús — F3
@@ -734,7 +734,7 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 | GET | `/orders/{order_id}` | 🔑 | Ver pedido (cliente dueño o admin) |
 | PATCH | `/orders/{order_id}/status` | 🔐 | Admin actualiza el estado del pedido |
 | PATCH | `/orders/{order_id}/cancel` | 🔑 | Cliente cancela (solo si PENDING) |
-| GET | `/users/me/orders/` | 🔑 | Cliente lista sus propios pedidos |
+| GET | `/users/{user_id}/orders/` | 🔑 | Cliente lista sus propios pedidos (`user_id` = JWT) |
 
 ### 5.11 Promociones — F4
 
@@ -753,17 +753,17 @@ Endpoints de solo lectura para poblar dropdowns y filtros en el frontend. Todos 
 
 | Método | Path | Auth | Descripción |
 |---|---|---|---|
-| GET | `/users/me/notification-preferences/` | 🔑 | Listar preferencias del usuario |
-| PUT | `/users/me/notification-preferences/{restaurant_id}` | 🔑 | Actualizar preferencias para un restaurante |
+| GET | `/users/{user_id}/notification-preferences/` | 🔑 | Listar preferencias del usuario (`user_id` = JWT) |
+| PUT | `/users/{user_id}/notification-preferences/{restaurant_id}` | 🔑 | Actualizar preferencias para un restaurante (`user_id` = JWT) |
 
 ### 5.13 Perfil de Usuario
 
 | Método | Path | Auth | Descripción |
 |---|---|---|---|
-| GET | `/users/me` | 🔑 | Ver perfil propio |
-| PUT | `/users/me` | 🔑 | Actualizar perfil (name, surname) |
-| PUT | `/users/me/password` | 🔑 | Cambiar contraseña |
-| GET | `/users/me/restaurants/` | 🔑 | Listar todos los restaurantes que administra el usuario autenticado |
+| GET | `/users/{user_id}` | 🔑 | Ver perfil (`user_id` debe coincidir con JWT) |
+| PUT | `/users/{user_id}` | 🔑 | Actualizar perfil (name, surname) |
+| PUT | `/users/{user_id}/password` | 🔑 | Cambiar contraseña |
+| GET | `/users/{user_id}/restaurants/` | 🔑 | Listar restaurantes que administra el usuario (`user_id` = JWT) |
 
 ### 5.14 Analytics — F5
 
@@ -1008,7 +1008,7 @@ Servicio de solo lectura para poblar dropdowns. No tiene lógica de negocio.
 - `get_my_reservations(user_id, page, per_page) → dict`
 - `get_my_orders(user_id, page, per_page) → dict`
 - `get_my_restaurants(user_id) → list[dict]`
-  - Delega a `RestaurantAdminService.get_restaurants_for_admin(user_id)`. Expuesto en `GET /users/me/restaurants/`.
+  - Delega a `RestaurantAdminService.get_restaurants_for_admin(user_id)`. Expuesto en `GET /users/{user_id}/restaurants/`.
 
 ### 7.3 `RestaurantService` — actualizar con nuevos campos y búsqueda filtrada
 

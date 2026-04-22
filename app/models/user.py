@@ -1,16 +1,20 @@
 from datetime import UTC, datetime
+from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, String
+from sqlalchemy import DateTime, Enum, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
 from app.models.enums import UserRole
+from app.utils.uuid7 import new_uuid7
 
 
 class UserModel(db.Model):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -28,7 +32,7 @@ class UserModel(db.Model):
 
     def to_dict(self) -> dict:
         return {
-            "id": self.id,
+            "id": str(self.id),
             "email": self.email,
             "name": self.name,
             "surname": self.surname,
