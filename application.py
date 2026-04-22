@@ -1,6 +1,3 @@
-import os
-import time
-
 from dotenv import load_dotenv
 
 from app import create_app
@@ -15,7 +12,5 @@ application = create_app()
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    os.environ["TZ"] = "UTC"
-    time.tzset()
+    port = int(application.config.get("PORT", 5000))
     application.run(port=port)

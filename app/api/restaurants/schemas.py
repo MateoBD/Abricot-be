@@ -67,6 +67,20 @@ restaurant_response_model = Model(
             description="Dirección física.",
             example="Av. Corrientes 1234, CABA",
         ),
+        "cityId": fields.Integer(
+            description="ID de la ciudad.",
+            example=1,
+        ),
+        "neighbourhoodId": fields.Integer(
+            description="ID del barrio (opcional).",
+            example=2,
+            allow_null=True,
+        ),
+        "priceRangeId": fields.Integer(
+            description="ID del rango de precios (opcional).",
+            example=1,
+            allow_null=True,
+        ),
         "phone": fields.String(
             description="Teléfono de contacto.",
             example="+54 11 4444-5555",
@@ -74,18 +88,51 @@ restaurant_response_model = Model(
         "email": fields.String(
             description="Correo electrónico de contacto.",
             example="contacto@elgauchorojo.com",
+            allow_null=True,
         ),
         "description": fields.String(
             description="Descripción del restaurante.",
             example="Parrilla tradicional argentina en el corazón de Buenos Aires.",
+            allow_null=True,
         ),
         "photoUrl": fields.String(
             description="URL de la foto del restaurante.",
             example="https://bucket.s3.us-east-1.amazonaws.com/restaurants/1/abc123.jpg",
+            allow_null=True,
+        ),
+        "allowTableJoining": fields.Boolean(
+            description="Permite unir mesas para grupos grandes.",
+            example=False,
+        ),
+        "defaultSlotDurationMinutes": fields.Integer(
+            description="Duración por defecto de un turno de reserva (minutos).",
+            example=90,
         ),
         "createdAt": fields.String(
             description="Fecha de creación en formato ISO 8601 UTC.",
             example="2026-04-07T19:00:00+00:00",
+        ),
+    },
+)
+
+paginated_restaurant_response_model = Model(
+    "PaginatedRestaurantListResponse",
+    {
+        "data": fields.List(
+            fields.Nested(restaurant_response_model),
+            description="Restaurantes en la página actual.",
+        ),
+        "total": fields.Integer(
+            description="Cantidad total de ítems devueltos.",
+            example=2,
+        ),
+        "page": fields.Integer(
+            description="Página actual (1-based).",
+            example=1,
+        ),
+        "perPage": fields.Integer(
+            description="Tamaño de página (ítems en esta respuesta cuando no hay paginación).",
+            example=2,
         ),
     },
 )
@@ -120,6 +167,19 @@ restaurant_admin_response_model = Model(
             description="Fecha de creación en formato ISO 8601 UTC.",
             example="2026-04-07T19:00:00+00:00",
         ),
+    },
+)
+
+paginated_restaurant_admin_response_model = Model(
+    "PaginatedRestaurantAdminListResponse",
+    {
+        "data": fields.List(
+            fields.Nested(restaurant_admin_response_model),
+            description="Administradores del restaurante en la página actual.",
+        ),
+        "total": fields.Integer(example=1),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=1),
     },
 )
 

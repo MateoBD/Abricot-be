@@ -18,7 +18,10 @@ def init_extensions(app: Flask) -> None:
     bcrypt.init_app(app)
     migrate.init_app(app, db)
 
-    allowed_origins = app.config.get("ALLOWED_ORIGINS", ["*"])
+    allowed_origins = app.config.get("ALLOWED_ORIGINS", [])
+    if not allowed_origins and not app.config.get("TESTING", False):
+        raise RuntimeError("ALLOWED_ORIGINS must define at least one origin.")
+
     cors.init_app(
         app,
         origins=allowed_origins,

@@ -4,14 +4,22 @@ from app.exceptions.errors import NotFoundError, ValidationError
 from app.integrations.s3 import S3Client
 from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.restaurant_repository import RestaurantRepository
+from app.utils.list_envelope import list_envelope
 
 logger = logging.getLogger(__name__)
 
 
 class RestaurantService:
+    _ALLOWED_PHOTO_MIME_TYPES = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+
     @staticmethod
-    def get_all() -> list[dict]:
-        return [r.to_dict() for r in RestaurantRepository.get_all()]
+    def get_all() -> dict:
+        rows = [r.to_dict() for r in RestaurantRepository.get_all()]
+        return list_envelope(rows)
 
     @staticmethod
     def get_by_id(restaurant_id: int) -> dict:
@@ -94,6 +102,20 @@ class RestaurantService:
 
     @staticmethod
     def upload_photo(restaurant_id: int, file_storage) -> dict:
+        if not file_storage:
+            raise ValidationError("No file provided.", {"file": "Missing file"})
+
+        mime_type = (getattr(file_storage, "mimetype", None) or "").lower()
+        if mime_type not in RestaurantService._ALLOWED_PHOTO_MIME_TYPES:
+            raise ValidationError(
+                "Invalid file format.",
+                {
+                    "file": (
+                        "Allowed MIME types are image/jpeg, image/png, image/webp."
+                    )
+                },
+            )
+
         restaurant = RestaurantRepository.get_by_id(restaurant_id)
         if not restaurant:
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")

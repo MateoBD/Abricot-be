@@ -38,3 +38,7 @@ sam-recipients-events/
 *.crt
 *.pem
 *.env
+
+/.cursor/
+
+/.localmcp/

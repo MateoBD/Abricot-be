@@ -1,10 +1,7 @@
-import os
 import uuid
 
 import boto3
-
-_USE_LOCALSTACK = os.getenv("USE_LOCALSTACK", "false").lower() == "true"
-_LOCALSTACK_ENDPOINT = os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
+from flask import current_app
 
 
 class S3Client:
@@ -20,24 +17,33 @@ class S3Client:
     @property
     def _client(self):
         if self._boto_client is None:
-            kwargs: dict = {"region_name": os.getenv("AWS_REGION")}
-            if _USE_LOCALSTACK:
-                kwargs["endpoint_url"] = _LOCALSTACK_ENDPOINT
-                kwargs["aws_access_key_id"] = os.getenv("AWS_ACCESS_KEY_ID", "test")
-                kwargs["aws_secret_access_key"] = os.getenv(  # noqa: S105
+            kwargs: dict = {"region_name": current_app.config.get("AWS_REGION")}
+            use_localstack = bool(current_app.config.get("USE_LOCALSTACK", False))
+            if use_localstack:
+                kwargs["endpoint_url"] = current_app.config.get(
+                    "LOCALSTACK_ENDPOINT", "http://localhost:4566"
+                )
+                kwargs["aws_access_key_id"] = current_app.config.get(
+                    "AWS_ACCESS_KEY_ID", "test"
+                )
+                kwargs["aws_secret_access_key"] = current_app.config.get(  # noqa: S105
                     "AWS_SECRET_ACCESS_KEY", "test"
                 )
             self._boto_client = boto3.client("s3", **kwargs)
         return self._boto_client
 
     def upload_restaurant_photo(self, file_storage, restaurant_id: int) -> str:
-        bucket = os.getenv("AWS_S3_BUCKET")
-        region = os.getenv("AWS_REGION")
+        bucket = current_app.config.get("AWS_S3_BUCKET")
+        region = current_app.config.get("AWS_REGION")
+        use_localstack = bool(current_app.config.get("USE_LOCALSTACK", False))
+        localstack_endpoint = current_app.config.get(
+            "LOCALSTACK_ENDPOINT", "http://localhost:4566"
+        )
 
         if not bucket:
-            raise ValueError("AWS_S3_BUCKET environment variable is not set.")
+            raise ValueError("AWS_S3_BUCKET is not configured.")
         if not region:
-            raise ValueError("AWS_REGION environment variable is not set.")
+            raise ValueError("AWS_REGION is not configured.")
 
         ext = _get_extension(file_storage.filename)
         key = f"restaurants/{restaurant_id}/{uuid.uuid4().hex}{ext}"
@@ -49,8 +55,8 @@ class S3Client:
             ExtraArgs={"ContentType": file_storage.content_type},
         )
 
-        if _USE_LOCALSTACK:
-            return f"{_LOCALSTACK_ENDPOINT}/{bucket}/{key}"
+        if use_localstack:
+            return f"{localstack_endpoint}/{bucket}/{key}"
         return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
 
 

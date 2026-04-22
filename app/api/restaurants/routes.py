@@ -3,6 +3,8 @@ from flask_restx import Namespace, Resource, reqparse
 from werkzeug.datastructures import FileStorage
 
 from app.api.restaurants.schemas import (
+    paginated_restaurant_admin_response_model,
+    paginated_restaurant_response_model,
     general_metrics_response_model,
     orders_report_response_model,
     restaurant_admin_add_model,
@@ -11,7 +13,6 @@ from app.api.restaurants.schemas import (
     restaurant_response_model,
     restaurant_update_model,
 )
-from app.exceptions.errors import ValidationError
 from app.middleware.auth import (
     get_current_user_id,
     require_authentication,
@@ -33,6 +34,8 @@ namespace = Namespace(
 for _model in (
     restaurant_create_model,
     restaurant_update_model,
+    paginated_restaurant_response_model,
+    paginated_restaurant_admin_response_model,
     restaurant_response_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
@@ -71,7 +74,7 @@ _analytics_date_range_parser.add_argument(
 class RestaurantList(Resource):
     """Endpoints for listing and creating restaurants."""
 
-    @namespace.response(200, "Restaurants retrieved successfully.", [restaurant_response_model])
+    @namespace.response(200, "Restaurants retrieved successfully.", paginated_restaurant_response_model)
     def get(self):
         """List all restaurants ordered alphabetically by name."""
         return RestaurantService.get_all(), 200
@@ -143,15 +146,13 @@ class RestaurantPhoto(Resource):
         """Upload a photo for a restaurant via multipart/form-data."""
         args = _photo_parser.parse_args()
         file = args["file"]
-        if not file:
-            raise ValidationError("No file provided.")
         return RestaurantService.upload_photo(restaurant_id, file), 200
 
 
 @namespace.route("/<int:restaurant_id>/admins")
 @namespace.doc(params={"restaurant_id": "The restaurant's ID."})
 class RestaurantAdmins(Resource):
-    @namespace.response(200, "Restaurant admins retrieved successfully.", [restaurant_admin_response_model])
+    @namespace.response(200, "Restaurant admins retrieved successfully.", paginated_restaurant_admin_response_model)
     @namespace.response(404, "Restaurant not found.")
     @require_restaurant_admin("restaurant_id")
     def get(self, restaurant_id: int):

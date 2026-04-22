@@ -5,13 +5,14 @@ from app.models.enums import UserRole
 from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.restaurant_repository import RestaurantRepository
 from app.repositories.user_repository import UserRepository
+from app.utils.list_envelope import list_envelope
 
 logger = logging.getLogger(__name__)
 
 
 class RestaurantAdminService:
     @staticmethod
-    def list_admins(restaurant_id: int) -> list[dict]:
+    def list_admins(restaurant_id: int) -> dict:
         restaurant = RestaurantRepository.get_by_id(restaurant_id)
         if not restaurant:
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
@@ -23,7 +24,7 @@ class RestaurantAdminService:
             if user:
                 admins.append(user.to_dict())
 
-        return admins
+        return list_envelope(admins)
 
     @staticmethod
     def add_admin(restaurant_id: int, user_id: int) -> dict:
