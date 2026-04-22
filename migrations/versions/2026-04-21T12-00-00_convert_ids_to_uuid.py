@@ -108,6 +108,13 @@ def upgrade() -> None:
                 continue
             int_cols.append((tname, cname, col["nullable"]))
 
+    # SERIAL / identity defaults (nextval) cannot be cast to uuid; drop before ALTER TYPE.
+    preparer = conn.dialect.identifier_preparer
+    for tname, cname, _nullable in int_cols:
+        qt = preparer.quote(tname)
+        qc = preparer.quote(cname)
+        op.execute(text(f"ALTER TABLE {qt} ALTER COLUMN {qc} DROP DEFAULT"))
+
     for tname, cname, nullable in int_cols:
         op.alter_column(
             tname,
@@ -115,7 +122,7 @@ def upgrade() -> None:
             existing_type=sa.Integer(),
             type_=UUID_TYPE,
             existing_nullable=nullable,
-            postgresql_using=sa.text("gen_random_uuid()"),
+            postgresql_using="gen_random_uuid()",
         )
 
     for tname, pk_name in pk_specs:
