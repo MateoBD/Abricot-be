@@ -1,6 +1,9 @@
 from flask_restx import Model, fields
 
 # Regex patterns — defined once, shared across create and update models
+_UUID_STRING_PATTERN = (
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 _EMAIL_PATTERN = r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
 # Phone: optional leading +, then digits, spaces, parentheses, hyphens and dots
 _PHONE_PATTERN = r"^\+?[\d\s\(\)\-\.]{7,30}$"
@@ -40,6 +43,29 @@ _RESTAURANT_WRITABLE_FIELDS = {
         example="Parrilla tradicional argentina en el corazón de Buenos Aires.",
         max_length=2000,
     ),
+    "cityId": fields.String(
+        required=True,
+        description="ID de ciudad (UUID).",
+        pattern=_UUID_STRING_PATTERN,
+        example="018f1234-5678-7abc-8def-123456789abc",
+    ),
+    "neighbourhoodId": fields.String(
+        required=False,
+        description="ID de barrio (UUID, opcional).",
+        pattern=_UUID_STRING_PATTERN,
+        allow_null=True,
+    ),
+    "priceRangeId": fields.String(
+        required=False,
+        description="ID de rango de precios (UUID, opcional).",
+        pattern=_UUID_STRING_PATTERN,
+        allow_null=True,
+    ),
+    "cuisineTypeIds": fields.List(
+        fields.String(pattern=_UUID_STRING_PATTERN),
+        required=False,
+        description="IDs de tipos de cocina (UUID).",
+    ),
 }
 
 restaurant_create_model = Model(
@@ -55,9 +81,10 @@ restaurant_update_model = Model(
 restaurant_response_model = Model(
     "RestaurantResponse",
     {
-        "id": fields.Integer(
-            description="ID del restaurante.",
-            example=1,
+        "id": fields.String(
+            description="ID del restaurante (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
         ),
         "name": fields.String(
             description="Nombre del restaurante.",
@@ -67,19 +94,22 @@ restaurant_response_model = Model(
             description="Dirección física.",
             example="Av. Corrientes 1234, CABA",
         ),
-        "cityId": fields.Integer(
-            description="ID de la ciudad.",
-            example=1,
+        "cityId": fields.String(
+            description="ID de la ciudad (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
         ),
-        "neighbourhoodId": fields.Integer(
+        "neighbourhoodId": fields.String(
             description="ID del barrio (opcional).",
-            example=2,
+            example="018f1234-5678-7abc-8def-123456789abd",
             allow_null=True,
+            pattern=_UUID_STRING_PATTERN,
         ),
-        "priceRangeId": fields.Integer(
+        "priceRangeId": fields.String(
             description="ID del rango de precios (opcional).",
-            example=1,
+            example="018f1234-5678-7abc-8def-123456789abe",
             allow_null=True,
+            pattern=_UUID_STRING_PATTERN,
         ),
         "phone": fields.String(
             description="Teléfono de contacto.",
@@ -107,6 +137,10 @@ restaurant_response_model = Model(
         "defaultSlotDurationMinutes": fields.Integer(
             description="Duración por defecto de un turno de reserva (minutos).",
             example=90,
+        ),
+        "cuisineTypeIds": fields.List(
+            fields.String(pattern=_UUID_STRING_PATTERN),
+            description="Tipos de cocina asociados al restaurante.",
         ),
         "createdAt": fields.String(
             description="Fecha de creación en formato ISO 8601 UTC.",
@@ -140,11 +174,11 @@ paginated_restaurant_response_model = Model(
 restaurant_admin_add_model = Model(
     "RestaurantAdminAddRequest",
     {
-        "userId": fields.Integer(
+        "userId": fields.String(
             required=True,
-            description="ID del usuario a asignar como administrador.",
-            example=42,
-            min=1,
+            description="ID del usuario a asignar como administrador (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
         )
     },
 )
@@ -152,7 +186,11 @@ restaurant_admin_add_model = Model(
 restaurant_admin_response_model = Model(
     "RestaurantAdminResponse",
     {
-        "id": fields.Integer(description="ID del usuario.", example=42),
+        "id": fields.String(
+            description="ID del usuario (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
         "email": fields.String(
             description="Correo electrónico del usuario.",
             example="admin@ejemplo.com",
@@ -233,9 +271,10 @@ revenue_by_day_item_model = Model(
 orders_report_response_model = Model(
     "OrdersReportResponse",
     {
-        "restaurantId": fields.Integer(
-            description="ID del restaurante.",
-            example=1,
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
         ),
         "period": fields.Nested(
             analytics_period_model,
@@ -325,9 +364,10 @@ reservations_metrics_model = Model(
 general_metrics_response_model = Model(
     "GeneralMetricsResponse",
     {
-        "restaurantId": fields.Integer(
-            description="ID del restaurante.",
-            example=1,
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
         ),
         "period": fields.Nested(
             analytics_period_model,

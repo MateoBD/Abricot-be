@@ -14,3 +14,4 @@ pytest==9.0.1
 cryptography==46.0.3
 ruff==0.14.7
 boto3==1.38.0
+uuid6>=2024.1.12

@@ -1,7 +1,10 @@
-from sqlalchemy import ForeignKey, UniqueConstraint
+from uuid import UUID
+
+from sqlalchemy import ForeignKey, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
+from app.utils.uuid7 import new_uuid7
 
 
 class PromotionItemModel(db.Model):
@@ -14,10 +17,12 @@ class PromotionItemModel(db.Model):
         ),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    promotion_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
+    promotion_id: Mapped[UUID] = mapped_column(
         ForeignKey("promotions.id"), nullable=False, index=True
     )
-    menu_item_id: Mapped[int] = mapped_column(
+    menu_item_id: Mapped[UUID] = mapped_column(
         ForeignKey("menu_items.id"), nullable=False, index=True
     )

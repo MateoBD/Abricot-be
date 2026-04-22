@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from app.extensions import db
 from app.models.enums import UserRole
 from app.models.user import UserModel
@@ -31,11 +33,11 @@ class UserRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    def get_by_id(user_id: int) -> UserModel | None:
+    def get_by_id(user_id: UUID) -> UserModel | None:
         return db.session.get(UserModel, user_id)
 
     @staticmethod
-    def update_role(user_id: int, role: UserRole) -> UserModel | None:
+    def update_role(user_id: UUID, role: UserRole) -> UserModel | None:
         user = UserRepository.get_by_id(user_id)
         if not user:
             return None

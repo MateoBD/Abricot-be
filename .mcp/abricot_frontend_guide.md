@@ -128,7 +128,9 @@ Los endpoints de listado que devuelven muchos resultados usan este envelope de p
 
 **Query params de paginación (todos opcionales):**
 - `page` — número de página, base 1 (default: `1`)
-- `per_page` — resultados por página (default: `20`, máximo: `100`)
+- `perPage` — resultados por página (default: `20`, máximo: `100` en endpoints que lo aplican; ver cada sección)
+
+> En el backend actual, el listado de restaurantes (`GET /restaurants/`) usa explícitamente **`perPage`** (camelCase), no `per_page`.
 
 ---
 
@@ -140,6 +142,18 @@ Los endpoints de listado que devuelven muchos resultados usan este envelope de p
 - **Horas** usan formato `HH:MM`: `"20:30"`.
 - **Precios** son strings decimales con 2 cifras: `"1250.00"`. No son números flotantes para evitar pérdida de precisión.
 - **IDs** son strings en formato **UUID v7** (ej: `"01960e4e-5c5e-7abc-8def-000000000001"`). Nunca enteros. Almacenar y comparar siempre como strings.
+
+---
+
+### 1.7 Autenticación en rutas de restaurantes
+
+En la implementación actual, el blueprint **Restaurants** declara `require_authentication()` a nivel de namespace. Eso implica:
+
+- **`GET /restaurants/`** (búsqueda/listado) y **`GET /restaurants/{restaurantId}`** (detalle) **requieren** `Authorization: Bearer <accessToken>` para cualquier rol autenticado.
+- **`POST /restaurants/`** exige además rol **`RESTAURANT_ADMIN`** o **`SUPER_ADMIN`**.
+- Operaciones de administración sobre un restaurante (PUT, DELETE, foto, admins, analytics) exigen ser **admin de ese restaurante** (o `SUPER_ADMIN`), según el endpoint.
+
+Si el frontend necesita listados o fichas **públicas sin login**, habrá que acordar un cambio de permisos en backend; hasta entonces, el flujo “visitante” debe obtener un token (p. ej. usuario de solo lectura) o estas pantallas solo estarán disponibles tras login.
 
 ---
 
@@ -261,7 +275,9 @@ Obtiene un nuevo `accessToken` usando el `refreshToken`. El `refreshToken` no ca
 
 ## 3. Datos de Referencia (Lookup)
 
-Estos endpoints devuelven listas estáticas para poblar dropdowns y filtros. Todos son públicos y raramente cambian.
+Estos endpoints devuelven listas estáticas para poblar dropdowns y filtros. En la **propuesta de producto** suelen ser públicos y raramente cambian.
+
+> **Backend actual:** las rutas HTTP descritas en esta sección (`GET /cuisines/`, `GET /price-ranges/`, jerarquía país → provincia → ciudad → barrio) **pueden no estar registradas aún** en el servidor. El repositorio de datos (`LookupRepository`) existe en capa de dominio; cuando los endpoints estén disponibles, el contrato debe coincidir con lo documentado aquí. Hasta entonces, el frontend puede usar datos embebidos, fixtures o pantallas que no dependan de lookup en vivo.
 
 ---
 
@@ -374,25 +390,51 @@ Estos endpoints devuelven listas estáticas para poblar dropdowns y filtros. Tod
 
 ## 4. Restaurantes
 
+Contrato alineado con `app/api/restaurants/` (Flask-RESTX). Path param: **`restaurantId`** es un **UUID** (el router usa `<uuid:restaurant_id>`).
+
+### Forma de `RestaurantResponse` (listado y detalle)
+
+El backend devuelve un objeto **plano** (sin anidar `city`, `province`, `priceRange` ni objetos `cuisineTypes`). Para mostrar nombres legibles, combiná estos UUID con los datos de lookup (§3) cuando estén disponibles.
+
+Campos típicos:
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | string (UUID) | |
+| `name`, `address`, `phone` | string | |
+| `cityId` | string (UUID) | Obligatorio en entidad |
+| `neighbourhoodId` | string (UUID) \| null | |
+| `priceRangeId` | string (UUID) \| null | |
+| `email`, `description`, `photoUrl` | string \| null | |
+| `allowTableJoining` | bool | Configuración del local |
+| `defaultSlotDurationMinutes` | int | P. ej. `90` |
+| `cuisineTypeIds` | string[] (UUID[]) | Tipos de cocina asociados (tabla `restaurant_cuisines`) |
+| `createdAt` | string (ISO 8601) | |
+
+---
+
 ### `GET /restaurants/`
 
-Busca y lista restaurantes con filtros opcionales. Siempre paginado.
+Búsqueda y listado paginado con filtros opcionales.
 
-**Auth:** Ninguna (🔓)
+**Auth:** Access token (🔑) — **cualquier usuario autenticado** (el namespace exige JWT).
 
-**Query params (todos opcionales):**
+**Query params (todos opcionales, nombres en camelCase):**
 
 | Parámetro | Tipo | Descripción |
 |---|---|---|
-| `name` | string | Búsqueda parcial por nombre (case-insensitive). Ej: `?name=gaucho` devuelve "El Gaucho Rojo", "El Gaucho del Sur", etc. |
-| `country_id` | string (uuid) | Filtra por ID de país |
-| `province_id` | string (uuid) | Filtra por ID de provincia |
-| `city_id` | string (uuid) | Filtra por ID de ciudad |
-| `neighbourhood_id` | string (uuid) | Filtra por ID de barrio |
-| `price_range_id` | string (uuid) | Filtra por ID de rango de precio |
-| `cuisine_type_id` | string (uuid, repetible) | Filtra por tipo de cocina. Repetir para OR: `?cuisine_type_id=<uuid1>&cuisine_type_id=<uuid2>` devuelve restaurantes que tengan CUALQUIERA de los dos tipos. |
-| `page` | int | Página (default: 1) |
-| `per_page` | int | Por página (default: 20, máx: 100) |
+| `name` | string | Búsqueda parcial por nombre (**case-insensitive** / `ILIKE`). |
+| `countryId` | string (UUID) | Restaurantes cuya ciudad pertenece a un país (vía provincia). |
+| `provinceId` | string (UUID) | Ciudad cuya provincia coincide. |
+| `cityId` | string (UUID) | Coincide con `cityId` del restaurante. |
+| `neighbourhoodId` | string (UUID) | Coincide con `neighbourhoodId` del restaurante. |
+| `priceRangeId` | string (UUID) | Coincide con `priceRangeId` del restaurante. |
+| `cuisineTypeIds` | string (UUID), **repetible** | Restaurantes que tengan **al menos uno** de los tipos listados en `restaurant_cuisines`. Podés repetir el query param (`?cuisineTypeIds=a&cuisineTypeIds=b`) o enviar varios UUID separados por coma en un solo valor. |
+| `page` | int | Default: `1`. |
+| `perPage` | int | Default: `20`, máximo `100`. |
+
+**Ejemplo:**  
+`GET /restaurants/?name=gaucho&cityId=018f1234-5678-7abc-8def-123456789041&cuisineTypeIds=018f…001&cuisineTypeIds=018f…002&page=1&perPage=20`
 
 **Response `200`:**
 ```json
@@ -402,27 +444,19 @@ Busca y lista restaurantes con filtros opcionales. Siempre paginado.
       "id": "01960e4e-5c5e-7abc-8def-000000000061",
       "name": "El Gaucho Rojo",
       "address": "Av. Corrientes 1234",
+      "cityId": "01960e4e-5c5e-7abc-8def-000000000041",
+      "neighbourhoodId": "01960e4e-5c5e-7abc-8def-000000000051",
+      "priceRangeId": "01960e4e-5c5e-7abc-8def-000000000012",
       "phone": "+54 11 4444-5555",
       "email": "contacto@elgauchorojo.com",
       "description": "Parrilla tradicional argentina.",
       "photoUrl": "https://bucket.s3.amazonaws.com/restaurants/01960e4e-5c5e-7abc-8def-000000000061/foto.jpg",
       "allowTableJoining": true,
       "defaultSlotDurationMinutes": 90,
-      "createdAt": "2026-04-07T19:00:00+00:00",
-      "city": {
-        "id": "01960e4e-5c5e-7abc-8def-000000000041",
-        "name": "Buenos Aires",
-        "province": {
-          "id": "01960e4e-5c5e-7abc-8def-000000000032",
-          "name": "CABA",
-          "country": { "id": "01960e4e-5c5e-7abc-8def-000000000021", "name": "Argentina", "isoCode": "AR" }
-        }
-      },
-      "neighbourhood": { "id": "01960e4e-5c5e-7abc-8def-000000000051", "name": "Palermo" },
-      "priceRange": { "id": "01960e4e-5c5e-7abc-8def-000000000012", "slug": "MODERADO", "label": "$$", "description": "$5.000 – $15.000 por persona", "sortOrder": 2 },
-      "cuisineTypes": [
-        { "id": "01960e4e-5c5e-7abc-8def-000000000001", "slug": "ARGENTINA", "label": "Parrilla y Criolla" }
-      ]
+      "cuisineTypeIds": [
+        "01960e4e-5c5e-7abc-8def-000000000001"
+      ],
+      "createdAt": "2026-04-07T19:00:00+00:00"
     }
   ],
   "total": 45,
@@ -431,28 +465,31 @@ Busca y lista restaurantes con filtros opcionales. Siempre paginado.
 }
 ```
 
+**Errores:** `401` si falta o vence el token.
+
 ---
 
 ### `POST /restaurants/`
 
-Crea un nuevo restaurante. El usuario autenticado queda automáticamente como admin del restaurante. Si el usuario era `CUSTOMER`, su rol se eleva a `RESTAURANT_ADMIN`.
+Crea un restaurante. El usuario creador queda asociado como administrador del restaurante; el rol del usuario puede actualizarse según la lógica del backend.
 
-**Auth:** Access token requerido (🔑)
+**Auth:** Access token (🔑) + rol **`RESTAURANT_ADMIN`** o **`SUPER_ADMIN`**.
 
-**Request body:**
+**Request body (JSON, camelCase):**
 ```json
 {
   "name": "El Gaucho Rojo",
   "address": "Av. Corrientes 1234, CABA",
-  "cityId": 1,
-  "neighbourhoodId": 1,
-  "priceRangeId": 2,
-  "cuisineTypeIds": [1],
+  "cityId": "01960e4e-5c5e-7abc-8def-000000000041",
+  "neighbourhoodId": "01960e4e-5c5e-7abc-8def-000000000051",
+  "priceRangeId": "01960e4e-5c5e-7abc-8def-000000000012",
+  "cuisineTypeIds": [
+    "01960e4e-5c5e-7abc-8def-000000000001",
+    "01960e4e-5c5e-7abc-8def-000000000002"
+  ],
   "phone": "+54 11 4444-5555",
   "email": "contacto@elgauchorojo.com",
-  "description": "Parrilla tradicional argentina en el corazón de Buenos Aires.",
-  "allowTableJoining": true,
-  "defaultSlotDurationMinutes": 90
+  "description": "Parrilla tradicional argentina en el corazón de Buenos Aires."
 }
 ```
 
@@ -460,67 +497,71 @@ Crea un nuevo restaurante. El usuario autenticado queda automáticamente como ad
 |---|---|---|---|
 | `name` | string | ✅ | Mín 1, máx 150 caracteres |
 | `address` | string | ✅ | Mín 1, máx 255 caracteres |
-| `cityId` | string (uuid) | ✅ | Debe existir en la BD |
-| `neighbourhoodId` | string (uuid) | ❌ | Si se envía, debe existir y pertenecer a `cityId` |
-| `priceRangeId` | string (uuid) | ❌ | Debe existir en `price_ranges` |
-| `cuisineTypeIds` | string[] (uuid[]) | ❌ | Cada ID debe existir en `cuisine_types`. Array vacío es válido. |
-| `phone` | string | ✅ | Formato internacional. Mín 7 caracteres. Puede incluir `+`, espacios, `()`, `-`. |
-| `email` | string | ❌ | Formato email válido. Máx 255 caracteres. |
+| `cityId` | string (UUID) | ✅ | UUID válido; debe existir fila en `cities` |
+| `neighbourhoodId` | string (UUID) | ❌ | Si se envía, debe existir y corresponder a la ciudad (regla de negocio / FK) |
+| `priceRangeId` | string (UUID) | ❌ | Debe existir en `price_ranges` |
+| `cuisineTypeIds` | string[] (UUID) | ❌ | Cada ID en `cuisine_types`. Omitir o `[]` = sin tipos asociados |
+| `phone` | string | ✅ | Patrón teléfono internacional (ver OpenAPI) |
+| `email` | string | ❌ | Email válido, máx 255 |
 | `description` | string | ❌ | Máx 2000 caracteres |
-| `allowTableJoining` | bool | ❌ | Default: `false` |
-| `defaultSlotDurationMinutes` | int | ❌ | Default: `90`. Minutos por turno de reserva. |
 
-**Response `201`:** El objeto `RestaurantResponse` completo (ver formato en `GET /restaurants/`).
+> **`allowTableJoining`** y **`defaultSlotDurationMinutes`** no se envían en create/update actuales: se definen a nivel de modelo/BD (defaults). Si en el futuro se exponen en API, se documentarán aquí.
+
+**Response `201`:** Objeto `RestaurantResponse` (misma forma que un ítem de `data` en el GET list).
 
 **Errores:**
 | Status | `code` | Cuándo |
 |---|---|---|
-| `400` | `VALIDATION_ERROR` | Campo inválido |
-| `401` | `UNAUTHORIZED` | Token ausente o expirado |
-| `404` | `NOT_FOUND` | `cityId`, `neighbourhoodId` o un `cuisineTypeId` no existe |
+| `400` | `VALIDATION_ERROR` | Payload inválido (Flask-RESTX / servicio) |
+| `401` | `UNAUTHORIZED` | Sin token o token inválido |
+| `403` | `FORBIDDEN` | Rol distinto de `RESTAURANT_ADMIN` / `SUPER_ADMIN` |
 
 ---
 
 ### `GET /restaurants/{restaurantId}`
 
-Obtiene un restaurante por su ID.
+Detalle de un restaurante.
 
-**Auth:** Ninguna (🔓)
+**Auth:** Access token (🔑) — cualquier usuario autenticado.
 
-**Response `200`:** Objeto `RestaurantResponse` completo (igual al elemento dentro de `data` del listado).
+**Response `200`:** Un solo objeto `RestaurantResponse` (mismos campos que en el listado, incluido `cuisineTypeIds`).
 
 **Errores:**
 | Status | `code` | Cuándo |
 |---|---|---|
+| `401` | `UNAUTHORIZED` | Sin token |
 | `404` | `NOT_FOUND` | El restaurante no existe |
 
 ---
 
 ### `PUT /restaurants/{restaurantId}`
 
-Reemplaza todos los campos editables del restaurante. El cuerpo debe incluir todos los campos, incluso los que no cambian (es un PUT completo, no PATCH).
+Reemplaza los campos del cuerpo según el schema de actualización. Comportamiento de opcionales:
 
-**Auth:** Access token + ser admin del restaurante (🔐)
+- **`neighbourhoodId` / `priceRangeId`:** si la clave **no** está en el JSON, el backend **no** modifica el valor actual (`FIELD_UNSET`). Si la clave **está** (incluso con `null`), se aplica limpieza o nuevo UUID según validación.
+- **`cuisineTypeIds`:** si la clave **no** está, no se tocan las filas de `restaurant_cuisines`. Si está presente (puede ser `[]`), se **reemplaza** el conjunto de tipos de cocina.
 
-**Request body:** Idéntico al de `POST /restaurants/`.
+**Auth:** Access token + **admin del restaurante** (o `SUPER_ADMIN`) 🔐
 
-**Response `200`:** Objeto `RestaurantResponse` actualizado.
+**Request body:** Mismos campos que `POST` (todos los requeridos por el schema de update: `name`, `address`, `phone`, `cityId`, etc.).
+
+**Response `200`:** `RestaurantResponse` actualizado.
 
 **Errores:**
 | Status | `code` | Cuándo |
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | Campo inválido |
 | `401` | `UNAUTHORIZED` | Sin token |
-| `403` | `FORBIDDEN` | Autenticado pero no es admin de este restaurante |
-| `404` | `NOT_FOUND` | El restaurante, city, neighbourhood o cuisineType no existe |
+| `403` | `FORBIDDEN` | No es admin del restaurante |
+| `404` | `NOT_FOUND` | Restaurante inexistente |
 
 ---
 
 ### `DELETE /restaurants/{restaurantId}`
 
-Elimina el restaurante permanentemente.
+Elimina el restaurante.
 
-**Auth:** Access token + ser admin del restaurante (🔐)
+**Auth:** Access token + admin del restaurante (🔐)
 
 **Response `204`:** Sin cuerpo.
 
@@ -535,37 +576,53 @@ Elimina el restaurante permanentemente.
 
 ### `POST /restaurants/{restaurantId}/photo`
 
-Sube o reemplaza la foto del restaurante. Almacenada en S3.
+Sube o reemplaza la foto del restaurante (S3).
 
-**Auth:** Access token + ser admin del restaurante (🔐)
+**Auth:** Access token + admin del restaurante (🔐)
 
-**Request:** `multipart/form-data` con el campo `photo` conteniendo el archivo de imagen.
+**Request:** `multipart/form-data` con el campo **`file`** (no `photo`) conteniendo la imagen.
 
 ```
 Content-Type: multipart/form-data
-photo: <archivo binario>
+file: <archivo binario>
 ```
 
-Formatos aceptados: `image/jpeg`, `image/png`, `image/webp`. Tamaño máximo: 5 MB.
+Formatos aceptados: `image/jpeg`, `image/png`, `image/webp`.
 
-**Response `200`:**
-```json
-{
-  "photoUrl": "https://bucket.s3.amazonaws.com/restaurants/01960e4e-5c5e-7abc-8def-000000000061/abc123.jpg"
-}
-```
+**Response `200`:** Objeto **`RestaurantResponse` completo** (incluye `photoUrl` actualizado), no solo la URL.
 
 **Errores:**
 | Status | `code` | Cuándo |
 |---|---|---|
-| `400` | `VALIDATION_ERROR` | Formato de archivo inválido o archivo demasiado grande |
+| `400` | `VALIDATION_ERROR` | Sin archivo o MIME no permitido |
 | `401` | `UNAUTHORIZED` | Sin token |
 | `403` | `FORBIDDEN` | No es admin |
 | `404` | `NOT_FOUND` | El restaurante no existe |
 
 ---
 
+### Administradores del restaurante (implementado)
+
+**Auth:** JWT + ser admin del restaurante (o `SUPER_ADMIN`), salvo anotación contraria.
+
+#### `GET /restaurants/{restaurantId}/admins/`
+
+Lista paginada de administradores (mismo envelope `data`, `total`, `page`, `perPage` que otros listados del API). Cada elemento incluye `id` (UUID del **usuario**), `email`, `name`, `surname`, `role`, `createdAt`.
+
+#### `POST /restaurants/{restaurantId}/admins/`
+
+**Body:** `{ "userId": "<uuid del usuario a promover>" }`  
+**Éxitos / errores:** `201`, `404`, `409` si ya es admin.
+
+#### `DELETE /restaurants/{restaurantId}/admins/{userId}`
+
+Quita a `userId` (UUID) como admin del restaurante. **`userId` en la URL es UUID**, no entero.
+
+---
+
 ## 5. Mesas
+
+> **Nota:** Los endpoints de esta sección forman parte de la especificación; comprobar en el backend si ya están registrados antes de integrar.
 
 Todos los endpoints de mesas requieren ser admin del restaurante (🔐).
 
@@ -1069,7 +1126,7 @@ Admin marca la reserva como inasistencia (el grupo no se presentó). Libera las 
 
 ---
 
-### `GET /users/me/reservations/`
+### `GET /users/{userId}/reservations/`
 
 Lista las reservas del usuario autenticado.
 
@@ -1521,7 +1578,7 @@ El cliente cancela su propio pedido. Solo es posible si el estado es `PENDING`.
 
 ---
 
-### `GET /users/me/orders/`
+### `GET /users/{userId}/orders/`
 
 Lista los pedidos del usuario autenticado.
 
@@ -1659,9 +1716,19 @@ Feed global de todas las promociones activas en toda la plataforma, ordenadas po
 
 ## 14. Perfil de Usuario
 
-### `GET /users/me`
+Los recursos de perfil siguen **REST por recurso**: el path incluye el **`userId`** (UUID string), no el alias `/me`.
+
+**Regla de autorización (backend implementado):** el `userId` de la URL debe ser **exactamente el mismo** que el identificador del usuario en el JWT (claim `sub` / el `id` devuelto en login). Si pedís el perfil de **otro** UUID, la API responde **`403 FORBIDDEN`** con `code: "FORBIDDEN"`, aunque el token sea válido.
+
+Tras `POST /auth/login` o `POST /auth/register`, usá `user.id` de la respuesta como segmento de URL en todas las llamadas de esta sección.
+
+---
+
+### `GET /users/{userId}`
 
 **Auth:** Access token (🔑)
+
+**Path:** `userId` — UUID del usuario; **debe coincidir con el JWT**.
 
 **Response `200`:**
 ```json
@@ -1675,11 +1742,17 @@ Feed global de todas las promociones activas en toda la plataforma, ordenadas po
 }
 ```
 
+**Errores:**
+| Status | `code` | Cuándo |
+|---|---|---|
+| `403` | `FORBIDDEN` | `userId` de la URL ≠ usuario del JWT |
+| `404` | `NOT_FOUND` | Usuario inexistente (mismo `userId` que el JWT) |
+
 ---
 
-### `PUT /users/me`
+### `PUT /users/{userId}`
 
-Actualiza nombre y apellido.
+Actualiza nombre y apellido. Misma regla de path que el GET.
 
 **Auth:** Access token (🔑)
 
@@ -1695,9 +1768,11 @@ Actualiza nombre y apellido.
 
 **Response `200`:** `UserProfileResponse` actualizado.
 
+**Errores:** `403` si el `userId` no coincide con el JWT.
+
 ---
 
-### `PUT /users/me/password`
+### `PUT /users/{userId}/password`
 
 **Auth:** Access token (🔑)
 
@@ -1723,22 +1798,27 @@ Actualiza nombre y apellido.
 | Status | `code` | Cuándo |
 |---|---|---|
 | `401` | `UNAUTHORIZED` | `currentPassword` incorrecto |
+| `403` | `FORBIDDEN` | `userId` de la URL ≠ usuario del JWT |
 
 ---
 
-### `GET /users/me/restaurants/`
+### `GET /users/{userId}/restaurants/`
 
-Lista todos los restaurantes que administra el usuario autenticado.
+Lista todos los restaurantes que administra el usuario.
 
-**Auth:** Access token (🔑)
+**Auth:** Access token (🔑). Path `userId` = JWT.
 
 **Response `200`:** Array de `RestaurantResponse` completos (igual al objeto de `GET /restaurants/`).
+
+> **Backend actual:** este endpoint **aún no está expuesto** en el código del API (existen `GET/PUT /users/{userId}` y `PUT /users/{userId}/password`). Hasta que se implemente, el frontend puede derivar la lista desde otros flujos o mantener estado local tras crear restaurantes.
 
 ---
 
 ## 15. Preferencias de Notificación
 
-### `GET /users/me/notification-preferences/`
+Misma convención que §14: **`userId` en el path = usuario del JWT** (cuando estos endpoints existan en backend).
+
+### `GET /users/{userId}/notification-preferences/`
 
 Lista las preferencias de notificación del usuario para cada restaurante que sigue.
 
@@ -1759,7 +1839,7 @@ Lista las preferencias de notificación del usuario para cada restaurante que si
 
 ---
 
-### `PUT /users/me/notification-preferences/{restaurantId}`
+### `PUT /users/{userId}/notification-preferences/{restaurantId}`
 
 Actualiza las preferencias para un restaurante específico. Si no existía una preferencia, se crea.
 
@@ -1953,43 +2033,41 @@ Esta sección describe exactamente qué llamadas hace el frontend, en qué orden
 1. Al inicializar la app, leer `refreshToken` de `localStorage`.
 2. Si no existe: el usuario no está logueado, mostrar app en modo público.
 3. Si existe: `POST /auth/refresh`.
-4. **Si `200`:** Guardar nuevo `accessToken` en memoria. Luego `GET /users/me` para recuperar el perfil y restaurar el store. Mostrar la app como si el usuario estuviera logueado.
+4. **Si `200`:** Guardar nuevo `accessToken` en memoria. Luego `GET /users/{userId}` con el `userId` del objeto `user` devuelto en login/register (debe coincidir con el JWT) para recuperar el perfil y restaurar el store. Mostrar la app como si el usuario estuviera logueado.
 5. **Si `401`:** Limpiar `localStorage`, mostrar app en modo público.
 
 ---
 
 ### Flujo 5 — Búsqueda y filtrado de restaurantes
 
-**Actor:** Cualquier visitante (público)  
+**Actor:** Usuario **autenticado** (el backend actual exige JWT para `GET /restaurants/`; ver §1.7 Autenticación en rutas de restaurantes)  
 **Pantalla:** Listado/búsqueda de restaurantes
 
 **Pasos:**
 
-1. Al cargar la pantalla de búsqueda, cargar los datos de los filtros en paralelo:
-   - `GET /cuisines/` → poblar dropdown de tipos de cocina
-   - `GET /price-ranges/` → poblar selector de precio (muestra `label`: $, $$, etc.)
-   - `GET /countries/` → poblar selector de país
-2. Al seleccionar un país: `GET /countries/{countryId}/provinces/` → poblar selector de provincia.
-3. Al seleccionar una provincia: `GET /provinces/{provinceId}/cities/` → poblar selector de ciudad.
-4. Al seleccionar una ciudad: `GET /cities/{cityId}/neighbourhoods/` → poblar selector de barrio (opcional).
-5. El usuario aplica filtros y/o escribe en el campo de búsqueda por nombre.
-6. Construir la URL con los query params correspondientes y llamar `GET /restaurants/`.
-   - Ejemplo: `GET /restaurants/?name=gaucho&city_id=1&cuisine_type_id=1&price_range_id=2&page=1&per_page=20`
-   - Para múltiples tipos de cocina: `?cuisine_type_id=1&cuisine_type_id=3`
-7. Mostrar los resultados de `data`. Mostrar paginación con `total`, `page`, `perPage`.
-8. Al limpiar filtros: volver a llamar sin params → `GET /restaurants/`.
-9. Al hacer click en un restaurante: navegar a la vista del restaurante.
+1. Asegurar sesión válida (`accessToken`). Si no hay login, redirigir o mostrar mensaje según producto.
+2. Cargar datos de filtros cuando existan endpoints de lookup (§3); si aún no están desplegados, usar datos embebidos o fixtures.
+   - `GET /cuisines/` → tipos de cocina
+   - `GET /price-ranges/` → selector de precio (`label`: $, $$, …)
+   - `GET /countries/` → país → `GET /countries/{countryId}/provinces/` → `GET /provinces/{provinceId}/cities/` → `GET /cities/{cityId}/neighbourhoods/`
+3. El usuario aplica filtros y/o nombre.
+4. Llamar `GET /restaurants/` con query params en **camelCase** y UUIDs como strings:
+   - Ejemplo: `GET /restaurants/?name=gaucho&cityId=01960e4e-5c5e-7abc-8def-000000000041&priceRangeId=01960e4e-5c5e-7abc-8def-000000000012&cuisineTypeIds=01960e4e-5c5e-7abc-8def-000000000001&cuisineTypeIds=01960e4e-5c5e-7abc-8def-000000000003&page=1&perPage=20`
+5. Mostrar `data[]`. Cada ítem trae `cityId`, `priceRangeId`, `cuisineTypeIds`, etc.; resolver etiquetas con el cache de lookup o mapas locales.
+6. Paginación: `total`, `page`, `perPage`.
+7. Al limpiar filtros: `GET /restaurants/?page=1&perPage=20` (o sin query).
+8. Click en un restaurante: navegar al detalle (`GET /restaurants/{restaurantId}` con el mismo token).
 
 ---
 
 ### Flujo 6 — Vista detallada de un restaurante
 
-**Actor:** Cualquier visitante  
+**Actor:** Usuario autenticado (JWT requerido en la implementación actual)  
 **Pantalla:** Perfil del restaurante
 
 **Pasos:**
 
-1. `GET /restaurants/{restaurantId}` → mostrar nombre, foto, descripción, ubicación, tipos de cocina, rango de precio.
+1. `GET /restaurants/{restaurantId}` con `Authorization: Bearer` → mostrar nombre, foto, descripción, `cityId` / `neighbourhoodId` / `priceRangeId`, `cuisineTypeIds` (enlazar con datos de lookup para nombres).
 2. En paralelo:
    - `GET /restaurants/{restaurantId}/business-hours/` → mostrar horarios.
    - `GET /restaurants/{restaurantId}/menus/` → si existe menú activo, mostrar botón "Ver menú".
@@ -2043,7 +2121,7 @@ Esta sección describe exactamente qué llamadas hace el frontend, en qué orden
 
 **Pasos:**
 
-1. `GET /users/me/reservations/` → mostrar lista con estado de cada reserva.
+1. `GET /users/{userId}/reservations/` (mismo `userId` que el JWT) → mostrar lista con estado de cada reserva.
 2. El usuario hace click en "Cancelar" en una reserva con `status: "CONFIRMED"`.
 3. Mostrar diálogo de confirmación con campo de motivo opcional.
 4. `PATCH /reservations/{reservationId}/cancel` con `{ reason: "..." }`.
@@ -2054,25 +2132,18 @@ Esta sección describe exactamente qué llamadas hace el frontend, en qué orden
 
 ### Flujo 10 — Crear restaurante (admin — primer restaurante o nuevo restaurante adicional)
 
-**Actor:** Cualquier usuario autenticado (puede crear su primer o enésimo restaurante)  
+**Actor:** Usuario con rol **`RESTAURANT_ADMIN`** o **`SUPER_ADMIN`** (requisito del `POST /restaurants/` actual)  
 **Pantalla:** Formulario "Crear restaurante"
 
 **Pasos:**
 
-1. Cargar datos de lookup en paralelo:
-   - `GET /cuisines/`
-   - `GET /price-ranges/`
-   - `GET /countries/`
-2. Cuando el usuario selecciona país → `GET /countries/{countryId}/provinces/`
-3. Al seleccionar provincia → `GET /provinces/{provinceId}/cities/`
-4. Al seleccionar ciudad → `GET /cities/{cityId}/neighbourhoods/` (para el dropdown de barrio, que es opcional)
-5. El usuario completa todos los campos y selecciona tipos de cocina (puede elegir varios).
-6. `POST /restaurants/` con todos los campos incluyendo `cityId`, `neighbourhoodId?`, `priceRangeId?`, `cuisineTypeIds[]`.
-7. **Si `201`:**
-   - El `user.role` puede haber cambiado a `RESTAURANT_ADMIN` → actualizar el store de usuario con `GET /users/me`.
-   - Redirigir al dashboard del nuevo restaurante.
-   - Mostrar un wizard de onboarding sugeriendo los próximos pasos: "Ahora configurá tus mesas y horarios".
-8. **Si `404` en algún ID:** Mostrar error específico (ej: "La ciudad seleccionada no existe").
+1. Cargar datos de lookup cuando existan endpoints (§3); si no, usar listas locales de ciudades / cocinas / rangos con **UUID** coherentes con la BD.
+2. Jerarquía ubicación: país → provincias → ciudades → barrios (opcional), igual que en el flujo 5.
+3. El usuario completa campos obligatorios (`name`, `address`, `phone`, `cityId`) y opcionales (`neighbourhoodId`, `priceRangeId`, `cuisineTypeIds[]`, `email`, `description`). Todos los IDs como **strings UUID**.
+4. `POST /restaurants/` con el JSON en camelCase (sin `allowTableJoining` ni `defaultSlotDurationMinutes` en el body actual).
+5. **Si `201`:** actualizar perfil con `GET /users/{userId}` si el rol o los datos cambiaron; redirigir al dashboard del restaurante.
+6. **Si `403`:** el usuario no tiene rol permitido para crear restaurantes.
+7. **Si validación falla:** revisar mensajes `400` / campos del schema.
 
 ---
 
@@ -2256,10 +2327,10 @@ Esta sección describe exactamente qué llamadas hace el frontend, en qué orden
 
 **Pasos:**
 
-1. `GET /users/me/restaurants/` → devuelve todos los restaurantes que administra el usuario.
+1. `GET /users/{userId}/restaurants/` → devuelve todos los restaurantes que administra el usuario.
 2. Mostrar lista de tarjetas de restaurantes. Cada una con acceso a su panel de administración.
 3. Al crear un nuevo restaurante adicional: flujo 10 (desde cualquier punto de la app).
-4. El nuevo restaurante aparece automáticamente en `GET /users/me/restaurants/` sin necesidad de hacer nada más.
+4. El nuevo restaurante aparece automáticamente en `GET /users/{userId}/restaurants/` sin necesidad de hacer nada más.
 
 ---
 
@@ -2292,9 +2363,9 @@ Esta sección describe exactamente qué llamadas hace el frontend, en qué orden
 
 **Pasos:**
 
-1. `GET /users/me/notification-preferences/` → mostrar lista de restaurantes que el usuario "sigue" y sus preferencias.
+1. `GET /users/{userId}/notification-preferences/` → mostrar lista de restaurantes que el usuario "sigue" y sus preferencias.
 2. El usuario activa/desactiva toggles para cada preferencia de cada restaurante.
-3. Al cambiar un toggle: `PUT /users/me/notification-preferences/{restaurantId}` con los 3 campos (enviar todos, incluso los que no cambiaron).
+3. Al cambiar un toggle: `PUT /users/{userId}/notification-preferences/{restaurantId}` con los 3 campos (enviar todos, incluso los que no cambiaron).
 
 > **Nota:** Una preferencia se crea automáticamente la primera vez que el usuario realiza un pedido o reserva en un restaurante. Hasta ese momento, el restaurante no aparece en la lista.
 

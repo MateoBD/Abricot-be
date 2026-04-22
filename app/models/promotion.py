@@ -1,18 +1,22 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
 from app.models.enums import DiscountType
+from app.utils.uuid7 import new_uuid7
 
 
 class PromotionModel(db.Model):
     __tablename__ = "promotions"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    restaurant_id: Mapped[int] = mapped_column(
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=new_uuid7
+    )
+    restaurant_id: Mapped[UUID] = mapped_column(
         ForeignKey("restaurants.id"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)

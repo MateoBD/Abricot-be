@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from uuid import UUID
 
 from app.exceptions.errors import NotFoundError, ValidationError
 from app.repositories.analytics_repository import AnalyticsRepository
@@ -9,7 +10,7 @@ from app.repositories.restaurant_repository import RestaurantRepository
 class AnalyticsService:
     @staticmethod
     def get_orders_report(
-        restaurant_id: int,
+        restaurant_id: UUID,
         start: str | None = None,
         end: str | None = None,
     ) -> dict:
@@ -26,7 +27,7 @@ class AnalyticsService:
         )
 
         return {
-            "restaurantId": restaurant_id,
+            "restaurantId": str(restaurant_id),
             "period": {
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None,
@@ -91,7 +92,7 @@ class AnalyticsService:
 
     @staticmethod
     def get_general_metrics(
-        restaurant_id: int,
+        restaurant_id: UUID,
         start: str | None = None,
         end: str | None = None,
     ) -> dict:
@@ -115,7 +116,7 @@ class AnalyticsService:
         )
 
         return {
-            "restaurantId": restaurant_id,
+            "restaurantId": str(restaurant_id),
             "period": {
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None,

@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import func
 
@@ -11,7 +12,7 @@ from app.models.reservation import ReservationModel
 class AnalyticsRepository:
     @staticmethod
     def get_orders_report(
-        restaurant_id: int,
+        restaurant_id: UUID,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> dict:
@@ -77,7 +78,7 @@ class AnalyticsRepository:
 
     @staticmethod
     def get_daily_summary(
-        restaurant_id: int,
+        restaurant_id: UUID,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[dict]:
@@ -105,7 +106,7 @@ class AnalyticsRepository:
 
     @staticmethod
     def get_recent_activity(
-        restaurant_id: int,
+        restaurant_id: UUID,
         limit: int = 10,
     ) -> dict:
         reservations_recent = (
@@ -140,7 +141,7 @@ class AnalyticsRepository:
 
     @staticmethod
     def get_reservations_metrics(
-        restaurant_id: int,
+        restaurant_id: UUID,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> dict:

@@ -2,11 +2,18 @@ from flask_restx import Model, fields
 
 _EMAIL_PATTERN = r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
 _NAME_PATTERN = r"^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ'\- ]{1,100}$"
+_UUID_STRING_PATTERN = (
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 user_profile_response_model = Model(
     "UserProfileResponse",
     {
-        "id": fields.Integer(description="ID del usuario.", example=1),
+        "id": fields.String(
+            description="ID del usuario (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
         "email": fields.String(
             description="Correo electrónico del usuario.",
             example="usuario@ejemplo.com",

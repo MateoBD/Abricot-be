@@ -1,6 +1,9 @@
 from flask_restx import Model, fields
 
 # Regex patterns — defined once, reused in multiple models
+_UUID_STRING_PATTERN = (
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 _EMAIL_PATTERN = r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
 # Names allow Spanish letters (accented vowels + ñ), hyphens, apostrophes, and spaces
 _NAME_PATTERN = r"^[a-zA-ZáéíóúüñÁÉÍÓÚÜÑ'\- ]{1,100}$"
@@ -60,9 +63,10 @@ login_model = Model(
 user_summary_model = Model(
     "UserSummary",
     {
-        "id": fields.Integer(
-            description="ID del usuario.",
-            example=1,
+        "id": fields.String(
+            description="ID del usuario (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
         ),
         "email": fields.String(
             description="Correo electrónico del usuario.",

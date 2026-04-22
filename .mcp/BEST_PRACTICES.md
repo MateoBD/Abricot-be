@@ -557,6 +557,8 @@ This dual layer is necessary because Flask-RESTX has its own exception handling 
 
 Both tokens are JWTs signed with the same `JWT_SECRET_KEY`. Flask-JWT-Extended distinguishes them via a `type` claim inside the JWT payload (`"access"` vs `"refresh"`). If you send a refresh token to a protected endpoint, it returns 401. If you send an access token to `/auth/refresh`, it returns 401. The types are not interchangeable.
 
+User profile endpoints are **`GET/PUT /users/<uuid:user_id>`** and **`PUT /users/<uuid:user_id>/password`**, not `/users/me`. **`require_path_user_matches_jwt`** rejects requests where `user_id` ≠ JWT subject (`403 FORBIDDEN`).
+
 #### Token Flow
 
 ```
