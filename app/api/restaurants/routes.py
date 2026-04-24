@@ -4,7 +4,9 @@ from flask import request
 from flask_restx import Namespace, Resource, reqparse
 from werkzeug.datastructures import FileStorage
 
+from app.exceptions.errors import ValidationError
 from app.api.restaurants.schemas import (
+    reservation_admin_create_model,
     reservation_cancel_model,
     paginated_restaurant_admin_response_model,
     paginated_reservation_response_model,
@@ -59,6 +61,7 @@ for _model in (
     restaurant_admin_response_model,
     orders_report_response_model,
     general_metrics_response_model,
+    reservation_admin_create_model,
     reservation_cancel_model,
     reservation_response_model,
     paginated_reservation_response_model,
@@ -363,6 +366,46 @@ class RestaurantReservationList(Resource):
             page=args.get("page") or 1,
             per_page=args.get("perPage") or 20,
         ), 200
+
+
+@namespace.route("/<uuid:restaurant_id>/reservations/admin")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantReservationAdminCreate(Resource):
+    @namespace.expect(reservation_admin_create_model, validate=True)
+    @namespace.response(201, "Reservation created successfully.", reservation_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(403, "Forbidden.")
+    @namespace.response(404, "Restaurant or user not found.")
+    @namespace.response(409, "No table availability for requested slot.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: UUID):
+        """Create a reservation as restaurant admin for PHONE/EVENT source."""
+        data = request.json or {}
+
+        user_id_raw = data.get("userId")
+        user_id = None
+        if user_id_raw is not None:
+            try:
+                user_id = UUID(str(user_id_raw))
+            except (TypeError, ValueError) as error:
+                raise ValidationError(
+                    "Invalid userId.",
+                    {"userId": "Must be a valid UUID"},
+                ) from error
+
+        return ReservationService.create_for_admin(
+            restaurant_id=restaurant_id,
+            admin_user_id=get_current_user_id(),
+            party_size=data.get("partySize"),
+            on_date=ReservationService.parse_required_date(data.get("date")),
+            time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
+            source=ReservationService.parse_required_admin_source(data.get("source")),
+            guest_name=data.get("guestName"),
+            guest_phone=data.get("guestPhone"),
+            guest_email=data.get("guestEmail"),
+            user_id=user_id,
+            notes=data.get("notes"),
+        ), 201
 
 
 @namespace.route("/<uuid:restaurant_id>/reservations/<uuid:reservation_id>")

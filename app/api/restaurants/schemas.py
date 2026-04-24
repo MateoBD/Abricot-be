@@ -8,6 +8,7 @@ _EMAIL_PATTERN = r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
 # Phone: optional leading +, then digits, spaces, parentheses, hyphens and dots
 _PHONE_PATTERN = r"^\+?[\d\s\(\)\-\.]{7,30}$"
 _RESERVATION_SOURCE_PATTERN = r"^(ONLINE|PHONE|EVENT)$"
+_RESERVATION_ADMIN_SOURCE_PATTERN = r"^(PHONE|EVENT)$"
 _RESERVATION_STATUS_PATTERN = r"^(CONFIRMED|CANCELLED|COMPLETED|NO_SHOW)$"
 
 # Mutable fields shared between create and update (same contract, DRY definition)
@@ -476,6 +477,70 @@ paginated_reservation_response_model = Model(
         "perPage": fields.Integer(
             description="Tamano de pagina aplicado.",
             example=20,
+        ),
+    },
+)
+
+reservation_admin_create_model = Model(
+    "ReservationAdminCreateRequest",
+    {
+        "partySize": fields.Integer(
+            required=True,
+            description="Cantidad de comensales.",
+            min=1,
+            example=8,
+        ),
+        "date": fields.String(
+            required=True,
+            description="Fecha de la reserva (YYYY-MM-DD).",
+            example="2026-05-10",
+        ),
+        "timeSlot": fields.String(
+            required=True,
+            description="Horario de la reserva (HH:MM o HH:MM:SS).",
+            example="21:00:00",
+        ),
+        "source": fields.String(
+            required=True,
+            description="Origen de la reserva creada por admin.",
+            pattern=_RESERVATION_ADMIN_SOURCE_PATTERN,
+            example="PHONE",
+        ),
+        "guestName": fields.String(
+            required=False,
+            allow_null=True,
+            description="Nombre del invitado/grupo si no hay usuario registrado.",
+            max_length=150,
+            example="Grupo Perez",
+        ),
+        "guestPhone": fields.String(
+            required=False,
+            allow_null=True,
+            description="Telefono de contacto del invitado/grupo.",
+            pattern=_PHONE_PATTERN,
+            example="+54 11 4444-5555",
+        ),
+        "guestEmail": fields.String(
+            required=False,
+            allow_null=True,
+            description="Email de contacto del invitado/grupo.",
+            pattern=_EMAIL_PATTERN,
+            max_length=255,
+            example="grupo@example.com",
+        ),
+        "userId": fields.String(
+            required=False,
+            allow_null=True,
+            description="Usuario registrado a asociar (UUID), opcional.",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abc",
+        ),
+        "notes": fields.String(
+            required=False,
+            allow_null=True,
+            description="Notas adicionales de la reserva.",
+            max_length=2000,
+            example="Cumpleanos - traer torta a las 22:00.",
         ),
     },
 )

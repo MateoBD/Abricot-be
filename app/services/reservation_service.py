@@ -10,6 +10,7 @@ from app.models.reservation import ReservationModel
 from app.repositories.reservation_repository import ReservationRepository
 from app.repositories.reservation_table_repository import ReservationTableRepository
 from app.repositories.restaurant_repository import RestaurantRepository
+from app.repositories.user_repository import UserRepository
 from app.utils.list_envelope import paginated_list_envelope
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,44 @@ def _generate_confirmation_code() -> str:
 
 
 class ReservationService:
+    @staticmethod
+    def parse_required_date(value: str) -> date:
+        try:
+            return date.fromisoformat(value)
+        except (TypeError, ValueError) as error:
+            raise ValidationError(
+                "Invalid date. Expected format: YYYY-MM-DD.",
+                {"date": "Invalid date format"},
+            ) from error
+
+    @staticmethod
+    def parse_required_time(value: str) -> time:
+        try:
+            parsed = time.fromisoformat(value)
+            return parsed.replace(tzinfo=None)
+        except (TypeError, ValueError) as error:
+            raise ValidationError(
+                "Invalid timeSlot. Expected format: HH:MM or HH:MM:SS.",
+                {"timeSlot": "Invalid time format"},
+            ) from error
+
+    @staticmethod
+    def parse_required_admin_source(value: str) -> ReservationSource:
+        try:
+            source = ReservationSource(value)
+        except (TypeError, ValueError) as error:
+            raise ValidationError(
+                "Invalid source.",
+                {"source": "Must be one of: PHONE, EVENT"},
+            ) from error
+
+        if source not in (ReservationSource.PHONE, ReservationSource.EVENT):
+            raise ValidationError(
+                "Invalid source.",
+                {"source": "Must be one of: PHONE, EVENT"},
+            )
+        return source
+
     @staticmethod
     def _parse_optional_date(value: str | None, field_name: str) -> date | None:
         if value is None:
@@ -111,6 +150,8 @@ class ReservationService:
 
         if not RestaurantRepository.get_by_id(restaurant_id):
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+        if not isinstance(party_size, int):
+            raise ValidationError("partySize must be an integer.", {"partySize": "Invalid type"})
         if party_size < 1:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
@@ -165,13 +206,23 @@ class ReservationService:
                 {"source": "Must be PHONE or EVENT"},
             )
 
+        normalized_guest_name = guest_name.strip() if guest_name else None
+        normalized_guest_phone = guest_phone.strip() if guest_phone else None
+        normalized_guest_email = guest_email.strip() if guest_email else None
+
         has_user = user_id is not None
-        has_guest = bool(guest_name)
+        has_guest = bool(normalized_guest_name)
         if has_user == has_guest:
             raise ValidationError(
                 "Provide either userId or guestName, not both.",
                 {"userId": "Mutually exclusive with guestName"},
             )
+
+        if has_user and not UserRepository.get_by_id(user_id):
+            raise NotFoundError(f"User with id={user_id} not found.")
+
+        if not isinstance(party_size, int):
+            raise ValidationError("partySize must be an integer.", {"partySize": "Invalid type"})
         if party_size < 1:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
@@ -188,9 +239,9 @@ class ReservationService:
         reservation = ReservationModel(
             restaurant_id=restaurant_id,
             user_id=user_id,
-            guest_name=guest_name,
-            guest_phone=guest_phone,
-            guest_email=guest_email,
+            guest_name=normalized_guest_name,
+            guest_phone=normalized_guest_phone,
+            guest_email=normalized_guest_email,
             party_size=party_size,
             date=on_date,
             time_slot=time_slot,
