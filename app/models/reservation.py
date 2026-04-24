@@ -1,7 +1,17 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String, Text, Time, Uuid
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Time,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
@@ -41,7 +51,9 @@ class ReservationModel(db.Model):
         index=True,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    confirmation_code: Mapped[str] = mapped_column(String(12), nullable=False, unique=True)
+    confirmation_code: Mapped[str] = mapped_column(
+        String(12), nullable=False, unique=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

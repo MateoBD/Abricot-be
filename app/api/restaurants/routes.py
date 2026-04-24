@@ -29,6 +29,7 @@ from app.services.reservation_service import ReservationService
 from app.services.analytics_service import AnalyticsService
 from app.services.restaurant_admin_service import RestaurantAdminService
 
+
 def _cuisine_type_ids_from_query() -> list[str] | None:
     raw = request.args.getlist("cuisineTypeIds")
     out: list[str] = []
@@ -131,7 +132,9 @@ _reservations_list_parser.add_argument(
 class RestaurantList(Resource):
     """Endpoints for listing and creating restaurants."""
 
-    @namespace.response(200, "Restaurants retrieved successfully.", paginated_restaurant_response_model)
+    @namespace.response(
+        200, "Restaurants retrieved successfully.", paginated_restaurant_response_model
+    )
     def get(self):
         """Search restaurants with optional filters and pagination."""
         q = request.args
@@ -153,7 +156,9 @@ class RestaurantList(Resource):
         ), 200
 
     @namespace.expect(restaurant_create_model, validate=True)
-    @namespace.response(201, "Restaurant created successfully.", restaurant_response_model)
+    @namespace.response(
+        201, "Restaurant created successfully.", restaurant_response_model
+    )
     @namespace.response(400, "Validation error.")
     @require_roles(UserRole.RESTAURANT_ADMIN, UserRole.SUPER_ADMIN)
     def post(self):
@@ -178,14 +183,18 @@ class RestaurantList(Resource):
 class RestaurantDetail(Resource):
     """Endpoints for retrieving, updating, and deleting a single restaurant."""
 
-    @namespace.response(200, "Restaurant retrieved successfully.", restaurant_response_model)
+    @namespace.response(
+        200, "Restaurant retrieved successfully.", restaurant_response_model
+    )
     @namespace.response(404, "Restaurant not found.")
     def get(self, restaurant_id: UUID):
         """Get a restaurant by ID."""
         return RestaurantService.get_by_id(restaurant_id), 200
 
     @namespace.expect(restaurant_update_model, validate=True)
-    @namespace.response(200, "Restaurant updated successfully.", restaurant_response_model)
+    @namespace.response(
+        200, "Restaurant updated successfully.", restaurant_response_model
+    )
     @namespace.response(404, "Restaurant not found.")
     @require_restaurant_admin("restaurant_id")
     def put(self, restaurant_id: UUID):
@@ -202,7 +211,9 @@ class RestaurantDetail(Resource):
             neighbourhood_id=data["neighbourhoodId"]
             if "neighbourhoodId" in data
             else FIELD_UNSET,
-            price_range_id=data["priceRangeId"] if "priceRangeId" in data else FIELD_UNSET,
+            price_range_id=data["priceRangeId"]
+            if "priceRangeId" in data
+            else FIELD_UNSET,
             cuisine_type_ids=data["cuisineTypeIds"]
             if "cuisineTypeIds" in data
             else FIELD_UNSET,
@@ -237,7 +248,11 @@ class RestaurantPhoto(Resource):
 @namespace.route("/<uuid:restaurant_id>/admins")
 @namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
 class RestaurantAdmins(Resource):
-    @namespace.response(200, "Restaurant admins retrieved successfully.", paginated_restaurant_admin_response_model)
+    @namespace.response(
+        200,
+        "Restaurant admins retrieved successfully.",
+        paginated_restaurant_admin_response_model,
+    )
     @namespace.response(404, "Restaurant not found.")
     @require_restaurant_admin("restaurant_id")
     def get(self, restaurant_id: UUID):
@@ -245,7 +260,9 @@ class RestaurantAdmins(Resource):
         return RestaurantAdminService.list_admins(restaurant_id), 200
 
     @namespace.expect(restaurant_admin_add_model, validate=True)
-    @namespace.response(201, "Restaurant admin added successfully.", restaurant_admin_response_model)
+    @namespace.response(
+        201, "Restaurant admin added successfully.", restaurant_admin_response_model
+    )
     @namespace.response(404, "Restaurant or user not found.")
     @namespace.response(409, "User is already an admin for this restaurant.")
     @require_restaurant_admin("restaurant_id")
@@ -271,7 +288,9 @@ class RestaurantAdminDetail(Resource):
     @require_restaurant_admin("restaurant_id")
     def delete(self, restaurant_id: UUID, user_id: UUID):
         """Remove a user from the administrators of a restaurant."""
-        RestaurantAdminService.remove_admin(restaurant_id=restaurant_id, user_id=user_id)
+        RestaurantAdminService.remove_admin(
+            restaurant_id=restaurant_id, user_id=user_id
+        )
         return "", 204
 
 
@@ -295,6 +314,7 @@ class RestaurantOrdersReport(Resource):
             start=args.get("start"),
             end=args.get("end"),
         ), 200
+
 
 @namespace.route("/<uuid:restaurant_id>/analytics/metrics")
 @namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})

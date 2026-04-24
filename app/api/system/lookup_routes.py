@@ -98,12 +98,7 @@ class CountriesList(Resource):
     def get(self):
         """List all countries."""
         countries = LookupRepository.list_countries()
-        return {
-            "data": [
-                {"id": str(c.id), "name": c.name}
-                for c in countries
-            ]
-        }, 200
+        return {"data": [{"id": str(c.id), "name": c.name} for c in countries]}, 200
 
 
 @namespace.route("/provinces")
@@ -119,8 +114,11 @@ class ProvincesList(Resource):
         try:
             country_uuid = UUID(country_id)
         except ValueError:
-            return {"message": "Invalid countryId format", "code": "VALIDATION_ERROR"}, 400
-        
+            return {
+                "message": "Invalid countryId format",
+                "code": "VALIDATION_ERROR",
+            }, 400
+
         provinces = LookupRepository.list_provinces_by_country(country_uuid)
         return {
             "data": [
@@ -139,12 +137,18 @@ class CitiesList(Resource):
         args = _city_parser.parse_args()
         province_id = args.get("provinceId")
         if not province_id:
-            return {"message": "provinceId is required", "code": "VALIDATION_ERROR"}, 400
+            return {
+                "message": "provinceId is required",
+                "code": "VALIDATION_ERROR",
+            }, 400
         try:
             province_uuid = UUID(province_id)
         except ValueError:
-            return {"message": "Invalid provinceId format", "code": "VALIDATION_ERROR"}, 400
-        
+            return {
+                "message": "Invalid provinceId format",
+                "code": "VALIDATION_ERROR",
+            }, 400
+
         cities = LookupRepository.list_cities_by_province(province_uuid)
         return {
             "data": [
@@ -168,7 +172,7 @@ class NeighbourhoodsList(Resource):
             city_uuid = UUID(city_id)
         except ValueError:
             return {"message": "Invalid cityId format", "code": "VALIDATION_ERROR"}, 400
-        
+
         neighbourhoods = LookupRepository.list_neighbourhoods_by_city(city_uuid)
         return {
             "data": [
@@ -198,9 +202,4 @@ class CuisineTypesList(Resource):
     def get(self):
         """List all cuisine types."""
         cuisines = LookupRepository.list_cuisine_types()
-        return {
-            "data": [
-                {"id": str(c.id), "label": c.label}
-                for c in cuisines
-            ]
-        }, 200
+        return {"data": [{"id": str(c.id), "label": c.label} for c in cuisines]}, 200

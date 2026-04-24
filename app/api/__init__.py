@@ -57,19 +57,32 @@ def register_blueprints(app: Flask) -> None:
 
     Resource._Resource__validate_payload = _compat_validate_payload
 
+
 def _register_api_error_handlers(api: Api) -> None:
     @api.errorhandler(AppError)
     def handle_app_error(e: AppError):
-        return {"message": e.message, "code": e.code, "errors": e.payload}, e.status_code
+        return {
+            "message": e.message,
+            "code": e.code,
+            "errors": e.payload,
+        }, e.status_code
 
     @api.errorhandler(IntegrityError)
     def handle_integrity_error(e: IntegrityError):
         logger.warning(f"IntegrityError: {e}")
-        return {"message": "Resource already exists.", "code": "CONFLICT", "errors": {}}, 409
+        return {
+            "message": "Resource already exists.",
+            "code": "CONFLICT",
+            "errors": {},
+        }, 409
 
     @api.errorhandler(HTTPException)
     def handle_http_exception(e: HTTPException):
-        return {"message": e.description, "code": type(e).__name__, "errors": {}}, e.code
+        return {
+            "message": e.description,
+            "code": type(e).__name__,
+            "errors": {},
+        }, e.code
 
     @api.errorhandler(ValueError)
     def handle_value_error(e: ValueError):
@@ -78,4 +91,8 @@ def _register_api_error_handlers(api: Api) -> None:
     @api.errorhandler(Exception)
     def handle_unexpected(e: Exception):
         logger.exception("Unexpected error in API layer")
-        return {"message": "Internal server error.", "code": "INTERNAL_ERROR", "errors": {}}, 500
+        return {
+            "message": "Internal server error.",
+            "code": "INTERNAL_ERROR",
+            "errors": {},
+        }, 500
