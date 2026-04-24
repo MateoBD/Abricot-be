@@ -1,7 +1,7 @@
 from datetime import date, time
 from uuid import UUID
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import delete, exists, func, select
 
 from app.extensions import db
 from app.models.enums import ReservationStatus
@@ -99,6 +99,17 @@ class ReservationRepository:
         reservation: ReservationModel, new_status: ReservationStatus
     ) -> ReservationModel:
         reservation.status = new_status
+        db.session.commit()
+        return reservation
+
+    @staticmethod
+    def cancel_and_release_tables(reservation: ReservationModel) -> ReservationModel:
+        reservation.status = ReservationStatus.CANCELLED
+        db.session.execute(
+            delete(ReservationTableModel).where(
+                ReservationTableModel.reservation_id == reservation.id
+            )
+        )
         db.session.commit()
         return reservation
 

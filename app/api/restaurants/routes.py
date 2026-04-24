@@ -5,6 +5,7 @@ from flask_restx import Namespace, Resource, reqparse
 from werkzeug.datastructures import FileStorage
 
 from app.api.restaurants.schemas import (
+    reservation_cancel_model,
     paginated_restaurant_admin_response_model,
     paginated_reservation_response_model,
     paginated_restaurant_response_model,
@@ -58,6 +59,7 @@ for _model in (
     restaurant_admin_response_model,
     orders_report_response_model,
     general_metrics_response_model,
+    reservation_cancel_model,
     reservation_response_model,
     paginated_reservation_response_model,
 ):
@@ -360,4 +362,49 @@ class RestaurantReservationList(Resource):
             source=args.get("source"),
             page=args.get("page") or 1,
             per_page=args.get("perPage") or 20,
+        ), 200
+
+
+@namespace.route("/<uuid:restaurant_id>/reservations/<uuid:reservation_id>")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "reservation_id": "The reservation's ID (UUID).",
+    }
+)
+class RestaurantReservationDetail(Resource):
+    @namespace.response(200, "Reservation retrieved successfully.", reservation_response_model)
+    @namespace.response(403, "Forbidden.")
+    @namespace.response(404, "Reservation not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, reservation_id: UUID):
+        """Get a single reservation for the given restaurant."""
+        return ReservationService.get_by_id(
+            reservation_id=reservation_id,
+            requesting_user_id=get_current_user_id(),
+            restaurant_id=restaurant_id,
+        ), 200
+
+
+@namespace.route("/<uuid:restaurant_id>/reservations/<uuid:reservation_id>/cancel")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "reservation_id": "The reservation's ID (UUID).",
+    }
+)
+class RestaurantReservationCancel(Resource):
+    @namespace.expect(reservation_cancel_model, validate=True)
+    @namespace.response(200, "Reservation cancelled successfully.", reservation_response_model)
+    @namespace.response(403, "Forbidden.")
+    @namespace.response(404, "Reservation not found.")
+    @namespace.response(409, "Reservation cannot be cancelled in current status.")
+    def post(self, restaurant_id: UUID, reservation_id: UUID):
+        """Cancel a reservation and release assigned tables."""
+        data = request.json or {}
+        return ReservationService.cancel(
+            reservation_id=reservation_id,
+            requesting_user_id=get_current_user_id(),
+            reason=data.get("reason"),
+            restaurant_id=restaurant_id,
         ), 200

@@ -479,3 +479,15 @@ paginated_reservation_response_model = Model(
         ),
     },
 )
+
+reservation_cancel_model = Model(
+    "ReservationCancelRequest",
+    {
+        "reason": fields.String(
+            required=False,
+            description="Motivo opcional de la cancelacion.",
+            max_length=500,
+            example="El cliente aviso que no podia asistir.",
+        )
+    },
+)

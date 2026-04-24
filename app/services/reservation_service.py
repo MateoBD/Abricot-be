@@ -207,10 +207,18 @@ class ReservationService:
         return ReservationService._to_payload(reservation)
 
     @staticmethod
-    def get_by_id(reservation_id: UUID, requesting_user_id: UUID) -> dict:
+    def get_by_id(
+        reservation_id: UUID,
+        requesting_user_id: UUID,
+        restaurant_id: UUID | None = None,
+    ) -> dict:
         reservation = ReservationRepository.get_by_id(reservation_id)
         if not reservation:
             raise NotFoundError(f"Reservation with id={reservation_id} not found.")
+        if restaurant_id is not None and reservation.restaurant_id != restaurant_id:
+            raise NotFoundError(
+                f"Reservation with id={reservation_id} not found for restaurant id={restaurant_id}."
+            )
         if reservation.user_id != requesting_user_id:
             from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
             is_admin = RestaurantAdminRepository.is_admin(
@@ -257,13 +265,24 @@ class ReservationService:
 
     @staticmethod
     def cancel(
-        reservation_id: UUID, requesting_user_id: UUID, reason: str | None = None
+        reservation_id: UUID,
+        requesting_user_id: UUID,
+        reason: str | None = None,
+        restaurant_id: UUID | None = None,
     ) -> dict:
         reservation = ReservationRepository.get_by_id(reservation_id)
         if not reservation:
             raise NotFoundError(f"Reservation with id={reservation_id} not found.")
-        if reservation.status == ReservationStatus.CANCELLED:
-            raise ConflictError("Reservation is already cancelled.")
+        if restaurant_id and reservation.restaurant_id != restaurant_id:
+            raise NotFoundError(
+                f"Reservation with id={reservation_id} not found for restaurant id={restaurant_id}."
+            )
+        if reservation.status != ReservationStatus.CONFIRMED:
+            if reservation.status == ReservationStatus.CANCELLED:
+                raise ConflictError("Reservation is already cancelled.")
+            raise ConflictError(
+                f"Cannot cancel a reservation with status '{reservation.status.value}'."
+            )
         if reservation.user_id != requesting_user_id:
             from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
             if not RestaurantAdminRepository.is_admin(
@@ -271,9 +290,12 @@ class ReservationService:
             ):
                 raise ForbiddenError("You do not have permission to cancel this reservation.")
 
-        ReservationRepository.update_status(reservation, ReservationStatus.CANCELLED)
+        ReservationRepository.cancel_and_release_tables(reservation)
         logger.info(
-            "Reservation cancelled: id=%s by_user=%s", reservation_id, requesting_user_id
+            "Reservation cancelled: id=%s by_user=%s reason=%s",
+            reservation_id,
+            requesting_user_id,
+            reason,
         )
         return ReservationService._to_payload(reservation)
 

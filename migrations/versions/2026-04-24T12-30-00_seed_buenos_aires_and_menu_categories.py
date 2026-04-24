@@ -147,7 +147,10 @@ def _seed_buenos_aires_location() -> None:
 
     country_id = conn.execute(
         sa.select(countries.c.id).where(
-            sa.func.lower(countries.c.iso_code) == COUNTRY_ISO_CODE.lower()
+            sa.or_(
+                sa.func.lower(countries.c.iso_code) == COUNTRY_ISO_CODE.lower(),
+                sa.func.lower(countries.c.name) == COUNTRY_NAME.lower(),
+            )
         )
     ).scalar_one_or_none()
     if country_id is None:
