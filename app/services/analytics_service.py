@@ -135,5 +135,97 @@ class AnalyticsService:
         }
 
     @staticmethod
+    def get_occupancy_report(
+        restaurant_id: UUID,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> dict:
+        restaurant = RestaurantRepository.get_by_id(restaurant_id)
+        if not restaurant:
+            raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+        start_date, end_date = AnalyticsService._parse_date_range(start=start, end=end)
+        report = AnalyticsRepository.get_occupancy_report(
+            restaurant_id=restaurant_id, start_date=start_date, end_date=end_date
+        )
+        return {
+            "restaurantId": str(restaurant_id),
+            "period": {
+                "start": start_date.isoformat() if start_date else None,
+                "end": end_date.isoformat() if end_date else None,
+            },
+            **report,
+        }
+
+    @staticmethod
+    def get_popular_items(
+        restaurant_id: UUID,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 10,
+    ) -> dict:
+        restaurant = RestaurantRepository.get_by_id(restaurant_id)
+        if not restaurant:
+            raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+        start_date, end_date = AnalyticsService._parse_date_range(start=start, end=end)
+        items = AnalyticsRepository.get_popular_items(
+            restaurant_id=restaurant_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=max(1, min(limit, 100)),
+        )
+        return {
+            "restaurantId": str(restaurant_id),
+            "period": {
+                "start": start_date.isoformat() if start_date else None,
+                "end": end_date.isoformat() if end_date else None,
+            },
+            "items": items,
+        }
+
+    @staticmethod
+    def get_promotions_report(
+        restaurant_id: UUID,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> dict:
+        restaurant = RestaurantRepository.get_by_id(restaurant_id)
+        if not restaurant:
+            raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+        start_date, end_date = AnalyticsService._parse_date_range(start=start, end=end)
+        promotions = AnalyticsRepository.get_promotions_report(
+            restaurant_id=restaurant_id, start_date=start_date, end_date=end_date
+        )
+        return {
+            "restaurantId": str(restaurant_id),
+            "period": {
+                "start": start_date.isoformat() if start_date else None,
+                "end": end_date.isoformat() if end_date else None,
+            },
+            "promotions": promotions,
+        }
+
+    @staticmethod
+    def get_peak_hours(
+        restaurant_id: UUID,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> dict:
+        restaurant = RestaurantRepository.get_by_id(restaurant_id)
+        if not restaurant:
+            raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+        start_date, end_date = AnalyticsService._parse_date_range(start=start, end=end)
+        hours = AnalyticsRepository.get_peak_hours(
+            restaurant_id=restaurant_id, start_date=start_date, end_date=end_date
+        )
+        return {
+            "restaurantId": str(restaurant_id),
+            "period": {
+                "start": start_date.isoformat() if start_date else None,
+                "end": end_date.isoformat() if end_date else None,
+            },
+            "peakHours": hours,
+        }
+
+    @staticmethod
     def _format_money(value: Decimal) -> str:
         return f"{value:.2f}"

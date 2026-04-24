@@ -27,3 +27,12 @@ class MenuModel(db.Model):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "restaurantId": str(self.restaurant_id),
+            "name": self.name,
+            "isActive": self.is_active,
+            "createdAt": self.created_at.isoformat(),
+        }

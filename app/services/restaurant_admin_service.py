@@ -68,6 +68,25 @@ class RestaurantAdminService:
         return UserRepository.get_by_id(uid).to_dict()
 
     @staticmethod
+    def is_admin(user_id: UUID, restaurant_id: UUID) -> bool:
+        return RestaurantAdminRepository.is_admin(user_id=user_id, restaurant_id=restaurant_id)
+
+    @staticmethod
+    def get_restaurants_for_admin(user_id: UUID) -> dict:
+        user = UserRepository.get_by_id(user_id)
+        if not user:
+            raise NotFoundError(f"User with id={user_id} not found.")
+
+        restaurant_ids = RestaurantAdminRepository.get_restaurants_for_user(user_id)
+        restaurants = []
+        for rid in restaurant_ids:
+            restaurant = RestaurantRepository.get_by_id(rid)
+            if restaurant:
+                restaurants.append(restaurant.to_dict())
+
+        return list_envelope(restaurants)
+
+    @staticmethod
     def remove_admin(restaurant_id: UUID, user_id: UUID) -> None:
         restaurant = RestaurantRepository.get_by_id(restaurant_id)
         if not restaurant:

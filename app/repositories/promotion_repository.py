@@ -55,3 +55,20 @@ class PromotionRepository:
         if row is None or row.restaurant_id != restaurant_id:
             return None
         return row
+
+    @staticmethod
+    def create(promo: PromotionModel) -> PromotionModel:
+        db.session.add(promo)
+        db.session.commit()
+        return promo
+
+    @staticmethod
+    def save(promo: PromotionModel) -> PromotionModel:
+        db.session.add(promo)
+        db.session.commit()
+        return promo
+
+    @staticmethod
+    def delete(promo: PromotionModel) -> None:
+        db.session.delete(promo)
+        db.session.commit()

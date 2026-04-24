@@ -40,6 +40,17 @@ class TableRepository:
         return tables
 
     @staticmethod
+    def save(table: TableModel) -> TableModel:
+        db.session.add(table)
+        db.session.commit()
+        return table
+
+    @staticmethod
+    def delete(table: TableModel) -> None:
+        db.session.delete(table)
+        db.session.commit()
+
+    @staticmethod
     def get_active(restaurant_id: UUID) -> list[TableModel]:
         return list(
             db.session.execute(

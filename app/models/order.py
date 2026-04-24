@@ -33,3 +33,17 @@ class OrderModel(db.Model):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "restaurantId": str(self.restaurant_id),
+            "userId": str(self.user_id),
+            "status": self.status.value,
+            "totalAmount": f"{self.total_amount:.2f}",
+            "notes": self.notes,
+            "estimatedReadyAt": self.estimated_ready_at.isoformat()
+            if self.estimated_ready_at
+            else None,
+            "createdAt": self.created_at.isoformat(),
+        }

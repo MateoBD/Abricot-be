@@ -34,6 +34,24 @@ class MenuRepository:
         ).scalar_one_or_none()
 
     @staticmethod
+    def create(restaurant_id: UUID, name: str) -> MenuModel:
+        menu = MenuModel(restaurant_id=restaurant_id, name=name, is_active=False)
+        db.session.add(menu)
+        db.session.commit()
+        return menu
+
+    @staticmethod
+    def save(menu: MenuModel) -> MenuModel:
+        db.session.add(menu)
+        db.session.commit()
+        return menu
+
+    @staticmethod
+    def delete(menu: MenuModel) -> None:
+        db.session.delete(menu)
+        db.session.commit()
+
+    @staticmethod
     def deactivate_all(restaurant_id: UUID) -> None:
         db.session.execute(
             update(MenuModel)

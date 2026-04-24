@@ -32,3 +32,13 @@ class BusinessHoursModel(db.Model):
         default=False,
         server_default="false",
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "restaurantId": str(self.restaurant_id),
+            "dayOfWeek": self.day_of_week,
+            "opensAt": self.opens_at.isoformat() if self.opens_at else None,
+            "closesAt": self.closes_at.isoformat() if self.closes_at else None,
+            "isClosed": self.is_closed,
+        }

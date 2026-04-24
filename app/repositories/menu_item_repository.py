@@ -25,6 +25,36 @@ class MenuItemRepository:
         return db.session.get(MenuItemModel, item_id)
 
     @staticmethod
+    def create(
+        category_id: UUID,
+        name: str,
+        description: str | None,
+        price: Decimal,
+        is_available: bool = True,
+    ) -> MenuItemModel:
+        item = MenuItemModel(
+            category_id=category_id,
+            name=name,
+            description=description,
+            price=price,
+            is_available=is_available,
+        )
+        db.session.add(item)
+        db.session.commit()
+        return item
+
+    @staticmethod
+    def save(item: MenuItemModel) -> MenuItemModel:
+        db.session.add(item)
+        db.session.commit()
+        return item
+
+    @staticmethod
+    def delete(item: MenuItemModel) -> None:
+        db.session.delete(item)
+        db.session.commit()
+
+    @staticmethod
     def validate_items_for_restaurant(
         item_ids: list[UUID], restaurant_id: UUID
     ) -> bool:

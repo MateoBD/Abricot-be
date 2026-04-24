@@ -42,3 +42,13 @@ class NotificationPreferenceModel(db.Model):
         default=True,
         server_default="true",
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "userId": str(self.user_id),
+            "restaurantId": str(self.restaurant_id),
+            "receivePromotions": self.receive_promotions,
+            "receiveOrderUpdates": self.receive_order_updates,
+            "receiveReservationReminders": self.receive_reservation_reminders,
+        }

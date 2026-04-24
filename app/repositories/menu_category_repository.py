@@ -25,6 +25,28 @@ class MenuCategoryRepository:
         return row
 
     @staticmethod
+    def get_by_category_id(category_id: UUID) -> MenuCategoryModel | None:
+        return db.session.get(MenuCategoryModel, category_id)
+
+    @staticmethod
+    def create(menu_id: UUID, name: str, display_order: int = 0) -> MenuCategoryModel:
+        cat = MenuCategoryModel(menu_id=menu_id, name=name, display_order=display_order)
+        db.session.add(cat)
+        db.session.commit()
+        return cat
+
+    @staticmethod
+    def save(category: MenuCategoryModel) -> MenuCategoryModel:
+        db.session.add(category)
+        db.session.commit()
+        return category
+
+    @staticmethod
+    def delete(category: MenuCategoryModel) -> None:
+        db.session.delete(category)
+        db.session.commit()
+
+    @staticmethod
     def bulk_reorder(ordered_ids: list[UUID]) -> None:
         for i, cid in enumerate(ordered_ids):
             row = db.session.get(MenuCategoryModel, cid)

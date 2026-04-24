@@ -34,3 +34,14 @@ class TableModel(db.Model):
         default=True,
         server_default="true",
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "restaurantId": str(self.restaurant_id),
+            "number": self.number,
+            "capacity": self.capacity,
+            "name": self.name,
+            "isJoinable": self.is_joinable,
+            "isActive": self.is_active,
+        }

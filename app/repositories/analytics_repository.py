@@ -5,7 +5,10 @@ from uuid import UUID
 from sqlalchemy import func
 
 from app.extensions import db
+from app.models.menu_item import MenuItemModel
 from app.models.order import OrderModel
+from app.models.order_item import OrderItemModel
+from app.models.promotion import PromotionModel
 from app.models.reservation import ReservationModel
 
 
@@ -181,3 +184,148 @@ class AnalyticsRepository:
                 for row in status_rows
             ],
         }
+
+    @staticmethod
+    def get_popular_items(
+        restaurant_id: UUID,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        order_day = func.date(OrderModel.created_at)
+        base_filters = [OrderModel.restaurant_id == restaurant_id]
+        if start_date is not None:
+            base_filters.append(order_day >= start_date)
+        if end_date is not None:
+            base_filters.append(order_day <= end_date)
+
+        rows = db.session.execute(
+            db.select(
+                OrderItemModel.menu_item_id.label("menu_item_id"),
+                MenuItemModel.name.label("name"),
+                func.sum(OrderItemModel.quantity).label("total_quantity"),
+                func.count(OrderItemModel.id).label("order_count"),
+                func.sum(OrderItemModel.quantity * OrderItemModel.unit_price).label("total_revenue"),
+            )
+            .join(OrderModel, OrderItemModel.order_id == OrderModel.id)
+            .join(MenuItemModel, OrderItemModel.menu_item_id == MenuItemModel.id)
+            .where(*base_filters)
+            .group_by(OrderItemModel.menu_item_id, MenuItemModel.name)
+            .order_by(func.sum(OrderItemModel.quantity).desc())
+            .limit(limit)
+        ).all()
+
+        return [
+            {
+                "menuItemId": str(row.menu_item_id),
+                "name": row.name,
+                "totalQuantity": int(row.total_quantity or 0),
+                "orderCount": int(row.order_count or 0),
+                "totalRevenue": f"{Decimal(row.total_revenue or 0):.2f}",
+            }
+            for row in rows
+        ]
+
+    @staticmethod
+    def get_occupancy_report(
+        restaurant_id: UUID,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> dict:
+        base_filters = [ReservationModel.restaurant_id == restaurant_id]
+        if start_date is not None:
+            base_filters.append(ReservationModel.date >= start_date)
+        if end_date is not None:
+            base_filters.append(ReservationModel.date <= end_date)
+
+        totals = db.session.execute(
+            db.select(
+                func.count(ReservationModel.id).label("total"),
+                func.coalesce(func.sum(ReservationModel.party_size), 0).label("total_guests"),
+            ).where(*base_filters)
+        ).one()
+
+        by_day = db.session.execute(
+            db.select(
+                ReservationModel.date.label("date"),
+                func.count(ReservationModel.id).label("reservations"),
+                func.coalesce(func.sum(ReservationModel.party_size), 0).label("guests"),
+            )
+            .where(*base_filters)
+            .group_by(ReservationModel.date)
+            .order_by(ReservationModel.date)
+        ).all()
+
+        return {
+            "totalReservations": int(totals.total or 0),
+            "totalGuests": int(totals.total_guests or 0),
+            "byDay": [
+                {
+                    "date": row.date.isoformat() if row.date else None,
+                    "reservations": int(row.reservations or 0),
+                    "guests": int(row.guests or 0),
+                }
+                for row in by_day
+            ],
+        }
+
+    @staticmethod
+    def get_peak_hours(
+        restaurant_id: UUID,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict]:
+        base_filters = [ReservationModel.restaurant_id == restaurant_id]
+        if start_date is not None:
+            base_filters.append(ReservationModel.date >= start_date)
+        if end_date is not None:
+            base_filters.append(ReservationModel.date <= end_date)
+
+        rows = db.session.execute(
+            db.select(
+                ReservationModel.time_slot.label("time_slot"),
+                func.count(ReservationModel.id).label("reservations"),
+                func.coalesce(func.sum(ReservationModel.party_size), 0).label("guests"),
+            )
+            .where(*base_filters)
+            .group_by(ReservationModel.time_slot)
+            .order_by(func.count(ReservationModel.id).desc())
+        ).all()
+
+        return [
+            {
+                "timeSlot": row.time_slot.isoformat() if row.time_slot else None,
+                "reservations": int(row.reservations or 0),
+                "guests": int(row.guests or 0),
+            }
+            for row in rows
+        ]
+
+    @staticmethod
+    def get_promotions_report(
+        restaurant_id: UUID,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict]:
+        base_filters = [PromotionModel.restaurant_id == restaurant_id]
+        if start_date is not None:
+            base_filters.append(PromotionModel.start_date >= start_date)
+        if end_date is not None:
+            base_filters.append(PromotionModel.end_date <= end_date)
+
+        rows = db.session.execute(
+            db.select(PromotionModel).where(*base_filters).order_by(PromotionModel.created_at.desc())
+        ).scalars()
+
+        return [
+            {
+                "id": str(p.id),
+                "title": p.title,
+                "discountType": p.discount_type.value,
+                "discountValue": f"{p.discount_value:.2f}",
+                "startDate": p.start_date.isoformat(),
+                "endDate": p.end_date.isoformat(),
+                "isActive": p.is_active,
+            }
+            for p in rows
+        ]

@@ -1,8 +1,10 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
 
 from app.extensions import db
+from app.models.enums import OrderStatus
 from app.models.order import OrderModel
 
 
@@ -16,6 +18,18 @@ class OrderRepository:
     @staticmethod
     def get_by_id(order_id: UUID) -> OrderModel | None:
         return db.session.get(OrderModel, order_id)
+
+    @staticmethod
+    def update_status(
+        order: OrderModel,
+        new_status: OrderStatus,
+        estimated_ready_at: datetime | None = None,
+    ) -> OrderModel:
+        order.status = new_status
+        if estimated_ready_at is not None:
+            order.estimated_ready_at = estimated_ready_at
+        db.session.commit()
+        return order
 
     @staticmethod
     def list_for_restaurant(

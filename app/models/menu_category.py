@@ -22,3 +22,12 @@ class MenuCategoryModel(db.Model):
         default=True,
         server_default="true",
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "menuId": str(self.menu_id),
+            "name": self.name,
+            "displayOrder": self.display_order,
+            "isActive": self.is_active,
+        }

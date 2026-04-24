@@ -21,3 +21,13 @@ class OrderItemModel(db.Model):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "orderId": str(self.order_id),
+            "menuItemId": str(self.menu_item_id),
+            "quantity": self.quantity,
+            "unitPrice": f"{self.unit_price:.2f}",
+            "notes": self.notes,
+        }

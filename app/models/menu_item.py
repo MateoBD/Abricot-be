@@ -31,3 +31,15 @@ class MenuItemModel(db.Model):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "categoryId": str(self.category_id),
+            "name": self.name,
+            "description": self.description,
+            "price": f"{self.price:.2f}",
+            "photoUrl": self.photo_url,
+            "isAvailable": self.is_available,
+            "createdAt": self.created_at.isoformat(),
+        }

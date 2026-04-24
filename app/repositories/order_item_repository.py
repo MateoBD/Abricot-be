@@ -1,10 +1,20 @@
 from uuid import UUID
 
+from sqlalchemy import select
+
 from app.extensions import db
 from app.models.order_item import OrderItemModel
 
 
 class OrderItemRepository:
+    @staticmethod
+    def get_by_order(order_id: UUID) -> list[OrderItemModel]:
+        return list(
+            db.session.execute(
+                select(OrderItemModel).where(OrderItemModel.order_id == order_id)
+            ).scalars()
+        )
+
     @staticmethod
     def bulk_insert(order_id: UUID, items: list[dict]) -> list[OrderItemModel]:
         """

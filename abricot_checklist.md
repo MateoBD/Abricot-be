@@ -195,106 +195,106 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 - [x] `UserService.get_my_restaurants(user_id)`
 
 ### 5.4 RestaurantAdminService (nuevo)
-- [ ] `RestaurantAdminService.is_admin(user_id, restaurant_id)`
+- [x] `RestaurantAdminService.is_admin(user_id, restaurant_id)`
 - [x] `RestaurantAdminService.add_admin(restaurant_id, user_id)` — crea fila + eleva rol si CUSTOMER
 - [x] `RestaurantAdminService.remove_admin(restaurant_id, user_id)` — baja rol si ya no tiene restaurantes
-- [ ] `RestaurantAdminService.get_restaurants_for_admin(user_id)`
+- [x] `RestaurantAdminService.get_restaurants_for_admin(user_id)`
 
 ### 5.5 TableService (nuevo — F1)
-- [ ] `TableService.get_all(restaurant_id)`
-- [ ] `TableService.get_by_id(restaurant_id, table_id)`
-- [ ] `TableService.create(restaurant_id, number, capacity, name, is_joinable)`
-- [ ] `TableService.create_bulk(restaurant_id, groups)` — grupos: `[{quantity, capacity, isJoinable?}]`; numeración secuencial; una transacción
-- [ ] `TableService.update(restaurant_id, table_id, ...)`
-- [ ] `TableService.delete(restaurant_id, table_id)` — falla si tiene reservas futuras confirmadas
-- [ ] `TableService.get_total_capacity(restaurant_id)`
+- [x] `TableService.get_all(restaurant_id)`
+- [x] `TableService.get_by_id(restaurant_id, table_id)`
+- [x] `TableService.create(restaurant_id, number, capacity, name, is_joinable)`
+- [x] `TableService.create_bulk(restaurant_id, groups)` — grupos: `[{quantity, capacity, isJoinable?}]`; numeración secuencial; una transacción
+- [x] `TableService.update(restaurant_id, table_id, ...)`
+- [x] `TableService.delete(restaurant_id, table_id)` — falla si tiene reservas futuras confirmadas
+- [x] `TableService.get_total_capacity(restaurant_id)`
 
 ### 5.6 BusinessHoursService (nuevo — F1)
-- [ ] `BusinessHoursService.get_all(restaurant_id)`
-- [ ] `BusinessHoursService.bulk_update(restaurant_id, hours_data)` — upsert 7 filas
-- [ ] `BusinessHoursService.is_open_on(restaurant_id, date)`
-- [ ] `BusinessHoursService.get_time_range(restaurant_id, date)` → `(opens_at, closes_at) | None`
+- [x] `BusinessHoursService.get_all(restaurant_id)`
+- [x] `BusinessHoursService.bulk_update(restaurant_id, hours_data)` — upsert 7 filas
+- [x] `BusinessHoursService.is_open_on(restaurant_id, date)`
+- [x] `BusinessHoursService.get_time_range(restaurant_id, date)` → `(opens_at, closes_at) | None`
 
 ### 5.7 AvailabilityService (nuevo — F1, corazón de F2)
-- [ ] `AvailabilityService.get_available_slots(restaurant_id, date, party_size)` — genera todos los slots del día y ejecuta `find_table_assignment` para cada uno
-- [ ] `AvailabilityService.find_table_assignment(restaurant_id, date, time_slot, party_size)` → `list[TableModel] | None` — algoritmo: primero mesa individual; si `allow_table_joining=True`, luego combinaciones de mesas `is_joinable`; mínimo desperdicio
-- [ ] `AvailabilityService.assign_tables_for_reservation(reservation_id, table_ids)` — crea filas en `reservation_tables` dentro de una transacción
-- [ ] `AvailabilityService.get_occupied_table_ids_at(restaurant_id, date, time_slot)` → `set[uuid]`
+- [x] `AvailabilityService.get_available_slots(restaurant_id, date, party_size)` — genera todos los slots del día y ejecuta `find_table_assignment` para cada uno
+- [x] `AvailabilityService.find_table_assignment(restaurant_id, date, time_slot, party_size)` → `list[TableModel] | None` — algoritmo: primero mesa individual; si `allow_table_joining=True`, luego combinaciones de mesas `is_joinable`; mínimo desperdicio
+- [x] `AvailabilityService.assign_tables_for_reservation(reservation_id, table_ids)` — crea filas en `reservation_tables` dentro de una transacción
+- [x] `AvailabilityService.get_occupied_table_ids_at(restaurant_id, date, time_slot)` → `set[uuid]`
 
 ### 5.8 ReservationService (nuevo — F2)
-- [ ] `ReservationService.create(restaurant_id, user_id, party_size, date, time_slot, notes)` — `source=ONLINE`; auto-confirma; transacción atómica con `SELECT FOR UPDATE`
-- [ ] `ReservationService.create_for_admin(restaurant_id, admin_user_id, party_size, date, time_slot, source, guest_name, guest_phone, guest_email, user_id, notes)` — valida `user_id XOR guest_name`; `source ∈ {PHONE, EVENT}`
-- [ ] `ReservationService.get_by_id(reservation_id, requesting_user_id)` — valida ownership o admin
-- [ ] `ReservationService.get_by_confirmation_code(code)` — público
-- [ ] `ReservationService.list_for_restaurant(restaurant_id, date_from, date_to, status, source, page, per_page)`
-- [ ] `ReservationService.reassign_tables(reservation_id, table_ids)` — valida disponibilidad en el slot
-- [ ] `ReservationService.cancel(reservation_id, requesting_user_id, reason)` — libera mesas; notifica
-- [ ] `ReservationService.complete(reservation_id)`
-- [ ] `ReservationService.mark_no_show(reservation_id)` — libera mesas
+- [x] `ReservationService.create(restaurant_id, user_id, party_size, date, time_slot, notes)` — `source=ONLINE`; auto-confirma; transacción atómica con `SELECT FOR UPDATE`
+- [x] `ReservationService.create_for_admin(restaurant_id, admin_user_id, party_size, date, time_slot, source, guest_name, guest_phone, guest_email, user_id, notes)` — valida `user_id XOR guest_name`; `source ∈ {PHONE, EVENT}`
+- [x] `ReservationService.get_by_id(reservation_id, requesting_user_id)` — valida ownership o admin
+- [x] `ReservationService.get_by_confirmation_code(code)` — público
+- [x] `ReservationService.list_for_restaurant(restaurant_id, date_from, date_to, status, source, page, per_page)`
+- [x] `ReservationService.reassign_tables(reservation_id, table_ids)` — valida disponibilidad en el slot
+- [x] `ReservationService.cancel(reservation_id, requesting_user_id, reason)` — libera mesas; notifica
+- [x] `ReservationService.complete(reservation_id)`
+- [x] `ReservationService.mark_no_show(reservation_id)` — libera mesas
 
 ### 5.9 MenuService (nuevo — F3)
-- [ ] `MenuService.get_all(restaurant_id)`
-- [ ] `MenuService.get_by_id(restaurant_id, menu_id)`
-- [ ] `MenuService.get_detail(restaurant_id, menu_id)` — incluye categorías e ítems anidados
-- [ ] `MenuService.create(restaurant_id, name)`
-- [ ] `MenuService.update(restaurant_id, menu_id, name)`
-- [ ] `MenuService.delete(restaurant_id, menu_id)`
-- [ ] `MenuService.activate(restaurant_id, menu_id)` — desactiva el anterior en la misma transacción
-- [ ] `MenuService.get_active_menu(restaurant_id)`
+- [x] `MenuService.get_all(restaurant_id)`
+- [x] `MenuService.get_by_id(restaurant_id, menu_id)`
+- [x] `MenuService.get_detail(restaurant_id, menu_id)` — incluye categorías e ítems anidados
+- [x] `MenuService.create(restaurant_id, name)`
+- [x] `MenuService.update(restaurant_id, menu_id, name)`
+- [x] `MenuService.delete(restaurant_id, menu_id)`
+- [x] `MenuService.activate(restaurant_id, menu_id)` — desactiva el anterior en la misma transacción
+- [x] `MenuService.get_active_menu(restaurant_id)`
 
 ### 5.10 MenuCategoryService (nuevo — F3)
-- [ ] `MenuCategoryService.get_all(menu_id)`
-- [ ] `MenuCategoryService.create(menu_id, name, display_order)`
-- [ ] `MenuCategoryService.update(menu_id, category_id, name, display_order, is_active)`
-- [ ] `MenuCategoryService.delete(menu_id, category_id)`
-- [ ] `MenuCategoryService.reorder(menu_id, ordered_ids)` — asigna `display_order = índice`
+- [x] `MenuCategoryService.get_all(menu_id)`
+- [x] `MenuCategoryService.create(menu_id, name, display_order)`
+- [x] `MenuCategoryService.update(menu_id, category_id, name, display_order, is_active)`
+- [x] `MenuCategoryService.delete(menu_id, category_id)`
+- [x] `MenuCategoryService.reorder(menu_id, ordered_ids)` — asigna `display_order = índice`
 
 ### 5.11 MenuItemService (nuevo — F3)
-- [ ] `MenuItemService.get_all(category_id)`
-- [ ] `MenuItemService.get_by_id(item_id)`
-- [ ] `MenuItemService.create(category_id, name, description, price, is_available)`
-- [ ] `MenuItemService.update(item_id, name, description, price, is_available)`
-- [ ] `MenuItemService.delete(item_id)`
-- [ ] `MenuItemService.upload_photo(item_id, file_storage)` — reutiliza `S3Client`
-- [ ] `MenuItemService.set_availability(item_id, is_available)`
+- [x] `MenuItemService.get_all(category_id)`
+- [x] `MenuItemService.get_by_id(item_id)`
+- [x] `MenuItemService.create(category_id, name, description, price, is_available)`
+- [x] `MenuItemService.update(item_id, name, description, price, is_available)`
+- [x] `MenuItemService.delete(item_id)`
+- [x] `MenuItemService.upload_photo(item_id, file_storage)` — reutiliza `S3Client`
+- [x] `MenuItemService.set_availability(item_id, is_available)`
 
 ### 5.12 OrderService (nuevo — F3)
-- [ ] `OrderService.create(restaurant_id, user_id, items, notes)` — sin `order_type`; snapshot de precios; valida ítems en menú activo
-- [ ] `OrderService.get_by_id(order_id, requesting_user_id)`
-- [ ] `OrderService.list_for_restaurant(restaurant_id, status_filter, page, per_page)`
-- [ ] `OrderService.update_status(order_id, new_status, estimated_ready_at)` — valida transición válida
-- [ ] `OrderService.cancel(order_id, requesting_user_id)` — solo si `status=PENDING`
+- [x] `OrderService.create(restaurant_id, user_id, items, notes)` — sin `order_type`; snapshot de precios; valida ítems en menú activo
+- [x] `OrderService.get_by_id(order_id, requesting_user_id)`
+- [x] `OrderService.list_for_restaurant(restaurant_id, status_filter, page, per_page)`
+- [x] `OrderService.update_status(order_id, new_status, estimated_ready_at)` — valida transición válida
+- [x] `OrderService.cancel(order_id, requesting_user_id)` — solo si `status=PENDING`
 
 ### 5.13 PromotionService (nuevo — F4)
-- [ ] `PromotionService.get_all_active(restaurant_id)`
-- [ ] `PromotionService.get_all_for_admin(restaurant_id)` — incluye inactivas
-- [ ] `PromotionService.get_feed()` — todas las activas en la plataforma
-- [ ] `PromotionService.get_by_id(restaurant_id, promotion_id)`
-- [ ] `PromotionService.create(restaurant_id, title, description, discount_type, discount_value, start_date, end_date, notify_users, menu_item_ids)` — si `notify_users=True`, dispara notificación asíncrona
-- [ ] `PromotionService.update(restaurant_id, promotion_id, ...)`
-- [ ] `PromotionService.deactivate(restaurant_id, promotion_id)`
-- [ ] `PromotionService.activate(restaurant_id, promotion_id)`
-- [ ] `PromotionService.delete(restaurant_id, promotion_id)`
+- [x] `PromotionService.get_all_active(restaurant_id)`
+- [x] `PromotionService.get_all_for_admin(restaurant_id)` — incluye inactivas
+- [x] `PromotionService.get_feed()` — todas las activas en la plataforma
+- [x] `PromotionService.get_by_id(restaurant_id, promotion_id)`
+- [x] `PromotionService.create(restaurant_id, title, description, discount_type, discount_value, start_date, end_date, notify_users, menu_item_ids)` — si `notify_users=True`, dispara notificación asíncrona
+- [x] `PromotionService.update(restaurant_id, promotion_id, ...)`
+- [x] `PromotionService.deactivate(restaurant_id, promotion_id)`
+- [x] `PromotionService.activate(restaurant_id, promotion_id)`
+- [x] `PromotionService.delete(restaurant_id, promotion_id)`
 
 ### 5.14 NotificationService (nuevo — F2, F3, F4)
-- [ ] `NotificationService.send_reservation_confirmation(reservation_id)` — a `user.email` o `guest_email`
-- [ ] `NotificationService.send_reservation_cancelled(reservation_id)`
-- [ ] `NotificationService.send_order_confirmation(order_id)`
-- [ ] `NotificationService.send_order_status_update(order_id)`
-- [ ] `NotificationService.send_promotion_notification(promotion_id)` — a todos los suscriptos con `receive_promotions=True`
-- [ ] `NotificationService._get_subscribed_user_emails(restaurant_id, preference_field)` — interno
+- [x] `NotificationService.send_reservation_confirmation(reservation_id)` — a `user.email` o `guest_email`
+- [x] `NotificationService.send_reservation_cancelled(reservation_id)`
+- [x] `NotificationService.send_order_confirmation(order_id)`
+- [x] `NotificationService.send_order_status_update(order_id)`
+- [x] `NotificationService.send_promotion_notification(promotion_id)` — a todos los suscriptos con `receive_promotions=True`
+- [x] `NotificationService._get_subscribed_user_emails(restaurant_id, preference_field)` — interno
 
 ### 5.15 NotificationPreferenceService (nuevo)
-- [ ] `NotificationPreferenceService.get_all_for_user(user_id)`
-- [ ] `NotificationPreferenceService.get_or_create(user_id, restaurant_id)`
-- [ ] `NotificationPreferenceService.update(user_id, restaurant_id, receive_promotions, receive_order_updates, receive_reservation_reminders)`
+- [x] `NotificationPreferenceService.get_all_for_user(user_id)`
+- [x] `NotificationPreferenceService.get_or_create(user_id, restaurant_id)`
+- [x] `NotificationPreferenceService.update(user_id, restaurant_id, receive_promotions, receive_order_updates, receive_reservation_reminders)`
 
 ### 5.16 AnalyticsService (nuevo — F5)
-- [ ] `AnalyticsService.get_occupancy_report(restaurant_id, date_from, date_to)`
-- [ ] `AnalyticsService.get_orders_report(restaurant_id, date_from, date_to)`
-- [ ] `AnalyticsService.get_popular_items(restaurant_id, date_from, date_to, limit)`
-- [ ] `AnalyticsService.get_promotions_report(restaurant_id, date_from, date_to)`
-- [ ] `AnalyticsService.get_peak_hours(restaurant_id, date_from, date_to)`
+- [x] `AnalyticsService.get_occupancy_report(restaurant_id, date_from, date_to)`
+- [x] `AnalyticsService.get_orders_report(restaurant_id, date_from, date_to)`
+- [x] `AnalyticsService.get_popular_items(restaurant_id, date_from, date_to, limit)`
+- [x] `AnalyticsService.get_promotions_report(restaurant_id, date_from, date_to)`
+- [x] `AnalyticsService.get_peak_hours(restaurant_id, date_from, date_to)`
 
 ---
 

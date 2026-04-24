@@ -43,3 +43,18 @@ class PromotionModel(db.Model):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "restaurantId": str(self.restaurant_id),
+            "title": self.title,
+            "description": self.description,
+            "discountType": self.discount_type.value,
+            "discountValue": f"{self.discount_value:.2f}",
+            "startDate": self.start_date.isoformat(),
+            "endDate": self.end_date.isoformat(),
+            "isActive": self.is_active,
+            "notifyUsers": self.notify_users,
+            "createdAt": self.created_at.isoformat(),
+        }

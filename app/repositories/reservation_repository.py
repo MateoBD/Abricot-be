@@ -1,7 +1,7 @@
 from datetime import date, time
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 
 from app.extensions import db
 from app.models.enums import ReservationStatus
@@ -93,6 +93,35 @@ class ReservationRepository:
             ).scalars()
         )
         return rows, total
+
+    @staticmethod
+    def update_status(
+        reservation: ReservationModel, new_status: ReservationStatus
+    ) -> ReservationModel:
+        reservation.status = new_status
+        db.session.commit()
+        return reservation
+
+    @staticmethod
+    def table_has_future_confirmed_reservations(table_id: UUID, from_date: date) -> bool:
+        return bool(
+            db.session.scalar(
+                select(
+                    exists(
+                        select(ReservationTableModel.id)
+                        .join(
+                            ReservationModel,
+                            ReservationTableModel.reservation_id == ReservationModel.id,
+                        )
+                        .where(
+                            ReservationTableModel.table_id == table_id,
+                            ReservationModel.status == ReservationStatus.CONFIRMED,
+                            ReservationModel.date >= from_date,
+                        )
+                    )
+                )
+            )
+        )
 
     @staticmethod
     def get_occupied_table_ids_at(
