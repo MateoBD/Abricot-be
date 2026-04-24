@@ -79,6 +79,8 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 ### 1.8 Seed inicial
 - [x] Seed de `price_ranges` (4 filas: ECONOMICO $, MODERADO $$, ELEGANTE $$$, EXCLUSIVO $$$$)
 - [x] Seed de `cuisine_types` (14 filas: ARGENTINA, ITALIANA, JAPONESA, MEDITERRANEA, MEXICANA, PERUANA, AMERICANA, CHINA, FRANCESA, CAFE_BAR, VEGANA_VEGETARIANA, MARISCOS, FUSION, OTRA)
+- [x] Seed de ubicación base: `countries/provinces/cities/neighbourhoods` para Argentina > Buenos Aires > Buenos Aires (CABA) + 48 barrios
+- [x] Seed de categorías default en `menu_categories` para menús existentes (`Entradas`, `Principales`, `Postres`, `Bebidas`)
 
 ---
 
@@ -170,32 +172,32 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 ## 5. Servicios (app/services/)
 
 ### 5.1 Modificar servicios existentes
-- [ ] 🔧 `RestaurantService.get_all()` → renombrar a `search(name?, country_id?, province_id?, city_id?, neighbourhood_id?, price_range_id?, cuisine_type_ids?, page, per_page)`
-- [ ] 🔧 `RestaurantService.create()` — aceptar `city_id`, `neighbourhood_id`, `price_range_id`, `cuisine_type_ids`; crear fila en `RestaurantAdmin` y elevar rol en la misma transacción
-- [ ] 🔧 `RestaurantService.update()` — aceptar nuevos campos; reemplazar `RestaurantCuisine` (delete + insert)
+- [x] 🔧 `RestaurantService.get_all()` → renombrar a `search(name?, country_id?, province_id?, city_id?, neighbourhood_id?, price_range_id?, cuisine_type_ids?, page, per_page)`
+- [x] 🔧 `RestaurantService.create()` — aceptar `city_id`, `neighbourhood_id`, `price_range_id`, `cuisine_type_ids`; crear fila en `RestaurantAdmin` y elevar rol en la misma transacción
+- [x] 🔧 `RestaurantService.update()` — aceptar nuevos campos; reemplazar `RestaurantCuisine` (delete + insert)
 
 ### 5.2 LookupService (nuevo)
-- [ ] `LookupService.get_all_cuisines()`
-- [ ] `LookupService.get_all_price_ranges()`
-- [ ] `LookupService.get_all_countries()`
-- [ ] `LookupService.get_provinces_by_country(country_id)`
-- [ ] `LookupService.get_cities_by_province(province_id)`
-- [ ] `LookupService.get_neighbourhoods_by_city(city_id)`
-- [ ] `LookupService.get_or_create_city(city_name, province_id)`
-- [ ] `LookupService.get_or_create_neighbourhood(neighbourhood_name, city_id)`
+- [x] `LookupService.get_all_cuisines()`
+- [x] `LookupService.get_all_price_ranges()`
+- [x] `LookupService.get_all_countries()`
+- [x] `LookupService.get_provinces_by_country(country_id)`
+- [x] `LookupService.get_cities_by_province(province_id)`
+- [x] `LookupService.get_neighbourhoods_by_city(city_id)`
+- [x] `LookupService.get_or_create_city(city_name, province_id)`
+- [x] `LookupService.get_or_create_neighbourhood(neighbourhood_name, city_id)`
 
 ### 5.3 UserService (nuevo)
-- [ ] `UserService.get_profile(user_id)`
-- [ ] `UserService.update_profile(user_id, name, surname)`
-- [ ] `UserService.change_password(user_id, current_password, new_password)`
-- [ ] `UserService.get_my_reservations(user_id, page, per_page)`
-- [ ] `UserService.get_my_orders(user_id, page, per_page)`
-- [ ] `UserService.get_my_restaurants(user_id)`
+- [x] `UserService.get_profile(user_id)`
+- [x] `UserService.update_profile(user_id, name, surname)`
+- [x] `UserService.change_password(user_id, current_password, new_password)`
+- [x] `UserService.get_my_reservations(user_id, page, per_page)`
+- [x] `UserService.get_my_orders(user_id, page, per_page)`
+- [x] `UserService.get_my_restaurants(user_id)`
 
 ### 5.4 RestaurantAdminService (nuevo)
 - [ ] `RestaurantAdminService.is_admin(user_id, restaurant_id)`
-- [ ] `RestaurantAdminService.add_admin(restaurant_id, user_id)` — crea fila + eleva rol si CUSTOMER
-- [ ] `RestaurantAdminService.remove_admin(restaurant_id, user_id)` — baja rol si ya no tiene restaurantes
+- [x] `RestaurantAdminService.add_admin(restaurant_id, user_id)` — crea fila + eleva rol si CUSTOMER
+- [x] `RestaurantAdminService.remove_admin(restaurant_id, user_id)` — baja rol si ya no tiene restaurantes
 - [ ] `RestaurantAdminService.get_restaurants_for_admin(user_id)`
 
 ### 5.5 TableService (nuevo — F1)

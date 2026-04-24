@@ -10,6 +10,18 @@ from app.models.price_range import PriceRangeModel
 
 class LookupRepository:
     @staticmethod
+    def get_country_by_id(country_id: UUID) -> CountryModel | None:
+        return db.session.get(CountryModel, country_id)
+
+    @staticmethod
+    def get_province_by_id(province_id: UUID) -> ProvinceModel | None:
+        return db.session.get(ProvinceModel, province_id)
+
+    @staticmethod
+    def get_city_by_id(city_id: UUID) -> CityModel | None:
+        return db.session.get(CityModel, city_id)
+
+    @staticmethod
     def list_countries() -> list[CountryModel]:
         return list(
             db.session.execute(select(CountryModel).order_by(CountryModel.name)).scalars()

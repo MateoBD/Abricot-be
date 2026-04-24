@@ -2,6 +2,8 @@ import logging
 from uuid import UUID
 
 from app.exceptions.errors import NotFoundError, ValidationError
+from app.extensions import db
+from app.models.enums import UserRole
 from app.models.restaurant import RestaurantModel
 from app.integrations.s3 import S3Client
 from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
@@ -9,6 +11,7 @@ from app.repositories.restaurant_repository import (
     CUISINE_UNSET,
     RestaurantRepository,
 )
+from app.repositories.user_repository import UserRepository
 from app.utils.list_envelope import paginated_list_envelope
 
 _UNSET = object()
@@ -151,23 +154,38 @@ class RestaurantService:
         if cuisine_type_ids is not None:
             cids = _parse_uuid_list(cuisine_type_ids, "cuisineTypeIds")
 
-        restaurant = RestaurantRepository.create(
-            name=name,
-            address=address,
-            phone=phone,
-            city_id=cid,
-            email=email,
-            description=description,
-            neighbourhood_id=nid,
-            price_range_id=prid,
-            cuisine_type_ids=cids,
-        )
-
-        if creator_user_id is not None:
-            RestaurantAdminRepository.add_if_missing(
-                user_id=creator_user_id,
-                restaurant_id=restaurant.id,
+        try:
+            restaurant = RestaurantRepository.create(
+                name=name,
+                address=address,
+                phone=phone,
+                city_id=cid,
+                email=email,
+                description=description,
+                neighbourhood_id=nid,
+                price_range_id=prid,
+                cuisine_type_ids=cids,
+                auto_commit=False,
             )
+
+            if creator_user_id is not None:
+                RestaurantAdminRepository.add_if_missing(
+                    user_id=creator_user_id,
+                    restaurant_id=restaurant.id,
+                    auto_commit=False,
+                )
+                user = UserRepository.get_by_id(creator_user_id)
+                if user and user.role == UserRole.CUSTOMER:
+                    UserRepository.update_role(
+                        user_id=creator_user_id,
+                        role=UserRole.RESTAURANT_ADMIN,
+                        auto_commit=False,
+                    )
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
 
         logger.info(f"Restaurant created: id={restaurant.id} name={restaurant.name}")
         return RestaurantService._restaurant_payload(restaurant)

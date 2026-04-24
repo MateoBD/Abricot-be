@@ -41,6 +41,7 @@ class RestaurantRepository:
         price_range_id: UUID | None = None,
         *,
         cuisine_type_ids: list[UUID] | None = None,
+        auto_commit: bool = True,
     ) -> RestaurantModel:
         restaurant = RestaurantModel(
             name=name,
@@ -55,7 +56,8 @@ class RestaurantRepository:
         db.session.add(restaurant)
         db.session.flush()
         RestaurantRepository._replace_cuisine_rows(restaurant.id, cuisine_type_ids or [])
-        db.session.commit()
+        if auto_commit:
+            db.session.commit()
         return restaurant
 
     @staticmethod
@@ -164,6 +166,18 @@ class RestaurantRepository:
     @staticmethod
     def get_by_id(restaurant_id: UUID) -> RestaurantModel | None:
         return db.session.get(RestaurantModel, restaurant_id)
+
+    @staticmethod
+    def get_by_ids(restaurant_ids: list[UUID]) -> list[RestaurantModel]:
+        if not restaurant_ids:
+            return []
+        return list(
+            db.session.execute(
+                select(RestaurantModel)
+                .where(RestaurantModel.id.in_(restaurant_ids))
+                .order_by(RestaurantModel.name)
+            ).scalars()
+        )
 
     @staticmethod
     def update(

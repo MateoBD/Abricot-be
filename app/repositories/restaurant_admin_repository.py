@@ -14,14 +14,25 @@ class RestaurantAdminRepository:
         return db.session.execute(stmt).scalar_one_or_none() is not None
 
     @staticmethod
-    def add(user_id: UUID, restaurant_id: UUID) -> RestaurantAdminModel:
+    def add(
+        user_id: UUID,
+        restaurant_id: UUID,
+        *,
+        auto_commit: bool = True,
+    ) -> RestaurantAdminModel:
         relation = RestaurantAdminModel(user_id=user_id, restaurant_id=restaurant_id)
         db.session.add(relation)
-        db.session.commit()
+        if auto_commit:
+            db.session.commit()
         return relation
 
     @staticmethod
-    def add_if_missing(user_id: UUID, restaurant_id: UUID) -> RestaurantAdminModel:
+    def add_if_missing(
+        user_id: UUID,
+        restaurant_id: UUID,
+        *,
+        auto_commit: bool = True,
+    ) -> RestaurantAdminModel:
         existing = db.session.execute(
             db.select(RestaurantAdminModel).where(
                 RestaurantAdminModel.user_id == user_id,
@@ -30,7 +41,11 @@ class RestaurantAdminRepository:
         ).scalar_one_or_none()
         if existing:
             return existing
-        return RestaurantAdminRepository.add(user_id=user_id, restaurant_id=restaurant_id)
+        return RestaurantAdminRepository.add(
+            user_id=user_id,
+            restaurant_id=restaurant_id,
+            auto_commit=auto_commit,
+        )
 
     @staticmethod
     def get_restaurants_for_user(user_id: UUID) -> list[UUID]:

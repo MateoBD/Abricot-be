@@ -27,6 +27,30 @@ class ReservationRepository:
         ).scalar_one_or_none()
 
     @staticmethod
+    def list_for_user(user_id: UUID, page: int, per_page: int) -> tuple[list[ReservationModel], int]:
+        stmt = select(ReservationModel).where(ReservationModel.user_id == user_id)
+        count_q = select(func.count()).select_from(ReservationModel).where(
+            ReservationModel.user_id == user_id
+        )
+        total = int(db.session.scalar(count_q) or 0)
+
+        page = max(page, 1)
+        per_page = max(min(per_page, 100), 1)
+        offset = (page - 1) * per_page
+
+        rows = list(
+            db.session.execute(
+                stmt.order_by(
+                    ReservationModel.date.desc(),
+                    ReservationModel.time_slot.desc(),
+                )
+                .offset(offset)
+                .limit(per_page)
+            ).scalars()
+        )
+        return rows, total
+
+    @staticmethod
     def list_for_restaurant(
         restaurant_id: UUID,
         filters: dict | None,

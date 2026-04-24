@@ -37,12 +37,18 @@ class UserRepository:
         return db.session.get(UserModel, user_id)
 
     @staticmethod
-    def update_role(user_id: UUID, role: UserRole) -> UserModel | None:
+    def update_role(
+        user_id: UUID,
+        role: UserRole,
+        *,
+        auto_commit: bool = True,
+    ) -> UserModel | None:
         user = UserRepository.get_by_id(user_id)
         if not user:
             return None
         user.role = role
-        db.session.commit()
+        if auto_commit:
+            db.session.commit()
         return user
 
     @staticmethod
