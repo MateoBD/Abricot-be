@@ -45,3 +45,21 @@ class ReservationModel(db.Model):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "restaurantId": str(self.restaurant_id),
+            "userId": str(self.user_id) if self.user_id else None,
+            "guestName": self.guest_name,
+            "guestPhone": self.guest_phone,
+            "guestEmail": self.guest_email,
+            "source": self.source.value,
+            "partySize": self.party_size,
+            "date": self.date.isoformat(),
+            "timeSlot": self.time_slot.isoformat(),
+            "status": self.status.value,
+            "notes": self.notes,
+            "confirmationCode": self.confirmation_code,
+            "createdAt": self.created_at.isoformat(),
+        }

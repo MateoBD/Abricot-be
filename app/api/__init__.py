@@ -2,6 +2,7 @@ import logging
 
 from flask import Blueprint, Flask
 from flask_restx import Api
+from flask_restx.resource import Resource
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException
 
@@ -41,6 +42,20 @@ def register_blueprints(app: Flask) -> None:
     api.add_namespace(restaurant_namespace)
     app.register_blueprint(blueprint)
 
+    def _compat_validate_payload(self, expect, collection=False):
+        from flask import request
+
+        data = request.get_json()
+        resolver = getattr(self.api, "_refresolver", None)
+        format_checker = getattr(self.api, "format_checker", None)
+        if collection:
+            data = data if isinstance(data, list) else [data]
+            for obj in data:
+                expect.validate(obj, resolver, format_checker)
+        else:
+            expect.validate(data, resolver, format_checker)
+
+    Resource._Resource__validate_payload = _compat_validate_payload
 
 def _register_api_error_handlers(api: Api) -> None:
     @api.errorhandler(AppError)

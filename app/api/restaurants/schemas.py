@@ -7,6 +7,8 @@ _UUID_STRING_PATTERN = (
 _EMAIL_PATTERN = r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"
 # Phone: optional leading +, then digits, spaces, parentheses, hyphens and dots
 _PHONE_PATTERN = r"^\+?[\d\s\(\)\-\.]{7,30}$"
+_RESERVATION_SOURCE_PATTERN = r"^(ONLINE|PHONE|EVENT)$"
+_RESERVATION_STATUS_PATTERN = r"^(CONFIRMED|CANCELLED|COMPLETED|NO_SHOW)$"
 
 # Mutable fields shared between create and update (same contract, DRY definition)
 _RESTAURANT_WRITABLE_FIELDS = {
@@ -380,6 +382,100 @@ general_metrics_response_model = Model(
         "reservations": fields.Nested(
             reservations_metrics_model,
             description="Métricas de reservas.",
+        ),
+    },
+)
+
+reservation_response_model = Model(
+    "ReservationResponse",
+    {
+        "id": fields.String(
+            description="ID de la reserva (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abc",
+        ),
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abd",
+        ),
+        "userId": fields.String(
+            description="ID del usuario (UUID, opcional).",
+            pattern=_UUID_STRING_PATTERN,
+            allow_null=True,
+            example="018f1234-5678-7abc-8def-123456789abe",
+        ),
+        "guestName": fields.String(
+            description="Nombre del invitado.",
+            allow_null=True,
+            example="Juan Perez",
+        ),
+        "guestPhone": fields.String(
+            description="Telefono del invitado.",
+            allow_null=True,
+            example="+54 11 4444-5555",
+        ),
+        "guestEmail": fields.String(
+            description="Email del invitado.",
+            allow_null=True,
+            example="juan@example.com",
+        ),
+        "source": fields.String(
+            description="Origen de la reserva.",
+            pattern=_RESERVATION_SOURCE_PATTERN,
+            example="ONLINE",
+        ),
+        "partySize": fields.Integer(
+            description="Cantidad de comensales.",
+            example=4,
+        ),
+        "date": fields.String(
+            description="Fecha de la reserva (YYYY-MM-DD).",
+            example="2026-04-22",
+        ),
+        "timeSlot": fields.String(
+            description="Horario de la reserva (HH:MM:SS).",
+            example="21:00:00",
+        ),
+        "status": fields.String(
+            description="Estado de la reserva.",
+            pattern=_RESERVATION_STATUS_PATTERN,
+            example="CONFIRMED",
+        ),
+        "notes": fields.String(
+            description="Notas adicionales.",
+            allow_null=True,
+            example="Mesa cerca de la ventana.",
+        ),
+        "confirmationCode": fields.String(
+            description="Codigo de confirmacion.",
+            example="ABR123XYZ789",
+        ),
+        "createdAt": fields.String(
+            description="Fecha de creacion en formato ISO 8601 UTC.",
+            example="2026-04-07T19:00:00+00:00",
+        ),
+    },
+)
+
+paginated_reservation_response_model = Model(
+    "PaginatedReservationListResponse",
+    {
+        "data": fields.List(
+            fields.Nested(reservation_response_model),
+            description="Reservas en la pagina actual.",
+        ),
+        "total": fields.Integer(
+            description="Cantidad total de items.",
+            example=25,
+        ),
+        "page": fields.Integer(
+            description="Pagina actual (1-based).",
+            example=1,
+        ),
+        "perPage": fields.Integer(
+            description="Tamano de pagina aplicado.",
+            example=20,
         ),
     },
 )

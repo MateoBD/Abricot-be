@@ -6,9 +6,11 @@ from werkzeug.datastructures import FileStorage
 
 from app.api.restaurants.schemas import (
     paginated_restaurant_admin_response_model,
+    paginated_reservation_response_model,
     paginated_restaurant_response_model,
     general_metrics_response_model,
     orders_report_response_model,
+    reservation_response_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
     restaurant_create_model,
@@ -23,6 +25,7 @@ from app.middleware.auth import (
 )
 from app.models.enums import UserRole
 from app.services.restaurant_service import FIELD_UNSET, RestaurantService
+from app.services.reservation_service import ReservationService
 from app.services.analytics_service import AnalyticsService
 from app.services.restaurant_admin_service import RestaurantAdminService
 
@@ -54,6 +57,8 @@ for _model in (
     restaurant_admin_response_model,
     orders_report_response_model,
     general_metrics_response_model,
+    reservation_response_model,
+    paginated_reservation_response_model,
 ):
     namespace.models[_model.name] = _model
 
@@ -80,6 +85,45 @@ _analytics_date_range_parser.add_argument(
     location="args",
     required=True,
     help="End date in YYYY-MM-DD format.",
+)
+
+_reservations_list_parser = reqparse.RequestParser()
+_reservations_list_parser.add_argument(
+    "date",
+    type=str,
+    location="args",
+    required=False,
+    help="Reservation date in YYYY-MM-DD format.",
+)
+_reservations_list_parser.add_argument(
+    "status",
+    type=str,
+    location="args",
+    required=False,
+    help="Reservation status: CONFIRMED, CANCELLED, COMPLETED, NO_SHOW.",
+)
+_reservations_list_parser.add_argument(
+    "source",
+    type=str,
+    location="args",
+    required=False,
+    help="Reservation source: ONLINE, PHONE, EVENT.",
+)
+_reservations_list_parser.add_argument(
+    "page",
+    type=int,
+    location="args",
+    required=False,
+    default=1,
+    help="Page number (1-based).",
+)
+_reservations_list_parser.add_argument(
+    "perPage",
+    type=int,
+    location="args",
+    required=False,
+    default=20,
+    help="Items per page (max 100).",
 )
 
 
@@ -271,4 +315,29 @@ class RestaurantGeneralMetrics(Resource):
             restaurant_id=restaurant_id,
             start=args.get("start"),
             end=args.get("end"),
+        ), 200
+
+
+@namespace.route("/<uuid:restaurant_id>/reservations")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantReservationList(Resource):
+    @namespace.response(
+        200,
+        "Reservations retrieved successfully.",
+        paginated_reservation_response_model,
+    )
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @namespace.expect(_reservations_list_parser)
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID):
+        """List restaurant reservations with optional filters and pagination."""
+        args = _reservations_list_parser.parse_args()
+        return ReservationService.list_for_restaurant(
+            restaurant_id=restaurant_id,
+            on_date=args.get("date"),
+            status=args.get("status"),
+            source=args.get("source"),
+            page=args.get("page") or 1,
+            per_page=args.get("perPage") or 20,
         ), 200
