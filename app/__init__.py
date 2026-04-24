@@ -3,7 +3,7 @@ import logging.config
 
 from flask import Flask
 
-from app.config import config, get_config_name
+from app.config import config, get_config_name, parse_allowed_origins
 from app.logging_config import LOGGING_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,10 @@ def create_app(config_name: str | None = None) -> Flask:
         cfg_class.validate()
 
     app.config.from_object(cfg_class)
+    # ProductionConfig.ALLOWED_ORIGINS may have been captured at import time before load_dotenv;
+    # always re-read from the environment when serving the API for real.
+    if cfg_name == "production":
+        app.config["ALLOWED_ORIGINS"] = parse_allowed_origins()
 
     _setup_logging(app)
 

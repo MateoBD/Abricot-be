@@ -1,10 +1,9 @@
 from dotenv import load_dotenv
 
-from app import create_app
-
-# Call the application factory function to construct a Flask application
-# instance using the development configuration
+# Load .env before importing app.config — ProductionConfig reads ALLOWED_ORIGINS at import time.
 load_dotenv()
+
+from app import create_app
 
 # loop = asyncio.get_event_loop()
 

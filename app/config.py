@@ -2,6 +2,15 @@ import os
 from datetime import timedelta
 
 
+def parse_allowed_origins() -> list[str]:
+    """Comma-separated ALLOWED_ORIGINS from the environment (used after load_dotenv)."""
+    return [
+        o.strip()
+        for o in os.environ.get("ALLOWED_ORIGINS", "").split(",")
+        if o.strip()
+    ]
+
+
 class BaseConfig:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     API_VERSION = "1.0.0"
@@ -49,11 +58,7 @@ class ProductionConfig(BaseConfig):
     AWS_S3_BUCKET = os.environ.get("AWS_S3_BUCKET", "")
     AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
     AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
-    ALLOWED_ORIGINS = [
-        o.strip()
-        for o in os.environ.get("ALLOWED_ORIGINS", "").split(",")
-        if o.strip()
-    ]
+    ALLOWED_ORIGINS = parse_allowed_origins()
     SQLALCHEMY_DATABASE_URI = (
         "postgresql+psycopg2://"
         f"{os.environ.get('POSTGRES_USER', '')}:{os.environ.get('POSTGRES_PASSWORD', '')}"
@@ -78,11 +83,7 @@ class ProductionConfig(BaseConfig):
             raise EnvironmentError(
                 f"Missing required environment variables: {', '.join(missing)}"
             )
-        origins = [
-            o.strip()
-            for o in os.environ.get("ALLOWED_ORIGINS", "").split(",")
-            if o.strip()
-        ]
+        origins = parse_allowed_origins()
         if "*" in origins:
             raise EnvironmentError(
                 "ALLOWED_ORIGINS must list explicit origins in production; '*' is not allowed."
