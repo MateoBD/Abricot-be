@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -21,6 +22,14 @@ from app.utils.uuid7 import new_uuid7
 
 class ReservationModel(db.Model):
     __tablename__ = "reservations"
+    __table_args__ = (
+        Index(
+            "ix_reservations_restaurant_id_date_status",
+            "restaurant_id",
+            "date",
+            "status",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=new_uuid7
