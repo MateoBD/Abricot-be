@@ -199,6 +199,47 @@ my_restaurant_review_response_model = Model(
 
 _ORDER_STATUS_STRING_PATTERN = r"^(PENDING|CONFIRMED|IN_PREPARATION|READY|COMPLETED|CANCELLED)$"
 
+restaurant_order_create_item_model = Model(
+    "RestaurantOrderCreateItemRequest",
+    {
+        "menuItemId": fields.String(
+            required=True,
+            description="ID del plato (UUID) dentro del menú activo.",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "quantity": fields.Integer(
+            required=True,
+            description="Cantidad solicitada del ítem.",
+            min=1,
+            example=2,
+        ),
+        "notes": fields.String(
+            required=False,
+            description="Notas opcionales para esta línea.",
+            allow_null=True,
+            max_length=500,
+        ),
+    },
+)
+
+restaurant_order_create_model = Model(
+    "RestaurantOrderCreateRequest",
+    {
+        "items": fields.List(
+            fields.Nested(restaurant_order_create_item_model),
+            required=True,
+            description="Líneas del pedido. Debe incluir al menos una.",
+            min_items=1,
+        ),
+        "notes": fields.String(
+            required=False,
+            description="Notas generales del pedido.",
+            allow_null=True,
+            max_length=1000,
+        ),
+    },
+)
+
 restaurant_order_item_admin_model = Model(
     "RestaurantOrderItemAdmin",
     {
@@ -243,6 +284,24 @@ restaurant_order_detail_admin_model = Model(
         "items": fields.List(
             fields.Nested(restaurant_order_item_admin_model),
             description="Líneas del pedido (solo en detalle y tras PATCH de estado).",
+        ),
+    },
+)
+
+restaurant_order_create_response_model = Model(
+    "RestaurantOrderCreateResponse",
+    {
+        "id": fields.String(pattern=_UUID_STRING_PATTERN),
+        "restaurantId": fields.String(pattern=_UUID_STRING_PATTERN),
+        "userId": fields.String(pattern=_UUID_STRING_PATTERN),
+        "status": fields.String(pattern=_ORDER_STATUS_STRING_PATTERN, example="PENDING"),
+        "totalAmount": fields.String(example="3500.00"),
+        "notes": fields.String(allow_null=True),
+        "estimatedReadyAt": fields.String(allow_null=True),
+        "createdAt": fields.String(),
+        "items": fields.List(
+            fields.Nested(restaurant_order_item_admin_model),
+            description="Líneas del pedido creado.",
         ),
     },
 )

@@ -48,7 +48,9 @@ def register_blueprints(app: Flask) -> None:
         from flask import request
 
         data = request.get_json()
-        resolver = getattr(self.api, "_refresolver", None)
+        resolver = getattr(self.api, "refresolver", None)
+        if resolver is None:
+            resolver = getattr(self.api, "_refresolver", None)
         format_checker = getattr(self.api, "format_checker", None)
         if collection:
             data = data if isinstance(data, list) else [data]

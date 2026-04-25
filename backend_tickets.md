@@ -49,7 +49,7 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 - [ ] Crear modelo y CRUD de Categoria de menu
 - [ ] Crear modelo y CRUD de Item de menu
 - [ ] Crear funcion para activar/desactivar menu vigente
-- [ ] Crear funcion para crear pedido takeout con validacion de items
+- [x] Crear funcion para crear pedido takeout con validacion de items
 - [ ] Crear funcion para actualizar estado de pedido (pending -> confirmed -> ready -> completed)
 
 ### Chores

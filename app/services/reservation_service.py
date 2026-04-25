@@ -1,4 +1,4 @@
-import secrets
+import random
 import string
 from datetime import date, time
 import logging
@@ -17,20 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 def _generate_confirmation_code() -> str:
-    alphabet = string.ascii_uppercase + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(8))
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
 
 class ReservationService:
-    @staticmethod
-    def _ensure_requester_is_restaurant_admin(reservation: ReservationModel, requesting_user_id: UUID) -> None:
-        from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
-
-        if not RestaurantAdminRepository.is_admin(
-            user_id=requesting_user_id, restaurant_id=reservation.restaurant_id
-        ):
-            raise ForbiddenError("Only restaurant admins can update reservation status.")
-
     @staticmethod
     def parse_required_date(value: str) -> date:
         try:
@@ -108,17 +98,7 @@ class ReservationService:
 
     @staticmethod
     def _to_payload(reservation: ReservationModel) -> dict:
-        payload = reservation.to_dict()
-        assigned_tables = ReservationTableRepository.get_tables_for_reservation(reservation.id)
-        payload["tableAssignment"] = [
-            {
-                "tableId": str(table.id),
-                "number": table.number,
-                "capacity": table.capacity,
-            }
-            for table in assigned_tables
-        ]
-        return payload
+        return reservation.to_dict()
 
     @staticmethod
     def list_for_restaurant(
@@ -176,11 +156,7 @@ class ReservationService:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
         assignment = AvailabilityService.find_table_assignment(
-            restaurant_id,
-            on_date,
-            time_slot,
-            party_size,
-            lock_rows=True,
+            restaurant_id, on_date, time_slot, party_size
         )
         if assignment is None:
             raise ConflictError(
@@ -200,10 +176,8 @@ class ReservationService:
             notes=notes,
             confirmation_code=code,
         )
-        ReservationRepository.create_with_table_assignment(
-            reservation=reservation,
-            table_ids=[t.id for t in assignment],
-        )
+        ReservationRepository.create(reservation)
+        ReservationTableRepository.create_bulk(reservation.id, [t.id for t in assignment])
         logger.info("Reservation created: id=%s code=%s", reservation.id, code)
         return ReservationService._to_payload(reservation)
 
@@ -253,11 +227,7 @@ class ReservationService:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
         assignment = AvailabilityService.find_table_assignment(
-            restaurant_id,
-            on_date,
-            time_slot,
-            party_size,
-            lock_rows=True,
+            restaurant_id, on_date, time_slot, party_size
         )
         if assignment is None:
             raise ConflictError(
@@ -280,10 +250,8 @@ class ReservationService:
             notes=notes,
             confirmation_code=code,
         )
-        ReservationRepository.create_with_table_assignment(
-            reservation=reservation,
-            table_ids=[t.id for t in assignment],
-        )
+        ReservationRepository.create(reservation)
+        ReservationTableRepository.create_bulk(reservation.id, [t.id for t in assignment])
         logger.info(
             "Admin reservation created: id=%s code=%s admin=%s", reservation.id, code, admin_user_id
         )
@@ -383,29 +351,27 @@ class ReservationService:
         return ReservationService._to_payload(reservation)
 
     @staticmethod
-    def complete(reservation_id: UUID, requesting_user_id: UUID) -> dict:
+    def complete(reservation_id: UUID) -> dict:
         reservation = ReservationRepository.get_by_id(reservation_id)
         if not reservation:
             raise NotFoundError(f"Reservation with id={reservation_id} not found.")
-        ReservationService._ensure_requester_is_restaurant_admin(reservation, requesting_user_id)
         if reservation.status != ReservationStatus.CONFIRMED:
             raise ConflictError(
                 f"Cannot complete a reservation with status '{reservation.status.value}'."
             )
         ReservationRepository.update_status(reservation, ReservationStatus.COMPLETED)
-        logger.info("Reservation completed: id=%s by_user=%s", reservation_id, requesting_user_id)
+        logger.info("Reservation completed: id=%s", reservation_id)
         return ReservationService._to_payload(reservation)
 
     @staticmethod
-    def mark_no_show(reservation_id: UUID, requesting_user_id: UUID) -> dict:
+    def mark_no_show(reservation_id: UUID) -> dict:
         reservation = ReservationRepository.get_by_id(reservation_id)
         if not reservation:
             raise NotFoundError(f"Reservation with id={reservation_id} not found.")
-        ReservationService._ensure_requester_is_restaurant_admin(reservation, requesting_user_id)
         if reservation.status != ReservationStatus.CONFIRMED:
             raise ConflictError(
                 f"Cannot mark as no-show a reservation with status '{reservation.status.value}'."
             )
-        ReservationRepository.mark_no_show_and_release_tables(reservation)
-        logger.info("Reservation marked no-show: id=%s by_user=%s", reservation_id, requesting_user_id)
+        ReservationRepository.update_status(reservation, ReservationStatus.NO_SHOW)
+        logger.info("Reservation marked no-show: id=%s", reservation_id)
         return ReservationService._to_payload(reservation)

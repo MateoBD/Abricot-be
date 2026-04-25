@@ -25,6 +25,35 @@ class MenuItemRepository:
         return db.session.get(MenuItemModel, item_id)
 
     @staticmethod
+    def get_by_ids(item_ids: list[UUID]) -> list[MenuItemModel]:
+        if not item_ids:
+            return []
+        unique = list(dict.fromkeys(item_ids))
+        return list(
+            db.session.execute(
+                select(MenuItemModel).where(MenuItemModel.id.in_(unique))
+            ).scalars()
+        )
+
+    @staticmethod
+    def get_available_for_menu(item_ids: list[UUID], menu_id: UUID) -> list[MenuItemModel]:
+        if not item_ids:
+            return []
+        unique = list(dict.fromkeys(item_ids))
+        return list(
+            db.session.execute(
+                select(MenuItemModel)
+                .join(MenuCategoryModel, MenuItemModel.category_id == MenuCategoryModel.id)
+                .where(
+                    MenuCategoryModel.menu_id == menu_id,
+                    MenuCategoryModel.is_active.is_(True),
+                    MenuItemModel.is_available.is_(True),
+                    MenuItemModel.id.in_(unique),
+                )
+            ).scalars()
+        )
+
+    @staticmethod
     def create(
         category_id: UUID,
         name: str,
@@ -68,6 +97,23 @@ class MenuItemRepository:
             .join(MenuModel, MenuCategoryModel.menu_id == MenuModel.id)
             .where(
                 MenuModel.restaurant_id == restaurant_id,
+                MenuItemModel.id.in_(unique),
+            )
+        )
+        n = int(db.session.scalar(q) or 0)
+        return n == len(unique)
+
+    @staticmethod
+    def validate_items_for_menu(item_ids: list[UUID], menu_id: UUID) -> bool:
+        if not item_ids:
+            return True
+        unique = list(dict.fromkeys(item_ids))
+        q = (
+            select(func.count())
+            .select_from(MenuItemModel)
+            .join(MenuCategoryModel, MenuItemModel.category_id == MenuCategoryModel.id)
+            .where(
+                MenuCategoryModel.menu_id == menu_id,
                 MenuItemModel.id.in_(unique),
             )
         )

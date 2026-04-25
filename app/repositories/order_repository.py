@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models.enums import OrderStatus
+from app.models.order_item import OrderItemModel
 from app.models.order import OrderModel
 
 
@@ -14,6 +15,26 @@ class OrderRepository:
         db.session.add(order)
         db.session.commit()
         return order
+
+    @staticmethod
+    def create_with_items(order: OrderModel, items: list[dict]) -> tuple[OrderModel, list[OrderItemModel]]:
+        db.session.add(order)
+        db.session.flush()
+
+        order_items: list[OrderItemModel] = []
+        for row in items:
+            order_item = OrderItemModel(
+                order_id=order.id,
+                menu_item_id=row["menu_item_id"],
+                quantity=row["quantity"],
+                unit_price=row["unit_price"],
+                notes=row.get("notes"),
+            )
+            db.session.add(order_item)
+            order_items.append(order_item)
+
+        db.session.commit()
+        return order, order_items
 
     @staticmethod
     def get_by_id(order_id: UUID) -> OrderModel | None:

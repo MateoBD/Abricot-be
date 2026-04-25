@@ -40,8 +40,11 @@ from app.api.restaurants.schemas import (
     my_restaurant_review_request_model,
     my_restaurant_review_response_model,
     restaurant_order_item_admin_model,
+    restaurant_order_create_item_model,
+    restaurant_order_create_model,
     restaurant_order_list_admin_model,
     restaurant_order_detail_admin_model,
+    restaurant_order_create_response_model,
     paginated_restaurant_orders_admin_model,
     restaurant_order_status_patch_model,
     promotion_create_model,
@@ -125,8 +128,11 @@ for _model in (
     my_restaurant_review_request_model,
     my_restaurant_review_response_model,
     restaurant_order_item_admin_model,
+    restaurant_order_create_item_model,
+    restaurant_order_create_model,
     restaurant_order_list_admin_model,
     restaurant_order_detail_admin_model,
+    restaurant_order_create_response_model,
     paginated_restaurant_orders_admin_model,
     restaurant_order_status_patch_model,
     promotion_create_model,
@@ -368,15 +374,34 @@ class MyRestaurantReview(Resource):
         )
 
 
-# ── Takeout orders (restaurant admin) ─────────────────────────────────────────
+# ── Takeout orders ─────────────────────────────────────────────────────────────
 
 
 @namespace.route("/<uuid:restaurant_id>/orders")
 @namespace.doc(
     params={"restaurant_id": "The restaurant's ID (UUID)."},
-    description="Takeout orders for this restaurant (restaurant admin or SUPER_ADMIN only).",
+    description="Takeout orders for this restaurant (authenticated users can create; admins can list).",
 )
 class RestaurantOrdersForAdmin(Resource):
+    @namespace.expect(restaurant_order_create_model, validate=True)
+    @namespace.response(201, "Order created successfully.", restaurant_order_create_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(401, "Unauthorized.")
+    @namespace.response(404, "Restaurant not found or has no active menu.")
+    @require_authentication()
+    def post(self, restaurant_id: UUID):
+        """Create a takeout order for this restaurant using the active menu."""
+        data = request.json or {}
+        return (
+            OrderService.create(
+                restaurant_id=restaurant_id,
+                user_id=get_current_user_id(),
+                items=data.get("items") or [],
+                notes=data.get("notes"),
+            ),
+            201,
+        )
+
     @namespace.expect(_restaurant_orders_list_parser)
     @namespace.response(
         200,
