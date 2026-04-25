@@ -2,7 +2,6 @@ import logging
 from functools import wraps
 from uuid import UUID
 
-from flask import jsonify
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from flask_jwt_extended.exceptions import JWTExtendedException
 from jwt.exceptions import PyJWTError
@@ -45,7 +44,7 @@ def require_authentication():
                 verify_jwt_in_request()
             except (JWTExtendedException, PyJWTError) as e:
                 logger.warning(f"Access token validation failed: {e}")
-                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+                return _UNAUTHORIZED_RESPONSE, 401
             return f(*args, **kwargs)
 
         return wrapper
@@ -74,7 +73,7 @@ def require_refresh_token():
                 verify_jwt_in_request(refresh=True)
             except (JWTExtendedException, PyJWTError) as e:
                 logger.warning(f"Refresh token validation failed: {e}")
-                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+                return _UNAUTHORIZED_RESPONSE, 401
             return f(*args, **kwargs)
 
         return wrapper
@@ -97,13 +96,13 @@ def require_roles(*allowed_roles: UserRole):
                 verify_jwt_in_request()
             except (JWTExtendedException, PyJWTError) as e:
                 logger.warning(f"Access token validation failed: {e}")
-                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+                return _UNAUTHORIZED_RESPONSE, 401
 
             user_id = get_current_user_id()
             user = UserRepository.get_by_id(user_id)
             if not user:
                 logger.warning(f"Authenticated user does not exist: user_id={user_id}")
-                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+                return _UNAUTHORIZED_RESPONSE, 401
 
             if user.role not in allowed_roles:
                 logger.warning(
@@ -112,7 +111,7 @@ def require_roles(*allowed_roles: UserRole):
                     [role.value for role in allowed_roles],
                     user.role.value,
                 )
-                return jsonify(_FORBIDDEN_RESPONSE), 403
+                return _FORBIDDEN_RESPONSE, 403
 
             return f(*args, **kwargs)
 
@@ -135,13 +134,13 @@ def require_restaurant_admin(restaurant_id_param: str):
                 verify_jwt_in_request()
             except (JWTExtendedException, PyJWTError) as e:
                 logger.warning(f"Access token validation failed: {e}")
-                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+                return _UNAUTHORIZED_RESPONSE, 401
 
             user_id = get_current_user_id()
             user = UserRepository.get_by_id(user_id)
             if not user:
                 logger.warning(f"Authenticated user does not exist: user_id={user_id}")
-                return jsonify(_UNAUTHORIZED_RESPONSE), 401
+                return _UNAUTHORIZED_RESPONSE, 401
 
             restaurant_id = kwargs.get(restaurant_id_param)
             if restaurant_id is None:
@@ -149,7 +148,7 @@ def require_restaurant_admin(restaurant_id_param: str):
                     "Missing restaurant id path param '%s' in protected route.",
                     restaurant_id_param,
                 )
-                return jsonify(_FORBIDDEN_RESPONSE), 403
+                return _FORBIDDEN_RESPONSE, 403
 
             if user.role == UserRole.SUPER_ADMIN:
                 return f(*args, **kwargs)
@@ -160,7 +159,7 @@ def require_restaurant_admin(restaurant_id_param: str):
                     user_id,
                     user.role.value,
                 )
-                return jsonify(_FORBIDDEN_RESPONSE), 403
+                return _FORBIDDEN_RESPONSE, 403
 
             if not RestaurantAdminRepository.is_admin(
                 user_id,
@@ -171,7 +170,7 @@ def require_restaurant_admin(restaurant_id_param: str):
                     user_id,
                     restaurant_id,
                 )
-                return jsonify(_FORBIDDEN_RESPONSE), 403
+                return _FORBIDDEN_RESPONSE, 403
 
             return f(*args, **kwargs)
 
@@ -198,7 +197,7 @@ def require_path_user_matches_jwt(user_id_param: str = "user_id"):
                     "Missing path param '%s' for user ownership check.",
                     user_id_param,
                 )
-                return jsonify(_FORBIDDEN_RESPONSE), 403
+                return _FORBIDDEN_RESPONSE, 403
 
             token_uid = get_current_user_id()
             path_uuid = path_uid if isinstance(path_uid, UUID) else UUID(str(path_uid))
@@ -208,7 +207,7 @@ def require_path_user_matches_jwt(user_id_param: str = "user_id"):
                     path_uuid,
                     token_uid,
                 )
-                return jsonify(_FORBIDDEN_RESPONSE), 403
+                return _FORBIDDEN_RESPONSE, 403
 
             return f(*args, **kwargs)
 

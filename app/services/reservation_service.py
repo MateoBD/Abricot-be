@@ -23,6 +23,15 @@ def _generate_confirmation_code() -> str:
 
 class ReservationService:
     @staticmethod
+    def _ensure_requester_is_restaurant_admin(reservation: ReservationModel, requesting_user_id: UUID) -> None:
+        from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
+
+        if not RestaurantAdminRepository.is_admin(
+            user_id=requesting_user_id, restaurant_id=reservation.restaurant_id
+        ):
+            raise ForbiddenError("Only restaurant admins can update reservation status.")
+
+    @staticmethod
     def parse_required_date(value: str) -> date:
         try:
             return date.fromisoformat(value)
@@ -374,27 +383,29 @@ class ReservationService:
         return ReservationService._to_payload(reservation)
 
     @staticmethod
-    def complete(reservation_id: UUID) -> dict:
+    def complete(reservation_id: UUID, requesting_user_id: UUID) -> dict:
         reservation = ReservationRepository.get_by_id(reservation_id)
         if not reservation:
             raise NotFoundError(f"Reservation with id={reservation_id} not found.")
+        ReservationService._ensure_requester_is_restaurant_admin(reservation, requesting_user_id)
         if reservation.status != ReservationStatus.CONFIRMED:
             raise ConflictError(
                 f"Cannot complete a reservation with status '{reservation.status.value}'."
             )
         ReservationRepository.update_status(reservation, ReservationStatus.COMPLETED)
-        logger.info("Reservation completed: id=%s", reservation_id)
+        logger.info("Reservation completed: id=%s by_user=%s", reservation_id, requesting_user_id)
         return ReservationService._to_payload(reservation)
 
     @staticmethod
-    def mark_no_show(reservation_id: UUID) -> dict:
+    def mark_no_show(reservation_id: UUID, requesting_user_id: UUID) -> dict:
         reservation = ReservationRepository.get_by_id(reservation_id)
         if not reservation:
             raise NotFoundError(f"Reservation with id={reservation_id} not found.")
+        ReservationService._ensure_requester_is_restaurant_admin(reservation, requesting_user_id)
         if reservation.status != ReservationStatus.CONFIRMED:
             raise ConflictError(
                 f"Cannot mark as no-show a reservation with status '{reservation.status.value}'."
             )
-        ReservationRepository.update_status(reservation, ReservationStatus.NO_SHOW)
-        logger.info("Reservation marked no-show: id=%s", reservation_id)
+        ReservationRepository.mark_no_show_and_release_tables(reservation)
+        logger.info("Reservation marked no-show: id=%s by_user=%s", reservation_id, requesting_user_id)
         return ReservationService._to_payload(reservation)

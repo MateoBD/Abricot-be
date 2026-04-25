@@ -135,6 +135,17 @@ class ReservationRepository:
         return reservation
 
     @staticmethod
+    def mark_no_show_and_release_tables(reservation: ReservationModel) -> ReservationModel:
+        reservation.status = ReservationStatus.NO_SHOW
+        db.session.execute(
+            delete(ReservationTableModel).where(
+                ReservationTableModel.reservation_id == reservation.id
+            )
+        )
+        db.session.commit()
+        return reservation
+
+    @staticmethod
     def table_has_future_confirmed_reservations(table_id: UUID, from_date: date) -> bool:
         return bool(
             db.session.scalar(

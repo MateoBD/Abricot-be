@@ -443,8 +443,8 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 - [x] `GET /restaurants/{id}/reservations/{reservation_id}`
 - [x] `POST /restaurants/{id}/reservations/{reservation_id}/cancel`
 - [ ] `PATCH /reservations/{reservation_id}/reassign-tables`
-- [ ] `PATCH /reservations/{reservation_id}/complete`
-- [ ] `PATCH /reservations/{reservation_id}/no-show`
+- [x] `PATCH /reservations/{reservation_id}/complete`
+- [x] `PATCH /reservations/{reservation_id}/no-show`
 - [ ] `GET /reservations/lookup`
 
 ### 8.8 Menús — F3

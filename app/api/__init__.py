@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 def register_blueprints(app: Flask) -> None:
     from app.api.auth.routes import namespace as auth_namespace
+    from app.api.reservations.routes import namespace as reservations_namespace
     from app.api.restaurants.routes import namespace as restaurant_namespace
     from app.api.system.routes import namespace as system_namespace
     from app.api.users.routes import namespace as users_namespace
@@ -40,6 +41,7 @@ def register_blueprints(app: Flask) -> None:
     api.add_namespace(system_namespace)
     api.add_namespace(users_namespace)
     api.add_namespace(restaurant_namespace)
+    api.add_namespace(reservations_namespace)
     app.register_blueprint(blueprint)
 
     def _compat_validate_payload(self, expect, collection=False):
