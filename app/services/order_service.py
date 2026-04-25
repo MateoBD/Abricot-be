@@ -144,13 +144,23 @@ class OrderService:
         order_id: UUID,
         new_status_str: str,
         estimated_ready_at: str | None = None,
+        *,
+        restaurant_id: UUID | None = None,
     ) -> dict:
         order = OrderRepository.get_by_id(order_id)
         if not order:
             raise NotFoundError(f"Order with id={order_id} not found.")
+        if restaurant_id is not None and order.restaurant_id != restaurant_id:
+            raise NotFoundError(f"Order with id={order_id} not found.")
+
+        if not (new_status_str and str(new_status_str).strip()):
+            raise ValidationError(
+                "Status is required.",
+                {"status": "Required"},
+            )
 
         try:
-            new_status = OrderStatus(new_status_str)
+            new_status = OrderStatus(new_status_str.strip().upper())
         except ValueError as err:
             raise ValidationError(
                 "Invalid status.", {"status": "Must be a valid OrderStatus"}
@@ -163,9 +173,9 @@ class OrderService:
             )
 
         parsed_eta: datetime | None = None
-        if estimated_ready_at:
+        if estimated_ready_at is not None and str(estimated_ready_at).strip() != "":
             try:
-                parsed_eta = datetime.fromisoformat(estimated_ready_at)
+                parsed_eta = datetime.fromisoformat(str(estimated_ready_at).strip())
             except ValueError as err:
                 raise ValidationError(
                     "Invalid estimatedReadyAt. Expected ISO 8601.",
@@ -174,7 +184,19 @@ class OrderService:
 
         OrderRepository.update_status(order, new_status, parsed_eta)
         logger.info("Order status updated: order_id=%s new_status=%s", order_id, new_status)
-        return _order_payload(order)
+        return _order_payload(order, include_items=restaurant_id is not None)
+
+    @staticmethod
+    def get_by_id_for_restaurant_admin(
+        order_id: UUID,
+        restaurant_id: UUID,
+    ) -> dict:
+        order = OrderRepository.get_by_id(order_id)
+        if not order:
+            raise NotFoundError(f"Order with id={order_id} not found.")
+        if order.restaurant_id != restaurant_id:
+            raise NotFoundError(f"Order with id={order_id} not found.")
+        return _order_payload(order, include_items=True)
 
     @staticmethod
     def cancel(order_id: UUID, requesting_user_id: UUID) -> dict:

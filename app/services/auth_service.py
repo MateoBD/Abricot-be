@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token, create_refresh_token, get_jw
 
 from app.exceptions.errors import ConflictError, UnauthorizedError, ValidationError
 from app.extensions import bcrypt
+from app.models.enums import UserRole
 from app.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,13 @@ logger = logging.getLogger(__name__)
 
 class AuthService:
     @staticmethod
-    def register(email: str, password: str, name: str, surname: str) -> dict:
+    def register(
+        email: str,
+        password: str,
+        name: str,
+        surname: str,
+        role: str | None = None,
+    ) -> dict:
         email = email.strip().lower()
         name = name.strip()
         surname = surname.strip()
@@ -28,9 +35,27 @@ class AuthService:
                 {"email": "Already in use"},
             )
 
+        raw_role = (role or "").strip().upper() or UserRole.CUSTOMER.value
+        try:
+            user_role = UserRole(raw_role)
+        except ValueError as error:
+            raise ValidationError(
+                "Invalid role.",
+                {"role": "Must be CUSTOMER or RESTAURANT_ADMIN"},
+            ) from error
+        if user_role not in (UserRole.CUSTOMER, UserRole.RESTAURANT_ADMIN):
+            raise ValidationError(
+                "This role cannot be set via public registration.",
+                {"role": "Not allowed for self-service registration"},
+            )
+
         password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
         user = UserRepository.create(
-            email=email, password_hash=password_hash, name=name, surname=surname
+            email=email,
+            password_hash=password_hash,
+            name=name,
+            surname=surname,
+            role=user_role,
         )
         access_token = create_access_token(identity=str(user.id))
         refresh_token = create_refresh_token(identity=str(user.id))

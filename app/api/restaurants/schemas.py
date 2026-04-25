@@ -145,10 +145,234 @@ restaurant_response_model = Model(
             fields.String(pattern=_UUID_STRING_PATTERN),
             description="Tipos de cocina asociados al restaurante.",
         ),
+        "averageScore": fields.Float(
+            description="Promedio de puntuaciones (1–5). null si aún no hay reseñas.",
+            allow_null=True,
+            example=4.25,
+        ),
+        "reviewCount": fields.Integer(
+            description="Cantidad de reseñas (un usuario, una reseña por restaurante).",
+            example=12,
+        ),
         "createdAt": fields.String(
             description="Fecha de creación en formato ISO 8601 UTC.",
             example="2026-04-07T19:00:00+00:00",
         ),
+    },
+)
+
+my_restaurant_review_request_model = Model(
+    "MyRestaurantReviewRequest",
+    {
+        "score": fields.Integer(
+            required=True,
+            description="Puntuación de 1 a 5 (entero). Crea o actualiza la reseña del usuario autenticado.",
+            min=1,
+            max=5,
+            example=4,
+        ),
+    },
+)
+
+my_restaurant_review_response_model = Model(
+    "MyRestaurantReviewResponse",
+    {
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "userId": fields.String(
+            description="ID del usuario (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "score": fields.Integer(description="Puntuación 1–5.", min=1, max=5, example=4),
+        "createdAt": fields.String(
+            description="Fecha de creación ISO 8601 UTC del primer voto en este par.",
+        ),
+        "updatedAt": fields.String(
+            description="Fecha de última actualización de la puntuación.",
+        ),
+    },
+)
+
+_ORDER_STATUS_STRING_PATTERN = r"^(PENDING|CONFIRMED|IN_PREPARATION|READY|COMPLETED|CANCELLED)$"
+
+restaurant_order_item_admin_model = Model(
+    "RestaurantOrderItemAdmin",
+    {
+        "id": fields.String(description="ID de la línea (UUID).", pattern=_UUID_STRING_PATTERN),
+        "orderId": fields.String(description="ID del pedido (UUID).", pattern=_UUID_STRING_PATTERN),
+        "menuItemId": fields.String(description="ID del plato (UUID).", pattern=_UUID_STRING_PATTERN),
+        "quantity": fields.Integer(example=2),
+        "unitPrice": fields.String(description="Precio unitario al momento del pedido.", example="1500.00"),
+        "notes": fields.String(description="Notas de la línea.", allow_null=True),
+    },
+)
+
+restaurant_order_list_admin_model = Model(
+    "RestaurantOrderListAdmin",
+    {
+        "id": fields.String(description="ID del pedido (UUID).", pattern=_UUID_STRING_PATTERN),
+        "restaurantId": fields.String(description="ID del restaurante (UUID).", pattern=_UUID_STRING_PATTERN),
+        "userId": fields.String(description="ID del cliente (UUID).", pattern=_UUID_STRING_PATTERN),
+        "status": fields.String(
+            description="Estado del pedido (takeout).",
+            example="IN_PREPARATION",
+            pattern=_ORDER_STATUS_STRING_PATTERN,
+        ),
+        "totalAmount": fields.String(description="Total del pedido.", example="3500.00"),
+        "notes": fields.String(description="Notas del pedido.", allow_null=True),
+        "estimatedReadyAt": fields.String(description="Hora estimada de listo (ISO 8601).", allow_null=True),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601."),
+    },
+)
+
+restaurant_order_detail_admin_model = Model(
+    "RestaurantOrderDetailAdmin",
+    {
+        "id": fields.String(pattern=_UUID_STRING_PATTERN),
+        "restaurantId": fields.String(pattern=_UUID_STRING_PATTERN),
+        "userId": fields.String(pattern=_UUID_STRING_PATTERN),
+        "status": fields.String(pattern=_ORDER_STATUS_STRING_PATTERN, example="READY"),
+        "totalAmount": fields.String(example="3500.00"),
+        "notes": fields.String(allow_null=True),
+        "estimatedReadyAt": fields.String(allow_null=True),
+        "createdAt": fields.String(),
+        "items": fields.List(
+            fields.Nested(restaurant_order_item_admin_model),
+            description="Líneas del pedido (solo en detalle y tras PATCH de estado).",
+        ),
+    },
+)
+
+paginated_restaurant_orders_admin_model = Model(
+    "PaginatedRestaurantOrdersAdmin",
+    {
+        "data": fields.List(fields.Nested(restaurant_order_list_admin_model)),
+        "total": fields.Integer(example=8),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=20),
+    },
+)
+
+restaurant_order_status_patch_model = Model(
+    "RestaurantOrderStatusPatch",
+    {
+        "status": fields.String(
+            required=True,
+            description="Nuevo estado. Debe ser una transición válida según el estado actual.",
+            example="IN_PREPARATION",
+            pattern=_ORDER_STATUS_STRING_PATTERN,
+        ),
+        "estimatedReadyAt": fields.String(
+            required=False,
+            description="Opcional. Hora estimada de listo (ISO 8601, con offset o Z).",
+            example="2026-04-25T20:30:00+00:00",
+        ),
+    },
+)
+
+_DISCOUNT_TYPE_PATTERN = r"^(PERCENTAGE|FIXED_AMOUNT|FREE_ITEM)$"
+
+promotion_response_model = Model(
+    "PromotionResponse",
+    {
+        "id": fields.String(
+            description="ID de la promoción (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "title": fields.String(description="Título de la oferta.", example="2x1 en postres"),
+        "description": fields.String(
+            description="Texto descriptivo (opcional).",
+            allow_null=True,
+        ),
+        "discountType": fields.String(
+            description="PERCENTAGE | FIXED_AMOUNT | FREE_ITEM",
+            example="PERCENTAGE",
+            pattern=_DISCOUNT_TYPE_PATTERN,
+        ),
+        "discountValue": fields.String(
+            description="Valor asociado al tipo (ej. porcentaje o monto, ≥ 0).",
+            example="15.00",
+        ),
+        "startDate": fields.String(description="Inicio (YYYY-MM-DD).", example="2026-05-01"),
+        "endDate": fields.String(description="Fin (YYYY-MM-DD).", example="2026-05-31"),
+        "isActive": fields.Boolean(description="Vigente según negocio (activo/inactivo).", example=True),
+        "notifyUsers": fields.Boolean(
+            description="Si al crear con true se intenta notificar a usuarios suscriptos al restaurante.",
+            example=False,
+        ),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601 UTC."),
+        "menuItemIds": fields.List(
+            fields.String(pattern=_UUID_STRING_PATTERN),
+            description="IDs de platos del menú incluidos en la oferta (vacío = aplica a criterio de negocio / sin filas).",
+        ),
+    },
+)
+
+promotion_create_model = Model(
+    "PromotionCreateRequest",
+    {
+        "title": fields.String(
+            required=True,
+            description="Título de la promoción.",
+            example="20% de descuento en bebidas",
+            min_length=1,
+            max_length=200,
+        ),
+        "description": fields.String(
+            required=False,
+            description="Descripción (opcional).",
+            allow_null=True,
+        ),
+        "discountType": fields.String(
+            required=True,
+            description="PERCENTAGE, FIXED_AMOUNT o FREE_ITEM",
+            example="PERCENTAGE",
+            pattern=_DISCOUNT_TYPE_PATTERN,
+        ),
+        "discountValue": fields.String(
+            required=True,
+            description="Valor numérico (≥ 0). Uso según discountType (ej. %, monto fijo).",
+            example="20.00",
+        ),
+        "startDate": fields.String(
+            required=True,
+            description="Fecha de inicio (YYYY-MM-DD).",
+            example="2026-05-01",
+        ),
+        "endDate": fields.String(
+            required=True,
+            description="Fecha de fin (YYYY-MM-DD), ≥ startDate.",
+            example="2026-05-15",
+        ),
+        "notifyUsers": fields.Boolean(
+            required=False,
+            description="Si true, se intenta enviar notificación a usuarios con avisos de promos (solo creación).",
+            default=False,
+        ),
+        "menuItemIds": fields.List(
+            fields.String(pattern=_UUID_STRING_PATTERN),
+            required=False,
+            description="Platos de este restaurante a los que aplica (opcional).",
+        ),
+    },
+)
+
+promotions_admin_list_envelope_model = Model(
+    "PromotionsAdminListResponse",
+    {
+        "data": fields.List(
+            fields.Nested(promotion_response_model),
+            description="Todas las promociones del restaurante (admin).",
+        ),
+        "total": fields.Integer(example=3),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=3),
     },
 )
 

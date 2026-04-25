@@ -141,6 +141,11 @@ user_restaurant_response_model = Model(
         "address": fields.String(description="Dirección.", example="Av. Corrientes 1234, CABA"),
         "cityId": fields.String(description="ID de la ciudad (UUID).", allow_null=True),
         "cuisineTypeIds": fields.List(fields.String(), description="Tipos de cocina (UUIDs)."),
+        "averageScore": fields.Float(
+            description="Promedio de puntuaciones (1–5).",
+            allow_null=True,
+        ),
+        "reviewCount": fields.Integer(description="Cantidad de reseñas.", example=5),
         "createdAt": fields.String(description="Fecha de creación ISO 8601."),
     },
 )

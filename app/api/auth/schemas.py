@@ -37,6 +37,15 @@ register_model = Model(
             example="García",
             pattern=_NAME_PATTERN,
         ),
+        "role": fields.String(
+            required=False,
+            description=(
+                "Rol al registrar la cuenta. Solo CUSTOMER o RESTAURANT_ADMIN; "
+                "por defecto CUSTOMER. SUPER_ADMIN no se puede asignar por registro."
+            ),
+            example="RESTAURANT_ADMIN",
+            pattern=r"^(CUSTOMER|RESTAURANT_ADMIN)$",
+        ),
     },
 )
 

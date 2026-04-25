@@ -7,6 +7,7 @@ from app.repositories.order_repository import OrderRepository
 from app.repositories.reservation_repository import ReservationRepository
 from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.restaurant_repository import RestaurantRepository
+from app.repositories.restaurant_review_repository import RestaurantReviewRepository
 from app.repositories.user_repository import UserRepository
 from app.utils.list_envelope import list_envelope, paginated_list_envelope
 
@@ -47,9 +48,19 @@ def _order_payload(order) -> dict:
     }
 
 
-def _restaurant_payload(restaurant, cuisine_ids: list[UUID]) -> dict:
+def _restaurant_payload(
+    restaurant,
+    cuisine_ids: list[UUID],
+    review_stats: dict[UUID, tuple[float | None, int]] | None = None,
+) -> dict:
     payload = restaurant.to_dict()
     payload["cuisineTypeIds"] = [str(cid) for cid in cuisine_ids]
+    rid = restaurant.id
+    if review_stats is None:
+        review_stats = RestaurantReviewRepository.get_stats_by_restaurant_ids([rid])
+    avg, rc = review_stats.get(rid, (None, 0))
+    payload["averageScore"] = avg
+    payload["reviewCount"] = rc
     return payload
 
 
@@ -148,9 +159,13 @@ class UserService:
         cuisine_map = RestaurantRepository.get_cuisine_type_ids_bulk(
             [restaurant.id for restaurant in restaurants]
         )
-
+        rstats = RestaurantReviewRepository.get_stats_by_restaurant_ids(
+            [r.id for r in restaurants]
+        )
         data = [
-            _restaurant_payload(restaurant, cuisine_map.get(restaurant.id, []))
+            _restaurant_payload(
+                restaurant, cuisine_map.get(restaurant.id, []), rstats
+            )
             for restaurant in restaurants
         ]
         return list_envelope(data)

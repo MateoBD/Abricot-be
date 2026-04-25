@@ -24,6 +24,7 @@ from app.models.reservation_table import ReservationTableModel  # noqa: F401
 from app.models.restaurant_admin import RestaurantAdminModel  # noqa: F401
 from app.models.restaurant_cuisine import RestaurantCuisineModel  # noqa: F401
 from app.models.restaurant import RestaurantModel  # noqa: F401
+from app.models.restaurant_review import RestaurantReviewModel  # noqa: F401
 from app.models.table import TableModel  # noqa: F401
 from app.models.user import UserModel  # noqa: F401
 
@@ -52,6 +53,7 @@ __all__ = [
 	"RestaurantAdminModel",
 	"RestaurantCuisineModel",
 	"RestaurantModel",
+	"RestaurantReviewModel",
 	"TableModel",
 	"UserModel",
 	"UserRole",

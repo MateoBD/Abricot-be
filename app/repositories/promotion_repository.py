@@ -1,10 +1,11 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.extensions import db
 from app.models.promotion import PromotionModel
+from app.models.promotion_item import PromotionItemModel
 
 
 class PromotionRepository:
@@ -70,5 +71,10 @@ class PromotionRepository:
 
     @staticmethod
     def delete(promo: PromotionModel) -> None:
+        db.session.execute(
+            delete(PromotionItemModel).where(
+                PromotionItemModel.promotion_id == promo.id
+            )
+        )
         db.session.delete(promo)
         db.session.commit()

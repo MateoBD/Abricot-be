@@ -33,6 +33,16 @@ from app.api.restaurants.schemas import (
     table_group_model,
     table_response_model,
     table_update_model,
+    my_restaurant_review_request_model,
+    my_restaurant_review_response_model,
+    restaurant_order_item_admin_model,
+    restaurant_order_list_admin_model,
+    restaurant_order_detail_admin_model,
+    paginated_restaurant_orders_admin_model,
+    restaurant_order_status_patch_model,
+    promotion_create_model,
+    promotion_response_model,
+    promotions_admin_list_envelope_model,
 )
 from app.middleware.auth import (
     get_current_user_id,
@@ -44,8 +54,11 @@ from app.models.enums import UserRole
 from app.services.analytics_service import AnalyticsService
 from app.services.availability_service import AvailabilityService
 from app.services.business_hours_service import BusinessHoursService
+from app.services.order_service import OrderService
+from app.services.promotion_service import PromotionService
 from app.services.reservation_service import ReservationService
 from app.services.restaurant_admin_service import RestaurantAdminService
+from app.services.restaurant_review_service import RestaurantReviewService
 from app.services.restaurant_service import FIELD_UNSET, RestaurantService
 from app.services.table_service import TableService
 
@@ -65,7 +78,6 @@ namespace = Namespace(
     name="Restaurants",
     path="/restaurants",
     description="ABM de restaurantes.",
-    decorators=[require_authentication()],
 )
 
 for _model in (
@@ -96,6 +108,16 @@ for _model in (
     table_assignment_item_model,
     availability_slot_model,
     availability_response_model,
+    my_restaurant_review_request_model,
+    my_restaurant_review_response_model,
+    restaurant_order_item_admin_model,
+    restaurant_order_list_admin_model,
+    restaurant_order_detail_admin_model,
+    paginated_restaurant_orders_admin_model,
+    restaurant_order_status_patch_model,
+    promotion_create_model,
+    promotion_response_model,
+    promotions_admin_list_envelope_model,
 ):
     namespace.models[_model.name] = _model
 
@@ -179,6 +201,29 @@ _availability_parser.add_argument(
     help="Number of guests.",
 )
 
+_restaurant_orders_list_parser = reqparse.RequestParser()
+_restaurant_orders_list_parser.add_argument(
+    "page",
+    type=int,
+    location="args",
+    default=1,
+    help="Page number (1-based).",
+)
+_restaurant_orders_list_parser.add_argument(
+    "perPage",
+    type=int,
+    location="args",
+    default=20,
+    help="Items per page (max 100).",
+)
+_restaurant_orders_list_parser.add_argument(
+    "status",
+    type=str,
+    location="args",
+    required=False,
+    help="Filter by order status (PENDING, CONFIRMED, IN_PREPARATION, READY, COMPLETED, CANCELLED).",
+)
+
 
 @namespace.route("/")
 class RestaurantList(Resource):
@@ -212,6 +257,7 @@ class RestaurantList(Resource):
         201, "Restaurant created successfully.", restaurant_response_model
     )
     @namespace.response(400, "Validation error.")
+    @require_authentication()
     @require_roles(UserRole.RESTAURANT_ADMIN, UserRole.SUPER_ADMIN)
     def post(self):
         """Create a new restaurant."""
@@ -277,6 +323,176 @@ class RestaurantDetail(Resource):
     def delete(self, restaurant_id: UUID):
         """Delete a restaurant by ID."""
         RestaurantService.delete(restaurant_id)
+        return "", 204
+
+
+@namespace.route("/<uuid:restaurant_id>/my-review")
+@namespace.doc(
+    params={"restaurant_id": "The restaurant's ID (UUID)."},
+    description=(
+        "Un usuario autenticado solo puede tener una puntuación por restaurante: "
+        "el mismo PUT actualiza su nota. El promedio del restaurante sale en "
+        "GET de restaurante / listado."
+    ),
+)
+class MyRestaurantReview(Resource):
+    @namespace.expect(my_restaurant_review_request_model, validate=True)
+    @namespace.response(200, "Reseña guardada o actualizada.", my_restaurant_review_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @require_authentication()
+    def put(self, restaurant_id: UUID):
+        """Crear o reemplazar la puntuación (1–5) del usuario para este restaurante."""
+        data = request.json or {}
+        return (
+            RestaurantReviewService.set_my_review(
+                get_current_user_id(),
+                restaurant_id,
+                data.get("score"),
+            ),
+            200,
+        )
+
+
+# ── Takeout orders (restaurant admin) ─────────────────────────────────────────
+
+
+@namespace.route("/<uuid:restaurant_id>/orders")
+@namespace.doc(
+    params={"restaurant_id": "The restaurant's ID (UUID)."},
+    description="Takeout orders for this restaurant (restaurant admin or SUPER_ADMIN only).",
+)
+class RestaurantOrdersForAdmin(Resource):
+    @namespace.expect(_restaurant_orders_list_parser)
+    @namespace.response(
+        200,
+        "Orders retrieved successfully.",
+        paginated_restaurant_orders_admin_model,
+    )
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID):
+        """List takeout orders, optional `status` filter, paginated (`page`, `perPage`)."""
+        args = _restaurant_orders_list_parser.parse_args()
+        return (
+            OrderService.list_for_restaurant(
+                restaurant_id=restaurant_id,
+                status_filter=args.get("status"),
+                page=args.get("page") or 1,
+                per_page=args.get("perPage") or 20,
+            ),
+            200,
+        )
+
+
+@namespace.route("/<uuid:restaurant_id>/orders/<uuid:order_id>")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "order_id": "The takeout order's ID (UUID).",
+    }
+)
+class RestaurantOrderAdminDetail(Resource):
+    @namespace.response(
+        200,
+        "Order with line items.",
+        restaurant_order_detail_admin_model,
+    )
+    @namespace.response(404, "Restaurant or order not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, order_id: UUID):
+        """Get one takeout order with `items` for the kitchen or admin view."""
+        return (
+            OrderService.get_by_id_for_restaurant_admin(order_id, restaurant_id),
+            200,
+        )
+
+    @namespace.expect(restaurant_order_status_patch_model, validate=True)
+    @namespace.response(
+        200,
+        "Status updated. Response includes `items`.",
+        restaurant_order_detail_admin_model,
+    )
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant or order not found.")
+    @namespace.response(409, "Invalid status transition for current state.")
+    @require_restaurant_admin("restaurant_id")
+    def patch(self, restaurant_id: UUID, order_id: UUID):
+        """Change order state along allowed transitions (see OrderService)."""
+        data = request.json or {}
+        return (
+            OrderService.update_status(
+                order_id=order_id,
+                new_status_str=str(data.get("status", "")),
+                estimated_ready_at=data.get("estimatedReadyAt"),
+                restaurant_id=restaurant_id,
+            ),
+            200,
+        )
+
+
+# ── Promotions (restaurant admin) ─────────────────────────────────────────────
+
+
+@namespace.route("/<uuid:restaurant_id>/promotions")
+@namespace.doc(
+    params={"restaurant_id": "The restaurant's ID (UUID)."},
+    description="Promociones: listado y alta (admin del restaurante o SUPER_ADMIN).",
+)
+class RestaurantPromotionsForAdmin(Resource):
+    @namespace.response(200, "List of promotions (includes menuItemIds).", promotions_admin_list_envelope_model)
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID):
+        """List all promotions for this restaurant (including inactive / outside date range)."""
+        return PromotionService.get_all_for_admin(restaurant_id), 200
+
+    @namespace.expect(promotion_create_model, validate=True)
+    @namespace.response(201, "Promotion created.", promotion_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: UUID):
+        """Create a promotion; optional `notifyUsers` may trigger email to opted-in customers."""
+        data = request.json or {}
+        return (
+            PromotionService.create(
+                restaurant_id=restaurant_id,
+                title=data.get("title", ""),
+                description=data.get("description"),
+                discount_type=str(data.get("discountType", "")),
+                discount_value=data.get("discountValue"),
+                start_date=str(data.get("startDate", "")),
+                end_date=str(data.get("endDate", "")),
+                notify_users=bool(data.get("notifyUsers", False)),
+                menu_item_ids=data.get("menuItemIds"),
+            ),
+            201,
+        )
+
+
+@namespace.route("/<uuid:restaurant_id>/promotions/<uuid:promotion_id>")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "promotion_id": "The promotion's ID (UUID).",
+    }
+)
+class RestaurantPromotionAdminDetail(Resource):
+    @namespace.response(200, "Promotion with menuItemIds.", promotion_response_model)
+    @namespace.response(404, "Restaurant or promotion not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, promotion_id: UUID):
+        """Get one promotion by id."""
+        return PromotionService.get_by_id(restaurant_id, promotion_id), 200
+
+    @namespace.response(204, "Deleted.")
+    @namespace.response(404, "Restaurant or promotion not found.")
+    @require_restaurant_admin("restaurant_id")
+    def delete(self, restaurant_id: UUID, promotion_id: UUID):
+        """Delete a promotion and its menu-item links."""
+        PromotionService.delete(restaurant_id, promotion_id)
         return "", 204
 
 
@@ -419,6 +635,7 @@ class RestaurantReservationList(Resource):
     @namespace.response(400, "Validation error.")
     @namespace.response(404, "Restaurant not found.")
     @namespace.response(409, "No table availability for requested slot.")
+    @require_authentication()
     def post(self, restaurant_id: UUID):
         """Create a reservation as a logged-in customer (source=ONLINE)."""
         data = request.json or {}
@@ -506,6 +723,7 @@ class RestaurantReservationCancel(Resource):
     @namespace.response(403, "Forbidden.")
     @namespace.response(404, "Reservation not found.")
     @namespace.response(409, "Reservation cannot be cancelled in current status.")
+    @require_authentication()
     def post(self, restaurant_id: UUID, reservation_id: UUID):
         """Cancel a reservation and release assigned tables."""
         data = request.json or {}
@@ -619,6 +837,7 @@ class RestaurantBusinessHours(Resource):
         200, "Business hours retrieved successfully.", paginated_business_hours_response_model
     )
     @namespace.response(404, "Restaurant not found.")
+    @require_authentication()
     def get(self, restaurant_id: UUID):
         """Get all business hours for a restaurant."""
         return BusinessHoursService.get_all(restaurant_id), 200
@@ -649,6 +868,7 @@ class RestaurantAvailability(Resource):
     @namespace.response(200, "Availability retrieved successfully.", availability_response_model)
     @namespace.response(400, "Validation error.")
     @namespace.response(404, "Restaurant not found.")
+    @require_authentication()
     def get(self, restaurant_id: UUID):
         """Get available time slots for a given date and party size."""
         args = _availability_parser.parse_args()

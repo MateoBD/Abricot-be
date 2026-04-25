@@ -11,6 +11,7 @@ from app.repositories.restaurant_repository import (
     CUISINE_UNSET,
     RestaurantRepository,
 )
+from app.repositories.restaurant_review_repository import RestaurantReviewRepository
 from app.repositories.user_repository import UserRepository
 from app.utils.list_envelope import paginated_list_envelope
 
@@ -68,6 +69,7 @@ class RestaurantService:
     def _restaurant_payload(
         restaurant: RestaurantModel,
         cuisine_map: dict[UUID, list[UUID]] | None = None,
+        review_stats: dict[UUID, tuple[float | None, int]] | None = None,
     ) -> dict:
         payload = restaurant.to_dict()
         if cuisine_map is None:
@@ -77,6 +79,12 @@ class RestaurantService:
         else:
             cids = cuisine_map.get(restaurant.id, [])
         payload["cuisineTypeIds"] = [str(x) for x in cids]
+        rid = restaurant.id
+        if review_stats is None:
+            review_stats = RestaurantReviewRepository.get_stats_by_restaurant_ids([rid])
+        avg, rc = review_stats.get(rid, (None, 0))
+        payload["averageScore"] = avg
+        payload["reviewCount"] = rc
         return payload
 
     @staticmethod
@@ -115,7 +123,10 @@ class RestaurantService:
             per_page=per_page,
         )
         cmap = RestaurantRepository.get_cuisine_type_ids_bulk([r.id for r in rows])
-        data = [RestaurantService._restaurant_payload(r, cmap) for r in rows]
+        rstats = RestaurantReviewRepository.get_stats_by_restaurant_ids(
+            [r.id for r in rows]
+        )
+        data = [RestaurantService._restaurant_payload(r, cmap, rstats) for r in rows]
         return paginated_list_envelope(data, total=total, page=page, per_page=per_page)
 
     @staticmethod

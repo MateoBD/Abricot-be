@@ -48,6 +48,7 @@ class RegisterEndpoint(Resource):
             password=data.get("password", ""),
             name=data.get("name", ""),
             surname=data.get("surname", ""),
+            role=data.get("role"),
         ), 201
 
 

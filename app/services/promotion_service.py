@@ -78,7 +78,12 @@ class PromotionService:
     def get_all_for_admin(restaurant_id: UUID) -> dict:
         PromotionService._get_restaurant_or_raise(restaurant_id)
         promos = PromotionRepository.get_all(restaurant_id)
-        return list_envelope([p.to_dict() for p in promos])
+        data: list[dict] = []
+        for p in promos:
+            data.append(
+                _promo_payload(p, PromotionItemRepository.list_menu_item_ids(p.id))
+            )
+        return list_envelope(data)
 
     @staticmethod
     def get_feed() -> dict:
@@ -89,7 +94,8 @@ class PromotionService:
     def get_by_id(restaurant_id: UUID, promotion_id: UUID) -> dict:
         PromotionService._get_restaurant_or_raise(restaurant_id)
         promo = PromotionService._get_promo_or_raise(restaurant_id, promotion_id)
-        return promo.to_dict()
+        item_ids = PromotionItemRepository.list_menu_item_ids(promo.id)
+        return _promo_payload(promo, item_ids)
 
     @staticmethod
     def create(
@@ -139,7 +145,7 @@ class PromotionService:
             _try_notify_promotion(promo.id)
 
         logger.info("Promotion created: restaurant_id=%s promo_id=%s", restaurant_id, promo.id)
-        return promo.to_dict()
+        return _promo_payload(promo, item_uuids)
 
     @staticmethod
     def update(
