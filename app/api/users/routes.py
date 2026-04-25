@@ -1,13 +1,19 @@
 from uuid import UUID
 
 from flask import request
-from flask_restx import Namespace, Resource
+from flask_restx import Namespace, Resource, reqparse
 
 from app.api.users.schemas import (
+    paginated_user_order_model,
+    paginated_user_reservation_model,
     success_message_model,
+    user_order_response_model,
     user_password_change_model,
     user_profile_response_model,
     user_profile_update_model,
+    user_reservation_response_model,
+    user_restaurant_response_model,
+    user_restaurants_list_model,
 )
 from app.middleware.auth import (
     require_authentication,
@@ -29,8 +35,27 @@ for _model in (
     user_profile_update_model,
     user_password_change_model,
     success_message_model,
+    user_reservation_response_model,
+    paginated_user_reservation_model,
+    user_order_response_model,
+    paginated_user_order_model,
+    user_restaurant_response_model,
+    user_restaurants_list_model,
 ):
     namespace.models[_model.name] = _model
+
+_pagination_parser = reqparse.RequestParser()
+_pagination_parser.add_argument(
+    "page", type=int, location="args", required=False, default=1, help="Page number (1-based)."
+)
+_pagination_parser.add_argument(
+    "perPage",
+    type=int,
+    location="args",
+    required=False,
+    default=20,
+    help="Items per page (max 100).",
+)
 
 
 @namespace.route("/<uuid:user_id>")
@@ -86,3 +111,51 @@ class UserPassword(Resource):
             new_password=data.get("newPassword", ""),
         )
         return {"message": "Password updated successfully."}, 200
+
+
+@namespace.route("/<uuid:user_id>/reservations")
+@namespace.doc(params={"user_id": "UUID of the user — must match the authenticated user."})
+class UserReservations(Resource):
+    @namespace.expect(_pagination_parser)
+    @namespace.response(200, "Reservations retrieved successfully.", paginated_user_reservation_model)
+    @namespace.response(403, "Forbidden.")
+    @namespace.response(404, "User not found.")
+    @require_path_user_matches_jwt("user_id")
+    def get(self, user_id: UUID):
+        """List reservations for the authenticated user."""
+        args = _pagination_parser.parse_args()
+        return UserService.get_my_reservations(
+            user_id=user_id,
+            page=args.get("page") or 1,
+            per_page=args.get("perPage") or 20,
+        ), 200
+
+
+@namespace.route("/<uuid:user_id>/orders")
+@namespace.doc(params={"user_id": "UUID of the user — must match the authenticated user."})
+class UserOrders(Resource):
+    @namespace.expect(_pagination_parser)
+    @namespace.response(200, "Orders retrieved successfully.", paginated_user_order_model)
+    @namespace.response(403, "Forbidden.")
+    @namespace.response(404, "User not found.")
+    @require_path_user_matches_jwt("user_id")
+    def get(self, user_id: UUID):
+        """List orders for the authenticated user."""
+        args = _pagination_parser.parse_args()
+        return UserService.get_my_orders(
+            user_id=user_id,
+            page=args.get("page") or 1,
+            per_page=args.get("perPage") or 20,
+        ), 200
+
+
+@namespace.route("/<uuid:user_id>/restaurants")
+@namespace.doc(params={"user_id": "UUID of the user — must match the authenticated user."})
+class UserRestaurants(Resource):
+    @namespace.response(200, "Restaurants retrieved successfully.", user_restaurants_list_model)
+    @namespace.response(403, "Forbidden.")
+    @namespace.response(404, "User not found.")
+    @require_path_user_matches_jwt("user_id")
+    def get(self, user_id: UUID):
+        """List restaurants administered by the authenticated user."""
+        return UserService.get_my_restaurants(user_id), 200

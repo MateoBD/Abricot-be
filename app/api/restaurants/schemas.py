@@ -556,3 +556,268 @@ reservation_cancel_model = Model(
         )
     },
 )
+
+reservation_create_model = Model(
+    "ReservationCreateRequest",
+    {
+        "partySize": fields.Integer(
+            required=True,
+            description="Cantidad de comensales.",
+            min=1,
+            example=4,
+        ),
+        "date": fields.String(
+            required=True,
+            description="Fecha de la reserva (YYYY-MM-DD).",
+            example="2026-05-10",
+        ),
+        "timeSlot": fields.String(
+            required=True,
+            description="Horario de la reserva (HH:MM o HH:MM:SS).",
+            example="21:00",
+        ),
+        "notes": fields.String(
+            required=False,
+            allow_null=True,
+            description="Notas adicionales.",
+            max_length=2000,
+            example="Festejo de cumpleaños.",
+        ),
+    },
+)
+
+# ── Tables ──────────────────────────────────────────────────────────────────
+
+_TABLE_WRITABLE_FIELDS = {
+    "number": fields.Integer(
+        required=True,
+        description="Número de la mesa (único por restaurante).",
+        min=1,
+        example=5,
+    ),
+    "capacity": fields.Integer(
+        required=True,
+        description="Capacidad máxima de comensales.",
+        min=1,
+        example=4,
+    ),
+    "name": fields.String(
+        required=False,
+        allow_null=True,
+        description="Nombre descriptivo opcional.",
+        max_length=100,
+        example="Mesa del jardín",
+    ),
+    "isJoinable": fields.Boolean(
+        required=False,
+        description="Puede unirse con otras mesas para grupos grandes.",
+        example=True,
+    ),
+}
+
+table_create_model = Model("TableCreateRequest", {**_TABLE_WRITABLE_FIELDS})
+
+table_update_model = Model(
+    "TableUpdateRequest",
+    {
+        **_TABLE_WRITABLE_FIELDS,
+        "isActive": fields.Boolean(
+            required=False,
+            description="Si la mesa está activa.",
+            example=True,
+        ),
+    },
+)
+
+table_response_model = Model(
+    "TableResponse",
+    {
+        "id": fields.String(
+            description="ID de la mesa (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abd",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "number": fields.Integer(description="Número de la mesa.", example=5),
+        "capacity": fields.Integer(description="Capacidad máxima.", example=4),
+        "name": fields.String(
+            description="Nombre descriptivo.", allow_null=True, example="Mesa del jardín"
+        ),
+        "isJoinable": fields.Boolean(description="Puede unirse con otras.", example=True),
+        "isActive": fields.Boolean(description="Mesa activa.", example=True),
+    },
+)
+
+paginated_table_response_model = Model(
+    "PaginatedTableListResponse",
+    {
+        "data": fields.List(
+            fields.Nested(table_response_model),
+            description="Mesas del restaurante.",
+        ),
+        "total": fields.Integer(description="Cantidad total de mesas.", example=12),
+        "page": fields.Integer(description="Página actual (1-based).", example=1),
+        "perPage": fields.Integer(description="Tamaño de página.", example=12),
+    },
+)
+
+table_group_model = Model(
+    "TableBulkGroup",
+    {
+        "quantity": fields.Integer(
+            required=True,
+            description="Cantidad de mesas del grupo.",
+            min=1,
+            example=5,
+        ),
+        "capacity": fields.Integer(
+            required=True,
+            description="Capacidad de cada mesa del grupo.",
+            min=1,
+            example=4,
+        ),
+        "isJoinable": fields.Boolean(
+            required=False,
+            description="Pueden unirse con otras.",
+            example=True,
+        ),
+    },
+)
+
+table_bulk_create_model = Model(
+    "TableBulkCreateRequest",
+    {
+        "groups": fields.List(
+            fields.Nested(table_group_model),
+            required=True,
+            description="Grupos de mesas a crear.",
+        )
+    },
+)
+
+# ── Business Hours ───────────────────────────────────────────────────────────
+
+business_hours_item_model = Model(
+    "BusinessHoursItem",
+    {
+        "dayOfWeek": fields.Integer(
+            required=True,
+            description="Día de la semana: 0=Lunes, 6=Domingo.",
+            min=0,
+            max=6,
+            example=0,
+        ),
+        "isClosed": fields.Boolean(
+            required=True,
+            description="Si el restaurante está cerrado ese día.",
+            example=False,
+        ),
+        "opensAt": fields.String(
+            required=False,
+            allow_null=True,
+            description="Hora de apertura (HH:MM). Requerido si isClosed=false.",
+            example="12:00",
+        ),
+        "closesAt": fields.String(
+            required=False,
+            allow_null=True,
+            description="Hora de cierre (HH:MM). Requerido si isClosed=false.",
+            example="23:00",
+        ),
+    },
+)
+
+business_hours_bulk_update_model = Model(
+    "BusinessHoursBulkUpdateRequest",
+    {
+        "hours": fields.List(
+            fields.Nested(business_hours_item_model),
+            required=True,
+            description="Lista de horarios a actualizar (puede incluir todos los días).",
+        )
+    },
+)
+
+business_hours_response_model = Model(
+    "BusinessHoursResponse",
+    {
+        "id": fields.String(
+            description="ID del registro (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abd",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "dayOfWeek": fields.Integer(description="0=Lunes, 6=Domingo.", example=0),
+        "opensAt": fields.String(
+            description="Hora de apertura (HH:MM:SS).", allow_null=True, example="12:00:00"
+        ),
+        "closesAt": fields.String(
+            description="Hora de cierre (HH:MM:SS).", allow_null=True, example="23:00:00"
+        ),
+        "isClosed": fields.Boolean(description="Cerrado ese día.", example=False),
+    },
+)
+
+paginated_business_hours_response_model = Model(
+    "PaginatedBusinessHoursResponse",
+    {
+        "data": fields.List(
+            fields.Nested(business_hours_response_model),
+            description="Horarios del restaurante.",
+        ),
+        "total": fields.Integer(example=7),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=7),
+    },
+)
+
+# ── Availability ─────────────────────────────────────────────────────────────
+
+table_assignment_item_model = Model(
+    "TableAssignmentItem",
+    {
+        "tableId": fields.String(
+            description="ID de la mesa (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "number": fields.Integer(description="Número de la mesa.", example=3),
+        "capacity": fields.Integer(description="Capacidad de la mesa.", example=4),
+    },
+)
+
+availability_slot_model = Model(
+    "AvailabilitySlot",
+    {
+        "timeSlot": fields.String(
+            description="Horario del turno (HH:MM:SS).", example="20:00:00"
+        ),
+        "available": fields.Boolean(description="Hay disponibilidad para ese turno.", example=True),
+        "tableAssignment": fields.List(
+            fields.Nested(table_assignment_item_model),
+            description="Mesas asignadas para este turno.",
+        ),
+    },
+)
+
+availability_response_model = Model(
+    "AvailabilityResponse",
+    {
+        "date": fields.String(
+            description="Fecha consultada (YYYY-MM-DD).", example="2026-05-10"
+        ),
+        "partySize": fields.Integer(description="Tamaño del grupo consultado.", example=4),
+        "slots": fields.List(
+            fields.Nested(availability_slot_model),
+            description="Turnos disponibles para esa fecha y tamaño de grupo.",
+        ),
+    },
+)

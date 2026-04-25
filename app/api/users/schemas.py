@@ -83,3 +83,74 @@ success_message_model = Model(
         )
     },
 )
+
+user_reservation_response_model = Model(
+    "UserReservationResponse",
+    {
+        "id": fields.String(description="ID de la reserva (UUID).", example="018f1234-5678-7abc-8def-123456789abc"),
+        "restaurantId": fields.String(description="ID del restaurante (UUID)."),
+        "source": fields.String(description="Origen: ONLINE | PHONE | EVENT.", example="ONLINE"),
+        "partySize": fields.Integer(description="Cantidad de comensales.", example=4),
+        "date": fields.String(description="Fecha (YYYY-MM-DD).", example="2026-05-10"),
+        "timeSlot": fields.String(description="Horario (HH:MM:SS).", example="21:00:00"),
+        "status": fields.String(description="Estado: CONFIRMED | CANCELLED | COMPLETED | NO_SHOW.", example="CONFIRMED"),
+        "notes": fields.String(description="Notas adicionales.", allow_null=True),
+        "confirmationCode": fields.String(description="Código de confirmación.", example="ABR123XYZ789"),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601.", example="2026-04-07T19:00:00+00:00"),
+    },
+)
+
+paginated_user_reservation_model = Model(
+    "PaginatedUserReservationResponse",
+    {
+        "data": fields.List(fields.Nested(user_reservation_response_model)),
+        "total": fields.Integer(example=5),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=20),
+    },
+)
+
+user_order_response_model = Model(
+    "UserOrderResponse",
+    {
+        "id": fields.String(description="ID del pedido (UUID).", example="018f1234-5678-7abc-8def-123456789abc"),
+        "restaurantId": fields.String(description="ID del restaurante (UUID)."),
+        "status": fields.String(description="Estado: PENDING | CONFIRMED | IN_PREPARATION | READY | COMPLETED | CANCELLED.", example="COMPLETED"),
+        "totalAmount": fields.String(description="Total del pedido.", example="2500.00"),
+        "notes": fields.String(description="Notas del pedido.", allow_null=True),
+        "estimatedReadyAt": fields.String(description="Hora estimada de listo (ISO 8601).", allow_null=True),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601.", example="2026-04-07T19:00:00+00:00"),
+    },
+)
+
+paginated_user_order_model = Model(
+    "PaginatedUserOrderResponse",
+    {
+        "data": fields.List(fields.Nested(user_order_response_model)),
+        "total": fields.Integer(example=3),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=20),
+    },
+)
+
+user_restaurant_response_model = Model(
+    "UserRestaurantResponse",
+    {
+        "id": fields.String(description="ID del restaurante (UUID).", example="018f1234-5678-7abc-8def-123456789abc"),
+        "name": fields.String(description="Nombre del restaurante.", example="El Gaucho Rojo"),
+        "address": fields.String(description="Dirección.", example="Av. Corrientes 1234, CABA"),
+        "cityId": fields.String(description="ID de la ciudad (UUID).", allow_null=True),
+        "cuisineTypeIds": fields.List(fields.String(), description="Tipos de cocina (UUIDs)."),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601."),
+    },
+)
+
+user_restaurants_list_model = Model(
+    "UserRestaurantsListResponse",
+    {
+        "data": fields.List(fields.Nested(user_restaurant_response_model)),
+        "total": fields.Integer(example=2),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=2),
+    },
+)

@@ -6,19 +6,33 @@ from werkzeug.datastructures import FileStorage
 
 from app.exceptions.errors import ValidationError
 from app.api.restaurants.schemas import (
-    reservation_admin_create_model,
-    reservation_cancel_model,
+    availability_response_model,
+    availability_slot_model,
+    business_hours_bulk_update_model,
+    business_hours_item_model,
+    business_hours_response_model,
+    paginated_business_hours_response_model,
     paginated_restaurant_admin_response_model,
     paginated_reservation_response_model,
     paginated_restaurant_response_model,
+    paginated_table_response_model,
     general_metrics_response_model,
     orders_report_response_model,
+    reservation_admin_create_model,
+    reservation_cancel_model,
+    reservation_create_model,
     reservation_response_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
     restaurant_create_model,
     restaurant_response_model,
     restaurant_update_model,
+    table_assignment_item_model,
+    table_bulk_create_model,
+    table_create_model,
+    table_group_model,
+    table_response_model,
+    table_update_model,
 )
 from app.middleware.auth import (
     get_current_user_id,
@@ -27,10 +41,13 @@ from app.middleware.auth import (
     require_roles,
 )
 from app.models.enums import UserRole
-from app.services.restaurant_service import FIELD_UNSET, RestaurantService
-from app.services.reservation_service import ReservationService
 from app.services.analytics_service import AnalyticsService
+from app.services.availability_service import AvailabilityService
+from app.services.business_hours_service import BusinessHoursService
+from app.services.reservation_service import ReservationService
 from app.services.restaurant_admin_service import RestaurantAdminService
+from app.services.restaurant_service import FIELD_UNSET, RestaurantService
+from app.services.table_service import TableService
 
 
 def _cuisine_type_ids_from_query() -> list[str] | None:
@@ -63,8 +80,22 @@ for _model in (
     general_metrics_response_model,
     reservation_admin_create_model,
     reservation_cancel_model,
+    reservation_create_model,
     reservation_response_model,
     paginated_reservation_response_model,
+    table_create_model,
+    table_update_model,
+    table_bulk_create_model,
+    table_group_model,
+    table_response_model,
+    paginated_table_response_model,
+    business_hours_item_model,
+    business_hours_bulk_update_model,
+    business_hours_response_model,
+    paginated_business_hours_response_model,
+    table_assignment_item_model,
+    availability_slot_model,
+    availability_response_model,
 ):
     namespace.models[_model.name] = _model
 
@@ -130,6 +161,22 @@ _reservations_list_parser.add_argument(
     required=False,
     default=20,
     help="Items per page (max 100).",
+)
+
+_availability_parser = reqparse.RequestParser()
+_availability_parser.add_argument(
+    "date",
+    type=str,
+    location="args",
+    required=True,
+    help="Date to check availability (YYYY-MM-DD).",
+)
+_availability_parser.add_argument(
+    "partySize",
+    type=int,
+    location="args",
+    required=True,
+    help="Number of guests.",
 )
 
 
@@ -367,6 +414,23 @@ class RestaurantReservationList(Resource):
             per_page=args.get("perPage") or 20,
         ), 200
 
+    @namespace.expect(reservation_create_model, validate=True)
+    @namespace.response(201, "Reservation created successfully.", reservation_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @namespace.response(409, "No table availability for requested slot.")
+    def post(self, restaurant_id: UUID):
+        """Create a reservation as a logged-in customer (source=ONLINE)."""
+        data = request.json or {}
+        return ReservationService.create(
+            restaurant_id=restaurant_id,
+            user_id=get_current_user_id(),
+            party_size=data.get("partySize"),
+            on_date=ReservationService.parse_required_date(data.get("date")),
+            time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
+            notes=data.get("notes"),
+        ), 201
+
 
 @namespace.route("/<uuid:restaurant_id>/reservations/admin")
 @namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
@@ -451,3 +515,149 @@ class RestaurantReservationCancel(Resource):
             reason=data.get("reason"),
             restaurant_id=restaurant_id,
         ), 200
+
+
+# ── Tables ───────────────────────────────────────────────────────────────────
+
+
+@namespace.route("/<uuid:restaurant_id>/tables")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantTableList(Resource):
+    @namespace.response(200, "Tables retrieved successfully.", paginated_table_response_model)
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID):
+        """List all tables for a restaurant."""
+        return TableService.get_all(restaurant_id), 200
+
+    @namespace.expect(table_create_model, validate=True)
+    @namespace.response(201, "Table created successfully.", table_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @namespace.response(409, "Table number already exists for this restaurant.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: UUID):
+        """Create a single table for a restaurant."""
+        data = request.json or {}
+        return TableService.create(
+            restaurant_id=restaurant_id,
+            number=data.get("number"),
+            capacity=data.get("capacity"),
+            name=data.get("name"),
+            is_joinable=data.get("isJoinable", True),
+        ), 201
+
+
+@namespace.route("/<uuid:restaurant_id>/tables/bulk")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantTableBulk(Resource):
+    @namespace.expect(table_bulk_create_model, validate=True)
+    @namespace.response(201, "Tables created successfully.", paginated_table_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: UUID):
+        """Bulk-create tables from groups of {quantity, capacity, isJoinable}."""
+        data = request.json or {}
+        return TableService.create_bulk(
+            restaurant_id=restaurant_id,
+            groups=data.get("groups", []),
+        ), 201
+
+
+@namespace.route("/<uuid:restaurant_id>/tables/<uuid:table_id>")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "table_id": "The table's ID (UUID).",
+    }
+)
+class RestaurantTableDetail(Resource):
+    @namespace.response(200, "Table retrieved successfully.", table_response_model)
+    @namespace.response(404, "Restaurant or table not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, table_id: UUID):
+        """Get a single table by ID."""
+        return TableService.get_by_id(restaurant_id, table_id), 200
+
+    @namespace.expect(table_update_model, validate=True)
+    @namespace.response(200, "Table updated successfully.", table_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant or table not found.")
+    @namespace.response(409, "Table number already exists for this restaurant.")
+    @require_restaurant_admin("restaurant_id")
+    def put(self, restaurant_id: UUID, table_id: UUID):
+        """Replace all fields of a table."""
+        data = request.json or {}
+        return TableService.update(
+            restaurant_id=restaurant_id,
+            table_id=table_id,
+            number=data.get("number"),
+            capacity=data.get("capacity"),
+            name=data.get("name"),
+            is_joinable=data.get("isJoinable", True),
+            is_active=data.get("isActive", True),
+        ), 200
+
+    @namespace.response(204, "Table deleted successfully.")
+    @namespace.response(404, "Restaurant or table not found.")
+    @namespace.response(409, "Table has future confirmed reservations.")
+    @require_restaurant_admin("restaurant_id")
+    def delete(self, restaurant_id: UUID, table_id: UUID):
+        """Delete a table. Fails if it has future confirmed reservations."""
+        TableService.delete(restaurant_id, table_id)
+        return "", 204
+
+
+# ── Business Hours ────────────────────────────────────────────────────────────
+
+
+@namespace.route("/<uuid:restaurant_id>/business-hours")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantBusinessHours(Resource):
+    @namespace.response(
+        200, "Business hours retrieved successfully.", paginated_business_hours_response_model
+    )
+    @namespace.response(404, "Restaurant not found.")
+    def get(self, restaurant_id: UUID):
+        """Get all business hours for a restaurant."""
+        return BusinessHoursService.get_all(restaurant_id), 200
+
+    @namespace.expect(business_hours_bulk_update_model, validate=True)
+    @namespace.response(
+        200, "Business hours updated successfully.", paginated_business_hours_response_model
+    )
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def put(self, restaurant_id: UUID):
+        """Upsert business hours for a restaurant (partial or full week)."""
+        data = request.json or {}
+        return BusinessHoursService.bulk_update(
+            restaurant_id=restaurant_id,
+            hours_data=data.get("hours", []),
+        ), 200
+
+
+# ── Availability ──────────────────────────────────────────────────────────────
+
+
+@namespace.route("/<uuid:restaurant_id>/availability")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantAvailability(Resource):
+    @namespace.expect(_availability_parser)
+    @namespace.response(200, "Availability retrieved successfully.", availability_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    def get(self, restaurant_id: UUID):
+        """Get available time slots for a given date and party size."""
+        args = _availability_parser.parse_args()
+        raw_date = args.get("date")
+        party_size = args.get("partySize")
+        on_date = ReservationService.parse_required_date(raw_date)
+        slots = AvailabilityService.get_available_slots(restaurant_id, on_date, party_size)
+        return {
+            "date": on_date.isoformat(),
+            "partySize": party_size,
+            "slots": slots,
+        }, 200
