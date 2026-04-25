@@ -42,6 +42,8 @@ class AvailabilityService:
         on_date: date,
         time_slot: time,
         party_size: int,
+        *,
+        lock_rows: bool = False,
     ) -> list[TableModel] | None:
         restaurant = RestaurantRepository.get_by_id(restaurant_id)
         if not restaurant:
@@ -50,7 +52,10 @@ class AvailabilityService:
         occupied = AvailabilityService.get_occupied_table_ids_at(
             restaurant_id, on_date, time_slot
         )
-        active_tables = TableRepository.get_active(restaurant_id)
+        if lock_rows:
+            active_tables = TableRepository.get_active_for_update(restaurant_id)
+        else:
+            active_tables = TableRepository.get_active(restaurant_id)
         available = [t for t in active_tables if t.id not in occupied]
 
         # Try single table first (least waste)

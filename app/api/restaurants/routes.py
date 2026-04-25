@@ -6,6 +6,8 @@ from werkzeug.datastructures import FileStorage
 
 from app.exceptions.errors import ValidationError
 from app.api.restaurants.schemas import (
+    availability_response_model,
+    reservation_create_model,
     reservation_admin_create_model,
     reservation_cancel_model,
     paginated_restaurant_admin_response_model,
@@ -27,6 +29,7 @@ from app.middleware.auth import (
     require_roles,
 )
 from app.models.enums import UserRole
+from app.services.availability_service import AvailabilityService
 from app.services.restaurant_service import FIELD_UNSET, RestaurantService
 from app.services.reservation_service import ReservationService
 from app.services.analytics_service import AnalyticsService
@@ -61,6 +64,8 @@ for _model in (
     restaurant_admin_response_model,
     orders_report_response_model,
     general_metrics_response_model,
+    availability_response_model,
+    reservation_create_model,
     reservation_admin_create_model,
     reservation_cancel_model,
     reservation_response_model,
@@ -130,6 +135,22 @@ _reservations_list_parser.add_argument(
     required=False,
     default=20,
     help="Items per page (max 100).",
+)
+
+_availability_parser = reqparse.RequestParser()
+_availability_parser.add_argument(
+    "date",
+    type=str,
+    location="args",
+    required=True,
+    help="Availability date in YYYY-MM-DD format.",
+)
+_availability_parser.add_argument(
+    "partySize",
+    type=int,
+    location="args",
+    required=True,
+    help="Party size (must be >= 1).",
 )
 
 
@@ -366,6 +387,46 @@ class RestaurantReservationList(Resource):
             page=args.get("page") or 1,
             per_page=args.get("perPage") or 20,
         ), 200
+
+    @namespace.expect(reservation_create_model, validate=True)
+    @namespace.response(201, "Reservation created successfully.", reservation_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @namespace.response(409, "No table availability for requested slot.")
+    def post(self, restaurant_id: UUID):
+        """Create an ONLINE reservation for the authenticated customer."""
+        data = request.json or {}
+        return ReservationService.create(
+            restaurant_id=restaurant_id,
+            user_id=get_current_user_id(),
+            party_size=data.get("partySize"),
+            on_date=ReservationService.parse_required_date(data.get("date")),
+            time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
+            notes=data.get("notes"),
+        ), 201
+
+
+@namespace.route("/<uuid:restaurant_id>/availability")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantAvailability(Resource):
+    @namespace.response(200, "Availability retrieved successfully.", availability_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @namespace.expect(_availability_parser)
+    def get(self, restaurant_id: UUID):
+        """Get available reservation slots and suggested table assignment."""
+        args = _availability_parser.parse_args()
+        on_date = ReservationService.parse_required_date(args.get("date"))
+        party_size = args.get("partySize") or 0
+        return {
+            "date": on_date.isoformat(),
+            "partySize": party_size,
+            "slots": AvailabilityService.get_available_slots(
+                restaurant_id=restaurant_id,
+                on_date=on_date,
+                party_size=party_size,
+            ),
+        }, 200
 
 
 @namespace.route("/<uuid:restaurant_id>/reservations/admin")

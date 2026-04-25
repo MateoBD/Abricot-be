@@ -17,6 +17,27 @@ class ReservationRepository:
         return reservation
 
     @staticmethod
+    def create_with_table_assignment(
+        reservation: ReservationModel,
+        table_ids: list[UUID],
+    ) -> ReservationModel:
+        try:
+            db.session.add(reservation)
+            db.session.flush()
+            for table_id in table_ids:
+                db.session.add(
+                    ReservationTableModel(
+                        reservation_id=reservation.id,
+                        table_id=table_id,
+                    )
+                )
+            db.session.commit()
+            return reservation
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
     def get_by_id(reservation_id: UUID) -> ReservationModel | None:
         return db.session.get(ReservationModel, reservation_id)
 

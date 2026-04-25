@@ -10,6 +10,8 @@ _PHONE_PATTERN = r"^\+?[\d\s\(\)\-\.]{7,30}$"
 _RESERVATION_SOURCE_PATTERN = r"^(ONLINE|PHONE|EVENT)$"
 _RESERVATION_ADMIN_SOURCE_PATTERN = r"^(PHONE|EVENT)$"
 _RESERVATION_STATUS_PATTERN = r"^(CONFIRMED|CANCELLED|COMPLETED|NO_SHOW)$"
+_DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+_TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$"
 
 # Mutable fields shared between create and update (same contract, DRY definition)
 _RESTAURANT_WRITABLE_FIELDS = {
@@ -387,6 +389,25 @@ general_metrics_response_model = Model(
     },
 )
 
+reservation_table_assignment_item_model = Model(
+    "ReservationTableAssignmentItem",
+    {
+        "tableId": fields.String(
+            description="ID de la mesa asignada (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abf",
+        ),
+        "number": fields.Integer(
+            description="Numero de mesa dentro del restaurante.",
+            example=12,
+        ),
+        "capacity": fields.Integer(
+            description="Capacidad de la mesa.",
+            example=4,
+        ),
+    },
+)
+
 reservation_response_model = Model(
     "ReservationResponse",
     {
@@ -432,10 +453,12 @@ reservation_response_model = Model(
         ),
         "date": fields.String(
             description="Fecha de la reserva (YYYY-MM-DD).",
+            pattern=_DATE_PATTERN,
             example="2026-04-22",
         ),
         "timeSlot": fields.String(
             description="Horario de la reserva (HH:MM:SS).",
+            pattern=_TIME_PATTERN,
             example="21:00:00",
         ),
         "status": fields.String(
@@ -455,6 +478,10 @@ reservation_response_model = Model(
         "createdAt": fields.String(
             description="Fecha de creacion en formato ISO 8601 UTC.",
             example="2026-04-07T19:00:00+00:00",
+        ),
+        "tableAssignment": fields.List(
+            fields.Nested(reservation_table_assignment_item_model),
+            description="Mesas asignadas para la reserva en el turno solicitado.",
         ),
     },
 )
@@ -481,6 +508,75 @@ paginated_reservation_response_model = Model(
     },
 )
 
+reservation_create_model = Model(
+    "ReservationCreateRequest",
+    {
+        "partySize": fields.Integer(
+            required=True,
+            description="Cantidad de comensales.",
+            min=1,
+            example=4,
+        ),
+        "date": fields.String(
+            required=True,
+            description="Fecha de la reserva (YYYY-MM-DD).",
+            pattern=_DATE_PATTERN,
+            example="2026-05-10",
+        ),
+        "timeSlot": fields.String(
+            required=True,
+            description="Horario de la reserva (HH:MM o HH:MM:SS).",
+            pattern=_TIME_PATTERN,
+            example="21:00:00",
+        ),
+        "notes": fields.String(
+            required=False,
+            allow_null=True,
+            description="Notas adicionales de la reserva.",
+            max_length=2000,
+            example="Mesa tranquila, por favor.",
+        ),
+    },
+)
+
+availability_slot_model = Model(
+    "AvailabilitySlot",
+    {
+        "timeSlot": fields.String(
+            description="Horario del turno disponible.",
+            pattern=_TIME_PATTERN,
+            example="20:30:00",
+        ),
+        "available": fields.Boolean(
+            description="Indica si el turno esta disponible.",
+            example=True,
+        ),
+        "tableAssignment": fields.List(
+            fields.Nested(reservation_table_assignment_item_model),
+            description="Mesas sugeridas para cubrir el tamano del grupo.",
+        ),
+    },
+)
+
+availability_response_model = Model(
+    "AvailabilityResponse",
+    {
+        "date": fields.String(
+            description="Fecha consultada (YYYY-MM-DD).",
+            pattern=_DATE_PATTERN,
+            example="2026-05-10",
+        ),
+        "partySize": fields.Integer(
+            description="Tamano del grupo consultado.",
+            example=4,
+        ),
+        "slots": fields.List(
+            fields.Nested(availability_slot_model),
+            description="Turnos con disponibilidad y sugerencia de mesas.",
+        ),
+    },
+)
+
 reservation_admin_create_model = Model(
     "ReservationAdminCreateRequest",
     {
@@ -493,11 +589,13 @@ reservation_admin_create_model = Model(
         "date": fields.String(
             required=True,
             description="Fecha de la reserva (YYYY-MM-DD).",
+            pattern=_DATE_PATTERN,
             example="2026-05-10",
         ),
         "timeSlot": fields.String(
             required=True,
             description="Horario de la reserva (HH:MM o HH:MM:SS).",
+            pattern=_TIME_PATTERN,
             example="21:00:00",
         ),
         "source": fields.String(
