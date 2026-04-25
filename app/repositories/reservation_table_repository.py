@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.extensions import db
 from app.models.reservation_table import ReservationTableModel
+from app.models.table import TableModel
 
 
 class ReservationTableRepository:
@@ -25,3 +26,17 @@ class ReservationTableRepository:
             )
         )
         db.session.commit()
+
+    @staticmethod
+    def get_tables_for_reservation(reservation_id: UUID) -> list[TableModel]:
+        return list(
+            db.session.execute(
+                select(TableModel)
+                .join(
+                    ReservationTableModel,
+                    ReservationTableModel.table_id == TableModel.id,
+                )
+                .where(ReservationTableModel.reservation_id == reservation_id)
+                .order_by(TableModel.number)
+            ).scalars()
+        )

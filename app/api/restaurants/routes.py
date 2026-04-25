@@ -90,9 +90,10 @@ for _model in (
     restaurant_admin_response_model,
     orders_report_response_model,
     general_metrics_response_model,
+    availability_response_model,
+    reservation_create_model,
     reservation_admin_create_model,
     reservation_cancel_model,
-    reservation_create_model,
     reservation_response_model,
     paginated_reservation_response_model,
     table_create_model,
@@ -107,7 +108,6 @@ for _model in (
     paginated_business_hours_response_model,
     table_assignment_item_model,
     availability_slot_model,
-    availability_response_model,
     my_restaurant_review_request_model,
     my_restaurant_review_response_model,
     restaurant_order_item_admin_model,
@@ -191,14 +191,14 @@ _availability_parser.add_argument(
     type=str,
     location="args",
     required=True,
-    help="Date to check availability (YYYY-MM-DD).",
+    help="Availability date in YYYY-MM-DD format.",
 )
 _availability_parser.add_argument(
     "partySize",
     type=int,
     location="args",
     required=True,
-    help="Number of guests.",
+    help="Party size (must be >= 1).",
 )
 
 _restaurant_orders_list_parser = reqparse.RequestParser()
@@ -647,7 +647,6 @@ class RestaurantReservationList(Resource):
             time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
             notes=data.get("notes"),
         ), 201
-
 
 @namespace.route("/<uuid:restaurant_id>/reservations/admin")
 @namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})

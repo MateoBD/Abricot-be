@@ -1,4 +1,4 @@
-import random
+import secrets
 import string
 from datetime import date, time
 import logging
@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 def _generate_confirmation_code() -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(8))
 
 
 class ReservationService:
@@ -98,7 +99,17 @@ class ReservationService:
 
     @staticmethod
     def _to_payload(reservation: ReservationModel) -> dict:
-        return reservation.to_dict()
+        payload = reservation.to_dict()
+        assigned_tables = ReservationTableRepository.get_tables_for_reservation(reservation.id)
+        payload["tableAssignment"] = [
+            {
+                "tableId": str(table.id),
+                "number": table.number,
+                "capacity": table.capacity,
+            }
+            for table in assigned_tables
+        ]
+        return payload
 
     @staticmethod
     def list_for_restaurant(
@@ -156,7 +167,11 @@ class ReservationService:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
         assignment = AvailabilityService.find_table_assignment(
-            restaurant_id, on_date, time_slot, party_size
+            restaurant_id,
+            on_date,
+            time_slot,
+            party_size,
+            lock_rows=True,
         )
         if assignment is None:
             raise ConflictError(
@@ -176,8 +191,10 @@ class ReservationService:
             notes=notes,
             confirmation_code=code,
         )
-        ReservationRepository.create(reservation)
-        ReservationTableRepository.create_bulk(reservation.id, [t.id for t in assignment])
+        ReservationRepository.create_with_table_assignment(
+            reservation=reservation,
+            table_ids=[t.id for t in assignment],
+        )
         logger.info("Reservation created: id=%s code=%s", reservation.id, code)
         return ReservationService._to_payload(reservation)
 
@@ -227,7 +244,11 @@ class ReservationService:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
         assignment = AvailabilityService.find_table_assignment(
-            restaurant_id, on_date, time_slot, party_size
+            restaurant_id,
+            on_date,
+            time_slot,
+            party_size,
+            lock_rows=True,
         )
         if assignment is None:
             raise ConflictError(
@@ -250,8 +271,10 @@ class ReservationService:
             notes=notes,
             confirmation_code=code,
         )
-        ReservationRepository.create(reservation)
-        ReservationTableRepository.create_bulk(reservation.id, [t.id for t in assignment])
+        ReservationRepository.create_with_table_assignment(
+            reservation=reservation,
+            table_ids=[t.id for t in assignment],
+        )
         logger.info(
             "Admin reservation created: id=%s code=%s admin=%s", reservation.id, code, admin_user_id
         )

@@ -62,3 +62,17 @@ class TableRepository:
                 .order_by(TableModel.number)
             ).scalars()
         )
+
+    @staticmethod
+    def get_active_for_update(restaurant_id: UUID) -> list[TableModel]:
+        return list(
+            db.session.execute(
+                select(TableModel)
+                .where(
+                    TableModel.restaurant_id == restaurant_id,
+                    TableModel.is_active.is_(True),
+                )
+                .order_by(TableModel.number)
+                .with_for_update()
+            ).scalars()
+        )
