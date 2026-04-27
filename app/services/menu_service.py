@@ -86,10 +86,19 @@ class MenuService:
         menu = MenuRepository.get_by_id(restaurant_id, menu_id)
         if not menu:
             raise NotFoundError(f"Menu with id={menu_id} not found.")
-        MenuRepository.deactivate_all(restaurant_id)
-        menu.is_active = True
-        MenuRepository.save(menu)
+        menu = MenuRepository.activate(restaurant_id, menu_id)
         logger.info("Menu activated: menu_id=%s", menu_id)
+        return menu.to_dict()
+
+    @staticmethod
+    def deactivate(restaurant_id: UUID, menu_id: UUID) -> dict:
+        if not RestaurantRepository.get_by_id(restaurant_id):
+            raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+        menu = MenuRepository.get_by_id(restaurant_id, menu_id)
+        if not menu:
+            raise NotFoundError(f"Menu with id={menu_id} not found.")
+        menu = MenuRepository.deactivate(restaurant_id, menu_id)
+        logger.info("Menu deactivated: menu_id=%s", menu_id)
         return menu.to_dict()
 
     @staticmethod

@@ -41,6 +41,29 @@ class MenuRepository:
         return menu
 
     @staticmethod
+    def activate(restaurant_id: UUID, menu_id: UUID) -> MenuModel | None:
+        menu = db.session.get(MenuModel, menu_id)
+        if menu is None or menu.restaurant_id != restaurant_id:
+            return None
+        db.session.execute(
+            update(MenuModel)
+            .where(MenuModel.restaurant_id == restaurant_id)
+            .values(is_active=False)
+        )
+        menu.is_active = True
+        db.session.commit()
+        return menu
+
+    @staticmethod
+    def deactivate(restaurant_id: UUID, menu_id: UUID) -> MenuModel | None:
+        menu = db.session.get(MenuModel, menu_id)
+        if menu is None or menu.restaurant_id != restaurant_id:
+            return None
+        menu.is_active = False
+        db.session.commit()
+        return menu
+
+    @staticmethod
     def save(menu: MenuModel) -> MenuModel:
         db.session.add(menu)
         db.session.commit()

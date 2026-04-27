@@ -163,6 +163,138 @@ restaurant_response_model = Model(
     },
 )
 
+menu_item_response_model = Model(
+    "MenuItemResponse",
+    {
+        "id": fields.String(
+            description="ID del ítem de menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abc",
+        ),
+        "categoryId": fields.String(
+            description="ID de la categoría de menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abd",
+        ),
+        "name": fields.String(description="Nombre del plato.", example="Milanesa napolitana"),
+        "description": fields.String(description="Descripción del plato.", allow_null=True),
+        "price": fields.String(description="Precio del plato.", example="12500.00"),
+        "photoUrl": fields.String(description="URL de la foto del plato.", allow_null=True),
+        "isAvailable": fields.Boolean(description="Si el ítem está disponible.", example=True),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601 UTC."),
+    },
+)
+
+menu_category_response_model = Model(
+    "MenuCategoryResponse",
+    {
+        "id": fields.String(
+            description="ID de la categoría de menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abd",
+        ),
+        "menuId": fields.String(
+            description="ID del menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abe",
+        ),
+        "name": fields.String(description="Nombre de la categoría.", example="Principales"),
+        "displayOrder": fields.Integer(description="Orden de visualización.", example=1),
+        "isActive": fields.Boolean(description="Categoría activa.", example=True),
+    },
+)
+
+menu_category_detail_response_model = Model(
+    "MenuCategoryDetailResponse",
+    {
+        "id": fields.String(
+            description="ID de la categoría de menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abd",
+        ),
+        "menuId": fields.String(
+            description="ID del menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abe",
+        ),
+        "name": fields.String(description="Nombre de la categoría.", example="Principales"),
+        "displayOrder": fields.Integer(description="Orden de visualización.", example=1),
+        "isActive": fields.Boolean(description="Categoría activa.", example=True),
+        "items": fields.List(
+            fields.Nested(menu_item_response_model),
+            description="Ítems anidados de la categoría.",
+        ),
+    },
+)
+
+menu_create_model = Model(
+    "MenuCreateRequest",
+    {
+        "name": fields.String(
+            required=True,
+            description="Nombre del menú.",
+            example="Carta de invierno",
+            min_length=1,
+            max_length=150,
+        ),
+    },
+)
+
+menu_update_model = Model(
+    "MenuUpdateRequest",
+    {
+        "name": fields.String(
+            required=True,
+            description="Nombre del menú.",
+            example="Carta de verano",
+            min_length=1,
+            max_length=150,
+        ),
+    },
+)
+
+menu_response_model = Model(
+    "MenuResponse",
+    {
+        "id": fields.String(
+            description="ID del menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abc",
+        ),
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abd",
+        ),
+        "name": fields.String(description="Nombre del menú.", example="Carta principal"),
+        "isActive": fields.Boolean(description="Si el menú está vigente.", example=True),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601 UTC."),
+    },
+)
+
+menu_detail_response_model = Model(
+    "MenuDetailResponse",
+    {
+        "id": fields.String(
+            description="ID del menú (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abc",
+        ),
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abd",
+        ),
+        "name": fields.String(description="Nombre del menú.", example="Carta principal"),
+        "isActive": fields.Boolean(description="Si el menú está vigente.", example=True),
+        "createdAt": fields.String(description="Fecha de creación ISO 8601 UTC."),
+        "categories": fields.List(
+            fields.Nested(menu_category_detail_response_model),
+            description="Categorías anidadas del menú.",
+        ),
+    },
+)
+
 my_restaurant_review_request_model = Model(
     "MyRestaurantReviewRequest",
     {

@@ -48,7 +48,7 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 - [ ] Crear modelo y CRUD de Menu
 - [ ] Crear modelo y CRUD de Categoria de menu
 - [ ] Crear modelo y CRUD de Item de menu
-- [ ] Crear funcion para activar/desactivar menu vigente
+- [x] Crear funcion para activar/desactivar menu vigente
 - [x] Crear funcion para crear pedido takeout con validacion de items
 - [x] Crear funcion para actualizar estado de pedido (pending -> confirmed -> ready -> completed) — `PATCH /restaurants/{id}/orders/{order_id}` en `app/api/restaurants/routes.py` + validación de transiciones en `app/services/order_service.py`
 

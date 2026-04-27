@@ -14,6 +14,10 @@ from app.api.restaurants.schemas import (
     business_hours_response_model,
     orders_by_status_item_model,
     orders_metrics_model,
+    menu_create_model,
+    menu_detail_response_model,
+    menu_response_model,
+    menu_update_model,
     paginated_business_hours_response_model,
     paginated_restaurant_admin_response_model,
     paginated_reservation_response_model,
@@ -64,6 +68,7 @@ from app.models.enums import UserRole
 from app.services.analytics_service import AnalyticsService
 from app.services.availability_service import AvailabilityService
 from app.services.business_hours_service import BusinessHoursService
+from app.services.menu_service import MenuService
 from app.services.order_service import OrderService
 from app.services.promotion_service import PromotionService
 from app.services.reservation_service import ReservationService
@@ -106,6 +111,10 @@ for _model in (
     reservations_metrics_model,
     orders_report_response_model,
     general_metrics_response_model,
+    menu_create_model,
+    menu_update_model,
+    menu_response_model,
+    menu_detail_response_model,
     availability_response_model,
     reservation_create_model,
     reservation_admin_create_model,
@@ -344,6 +353,55 @@ class RestaurantDetail(Resource):
         """Delete a restaurant by ID."""
         RestaurantService.delete(restaurant_id)
         return "", 204
+
+
+@namespace.route("/<uuid:restaurant_id>/menus/active")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantActiveMenu(Resource):
+    @namespace.response(200, "Active menu retrieved successfully.", menu_detail_response_model)
+    @namespace.response(404, "Restaurant not found or has no active menu.")
+    def get(self, restaurant_id: UUID):
+        """Get the current active menu with nested categories and items."""
+        menu = MenuService.get_active_menu(restaurant_id)
+        if not menu:
+            return {
+                "message": "Restaurant has no active menu.",
+                "code": "NOT_FOUND",
+                "errors": {},
+            }, 404
+        return menu, 200
+
+
+@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>/activate")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "menu_id": "The menu's ID (UUID).",
+    }
+)
+class RestaurantMenuActivate(Resource):
+    @namespace.response(200, "Menu activated successfully.", menu_response_model)
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def patch(self, restaurant_id: UUID, menu_id: UUID):
+        """Mark one menu as active and deactivate the others for the restaurant."""
+        return MenuService.activate(restaurant_id, menu_id), 200
+
+
+@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>/deactivate")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "menu_id": "The menu's ID (UUID).",
+    }
+)
+class RestaurantMenuDeactivate(Resource):
+    @namespace.response(200, "Menu deactivated successfully.", menu_response_model)
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def patch(self, restaurant_id: UUID, menu_id: UUID):
+        """Mark a menu as inactive."""
+        return MenuService.deactivate(restaurant_id, menu_id), 200
 
 
 @namespace.route("/<uuid:restaurant_id>/my-review")
