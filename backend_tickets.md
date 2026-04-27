@@ -50,12 +50,12 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 - [ ] Crear modelo y CRUD de Item de menu
 - [ ] Crear funcion para activar/desactivar menu vigente
 - [x] Crear funcion para crear pedido takeout con validacion de items
-- [ ] Crear funcion para actualizar estado de pedido (pending -> confirmed -> ready -> completed)
+- [x] Crear funcion para actualizar estado de pedido (pending -> confirmed -> ready -> completed) — `PATCH /restaurants/{id}/orders/{order_id}` en `app/api/restaurants/routes.py` + validación de transiciones en `app/services/order_service.py`
 
 ### Chores
 - [ ] Integrar subida de foto de item a S3
 - [ ] Agregar validaciones de precio, disponibilidad y consistencia de catalogo
-- [ ] Agregar paginacion y filtros en listado de pedidos
+- [x] Agregar paginacion y filtros en listado de pedidos — `GET /restaurants/{id}/orders?page=&perPage=&status=` en `app/api/restaurants/routes.py` + `OrderService.list_for_restaurant`
 - [ ] Agregar tests de reglas de transicion de estado de pedidos
 - [ ] Documentar flujo de menu activo y creacion de orden
 

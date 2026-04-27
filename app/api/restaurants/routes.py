@@ -241,7 +241,7 @@ _restaurant_orders_list_parser.add_argument(
     type=str,
     location="args",
     required=False,
-    help="Filter by order status (PENDING, CONFIRMED, IN_PREPARATION, READY, COMPLETED, CANCELLED).",
+    help="Filter by order status (PENDING, CONFIRMED, READY, COMPLETED, CANCELLED).",
 )
 
 
@@ -458,7 +458,7 @@ class RestaurantOrderAdminDetail(Resource):
     @namespace.response(409, "Invalid status transition for current state.")
     @require_restaurant_admin("restaurant_id")
     def patch(self, restaurant_id: UUID, order_id: UUID):
-        """Change order state along allowed transitions (see OrderService)."""
+        """Change order state along allowed transitions (PENDING -> CONFIRMED -> READY -> COMPLETED)."""
         data = request.json or {}
         return (
             OrderService.update_status(

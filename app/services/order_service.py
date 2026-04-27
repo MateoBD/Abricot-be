@@ -16,8 +16,8 @@ from app.utils.list_envelope import paginated_list_envelope
 logger = logging.getLogger(__name__)
 
 _VALID_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
-    OrderStatus.PENDING: {OrderStatus.CONFIRMED, OrderStatus.CANCELLED},
-    OrderStatus.CONFIRMED: {OrderStatus.IN_PREPARATION, OrderStatus.CANCELLED},
+    OrderStatus.PENDING: {OrderStatus.CONFIRMED},
+    OrderStatus.CONFIRMED: {OrderStatus.READY},
     OrderStatus.IN_PREPARATION: {OrderStatus.READY},
     OrderStatus.READY: {OrderStatus.COMPLETED},
     OrderStatus.COMPLETED: set(),

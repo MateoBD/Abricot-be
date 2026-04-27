@@ -197,7 +197,7 @@ my_restaurant_review_response_model = Model(
     },
 )
 
-_ORDER_STATUS_STRING_PATTERN = r"^(PENDING|CONFIRMED|IN_PREPARATION|READY|COMPLETED|CANCELLED)$"
+_ORDER_STATUS_STRING_PATTERN = r"^(PENDING|CONFIRMED|READY|COMPLETED|CANCELLED)$"
 
 restaurant_order_create_item_model = Model(
     "RestaurantOrderCreateItemRequest",
@@ -260,7 +260,7 @@ restaurant_order_list_admin_model = Model(
         "userId": fields.String(description="ID del cliente (UUID).", pattern=_UUID_STRING_PATTERN),
         "status": fields.String(
             description="Estado del pedido (takeout).",
-            example="IN_PREPARATION",
+            example="READY",
             pattern=_ORDER_STATUS_STRING_PATTERN,
         ),
         "totalAmount": fields.String(description="Total del pedido.", example="3500.00"),
@@ -321,8 +321,8 @@ restaurant_order_status_patch_model = Model(
     {
         "status": fields.String(
             required=True,
-            description="Nuevo estado. Debe ser una transición válida según el estado actual.",
-            example="IN_PREPARATION",
+            description="Nuevo estado. Flujo: PENDING -> CONFIRMED -> READY -> COMPLETED.",
+            example="CONFIRMED",
             pattern=_ORDER_STATUS_STRING_PATTERN,
         ),
         "estimatedReadyAt": fields.String(
