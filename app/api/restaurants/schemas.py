@@ -227,6 +227,109 @@ menu_category_detail_response_model = Model(
     },
 )
 
+menu_category_create_model = Model(
+    "MenuCategoryCreateRequest",
+    {
+        "name": fields.String(
+            required=True,
+            description="Nombre de la categoría.",
+            example="Entradas",
+            min_length=1,
+            max_length=100,
+        ),
+        "displayOrder": fields.Integer(
+            required=False,
+            description="Orden de visualización de la categoría.",
+            min=0,
+            example=0,
+        ),
+    },
+)
+
+menu_category_update_model = Model(
+    "MenuCategoryUpdateRequest",
+    {
+        "name": fields.String(
+            required=True,
+            description="Nombre de la categoría.",
+            example="Platos principales",
+            min_length=1,
+            max_length=100,
+        ),
+        "displayOrder": fields.Integer(
+            required=True,
+            description="Orden de visualización de la categoría.",
+            min=0,
+            example=1,
+        ),
+        "isActive": fields.Boolean(
+            required=True,
+            description="Si la categoría está activa.",
+            example=True,
+        ),
+    },
+)
+
+menu_item_create_model = Model(
+    "MenuItemCreateRequest",
+    {
+        "name": fields.String(
+            required=True,
+            description="Nombre del plato.",
+            example="Ravioles de ricota",
+            min_length=1,
+            max_length=150,
+        ),
+        "description": fields.String(
+            required=False,
+            description="Descripción opcional del plato.",
+            allow_null=True,
+            max_length=5000,
+        ),
+        "price": fields.Float(
+            required=True,
+            description="Precio del plato.",
+            min=0,
+            example=8900.00,
+        ),
+        "isAvailable": fields.Boolean(
+            required=False,
+            description="Disponibilidad inicial del plato.",
+            example=True,
+        ),
+    },
+)
+
+menu_item_update_model = Model(
+    "MenuItemUpdateRequest",
+    {
+        "name": fields.String(
+            required=True,
+            description="Nombre del plato.",
+            example="Ravioles de ricota y nuez",
+            min_length=1,
+            max_length=150,
+        ),
+        "description": fields.String(
+            required=False,
+            description="Descripción opcional del plato.",
+            allow_null=True,
+            max_length=5000,
+        ),
+        "price": fields.Float(
+            required=True,
+            description="Precio del plato.",
+            min=0,
+            example=9900.00,
+        ),
+        "isAvailable": fields.Boolean(
+            required=True,
+            description="Disponibilidad del plato.",
+            example=True,
+        ),
+    },
+)
+
 menu_create_model = Model(
     "MenuCreateRequest",
     {
@@ -292,6 +395,36 @@ menu_detail_response_model = Model(
             fields.Nested(menu_category_detail_response_model),
             description="Categorías anidadas del menú.",
         ),
+    },
+)
+
+menu_list_response_model = Model(
+    "MenuListResponse",
+    {
+        "data": fields.List(fields.Nested(menu_response_model)),
+        "total": fields.Integer(example=1),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=1),
+    },
+)
+
+menu_category_list_response_model = Model(
+    "MenuCategoryListResponse",
+    {
+        "data": fields.List(fields.Nested(menu_category_response_model)),
+        "total": fields.Integer(example=2),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=2),
+    },
+)
+
+menu_item_list_response_model = Model(
+    "MenuItemListResponse",
+    {
+        "data": fields.List(fields.Nested(menu_item_response_model)),
+        "total": fields.Integer(example=4),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=4),
     },
 )
 

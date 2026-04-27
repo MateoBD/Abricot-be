@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.exceptions.errors import ConflictError, NotFoundError, ValidationError
 from app.repositories.menu_category_repository import MenuCategoryRepository
+from app.repositories.menu_item_repository import MenuItemRepository
 from app.repositories.menu_repository import MenuRepository
 from app.repositories.restaurant_repository import RestaurantRepository
 from app.utils.list_envelope import list_envelope
@@ -17,6 +18,13 @@ def _get_menu_or_raise(restaurant_id: UUID, menu_id: UUID):
     if not menu:
         raise NotFoundError(f"Menu with id={menu_id} not found.")
     return menu
+
+
+def _get_category_or_raise(menu_id: UUID, category_id: UUID):
+    cat = MenuCategoryRepository.get_by_id(menu_id, category_id)
+    if not cat:
+        raise NotFoundError(f"Category with id={category_id} not found.")
+    return cat
 
 
 class MenuCategoryService:
@@ -39,6 +47,21 @@ class MenuCategoryService:
         return cat.to_dict()
 
     @staticmethod
+    def get_by_id(restaurant_id: UUID, menu_id: UUID, category_id: UUID) -> dict:
+        _get_menu_or_raise(restaurant_id, menu_id)
+        cat = _get_category_or_raise(menu_id, category_id)
+        return cat.to_dict()
+
+    @staticmethod
+    def get_detail(restaurant_id: UUID, menu_id: UUID, category_id: UUID) -> dict:
+        _get_menu_or_raise(restaurant_id, menu_id)
+        cat = _get_category_or_raise(menu_id, category_id)
+        return {
+            **cat.to_dict(),
+            "items": [i.to_dict() for i in MenuItemRepository.get_all(category_id)],
+        }
+
+    @staticmethod
     def update(
         restaurant_id: UUID,
         menu_id: UUID,
@@ -48,9 +71,7 @@ class MenuCategoryService:
         is_active: bool,
     ) -> dict:
         _get_menu_or_raise(restaurant_id, menu_id)
-        cat = MenuCategoryRepository.get_by_id(menu_id, category_id)
-        if not cat:
-            raise NotFoundError(f"Category with id={category_id} not found.")
+        cat = _get_category_or_raise(menu_id, category_id)
         name = (name or "").strip()
         if not name:
             raise ValidationError("Name is required.", {"name": "Cannot be empty"})
@@ -64,9 +85,7 @@ class MenuCategoryService:
     @staticmethod
     def delete(restaurant_id: UUID, menu_id: UUID, category_id: UUID) -> None:
         _get_menu_or_raise(restaurant_id, menu_id)
-        cat = MenuCategoryRepository.get_by_id(menu_id, category_id)
-        if not cat:
-            raise NotFoundError(f"Category with id={category_id} not found.")
+        cat = _get_category_or_raise(menu_id, category_id)
         MenuCategoryRepository.delete(cat)
         logger.info("MenuCategory deleted: cat_id=%s", category_id)
 

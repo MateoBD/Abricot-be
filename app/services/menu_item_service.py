@@ -6,10 +6,31 @@ from app.exceptions.errors import NotFoundError, ValidationError
 from app.integrations.s3 import S3Client
 from app.repositories.menu_category_repository import MenuCategoryRepository
 from app.repositories.menu_item_repository import MenuItemRepository
+from app.repositories.menu_repository import MenuRepository
+from app.repositories.restaurant_repository import RestaurantRepository
 
 logger = logging.getLogger(__name__)
 
 _ALLOWED_PHOTO_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _get_category_or_raise(restaurant_id: UUID, menu_id: UUID, category_id: UUID):
+    if not RestaurantRepository.get_by_id(restaurant_id):
+        raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+    menu = MenuRepository.get_by_id(restaurant_id, menu_id)
+    if not menu:
+        raise NotFoundError(f"Menu with id={menu_id} not found.")
+    category = MenuCategoryRepository.get_by_id(menu_id, category_id)
+    if not category:
+        raise NotFoundError(f"Category with id={category_id} not found.")
+    return category
+
+
+def _get_item_or_raise(category_id: UUID, item_id: UUID):
+    item = MenuItemRepository.get_by_id(item_id)
+    if not item or item.category_id != category_id:
+        raise NotFoundError(f"Menu item with id={item_id} not found.")
+    return item
 
 
 def _parse_price(value) -> Decimal:
@@ -23,6 +44,77 @@ def _parse_price(value) -> Decimal:
 
 
 class MenuItemService:
+    @staticmethod
+    def get_all_for_category(restaurant_id: UUID, menu_id: UUID, category_id: UUID) -> dict:
+        _get_category_or_raise(restaurant_id, menu_id, category_id)
+        items = MenuItemRepository.get_all(category_id)
+        return {
+            "data": [i.to_dict() for i in items],
+            "total": len(items),
+            "page": 1,
+            "perPage": len(items) or 1,
+        }
+
+    @staticmethod
+    def get_by_id_for_category(
+        restaurant_id: UUID,
+        menu_id: UUID,
+        category_id: UUID,
+        item_id: UUID,
+    ) -> dict:
+        _get_category_or_raise(restaurant_id, menu_id, category_id)
+        item = _get_item_or_raise(category_id, item_id)
+        return item.to_dict()
+
+    @staticmethod
+    def create_for_category(
+        restaurant_id: UUID,
+        menu_id: UUID,
+        category_id: UUID,
+        name: str,
+        description: str | None,
+        price,
+        is_available: bool = True,
+    ) -> dict:
+        _get_category_or_raise(restaurant_id, menu_id, category_id)
+        return MenuItemService.create(category_id, name, description, price, is_available)
+
+    @staticmethod
+    def update_for_category(
+        restaurant_id: UUID,
+        menu_id: UUID,
+        category_id: UUID,
+        item_id: UUID,
+        name: str,
+        description: str | None,
+        price,
+        is_available: bool,
+    ) -> dict:
+        _get_category_or_raise(restaurant_id, menu_id, category_id)
+        item = _get_item_or_raise(category_id, item_id)
+        name = (name or "").strip()
+        if not name:
+            raise ValidationError("Name is required.", {"name": "Cannot be empty"})
+        item.name = name
+        item.description = (description or "").strip() or None
+        item.price = _parse_price(price)
+        item.is_available = is_available
+        MenuItemRepository.save(item)
+        logger.info("MenuItem updated: item_id=%s", item_id)
+        return item.to_dict()
+
+    @staticmethod
+    def delete_for_category(
+        restaurant_id: UUID,
+        menu_id: UUID,
+        category_id: UUID,
+        item_id: UUID,
+    ) -> None:
+        _get_category_or_raise(restaurant_id, menu_id, category_id)
+        item = _get_item_or_raise(category_id, item_id)
+        MenuItemRepository.delete(item)
+        logger.info("MenuItem deleted: item_id=%s", item_id)
+
     @staticmethod
     def get_all(category_id: UUID) -> list[dict]:
         items = MenuItemRepository.get_all(category_id)

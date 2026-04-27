@@ -15,7 +15,9 @@ from app.api.restaurants.schemas import (
     orders_by_status_item_model,
     orders_metrics_model,
     menu_create_model,
+    menu_category_response_model,
     menu_detail_response_model,
+    menu_list_response_model,
     menu_response_model,
     menu_update_model,
     paginated_business_hours_response_model,
@@ -57,6 +59,14 @@ from app.api.restaurants.schemas import (
     reservations_by_status_item_model,
     reservations_metrics_model,
     revenue_by_day_item_model,
+    menu_category_create_model,
+    menu_category_detail_response_model,
+    menu_category_update_model,
+    menu_category_list_response_model,
+    menu_item_create_model,
+    menu_item_list_response_model,
+    menu_item_update_model,
+    menu_item_response_model,
 )
 from app.middleware.auth import (
     get_current_user_id,
@@ -68,6 +78,8 @@ from app.models.enums import UserRole
 from app.services.analytics_service import AnalyticsService
 from app.services.availability_service import AvailabilityService
 from app.services.business_hours_service import BusinessHoursService
+from app.services.menu_category_service import MenuCategoryService
+from app.services.menu_item_service import MenuItemService
 from app.services.menu_service import MenuService
 from app.services.order_service import OrderService
 from app.services.promotion_service import PromotionService
@@ -115,6 +127,15 @@ for _model in (
     menu_update_model,
     menu_response_model,
     menu_detail_response_model,
+    menu_list_response_model,
+    menu_category_response_model,
+    menu_category_create_model,
+    menu_category_update_model,
+    menu_category_list_response_model,
+    menu_item_create_model,
+    menu_item_update_model,
+    menu_item_list_response_model,
+    menu_item_response_model,
     availability_response_model,
     reservation_create_model,
     reservation_admin_create_model,
@@ -352,6 +373,240 @@ class RestaurantDetail(Resource):
     def delete(self, restaurant_id: UUID):
         """Delete a restaurant by ID."""
         RestaurantService.delete(restaurant_id)
+        return "", 204
+
+
+@namespace.route("/<uuid:restaurant_id>/menus")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantMenuList(Resource):
+    @namespace.response(200, "Menus retrieved successfully.", menu_list_response_model)
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID):
+        """List all menus for a restaurant."""
+        return MenuService.get_all(restaurant_id), 200
+
+    @namespace.expect(menu_create_model, validate=True)
+    @namespace.response(201, "Menu created successfully.", menu_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: UUID):
+        """Create a new menu for a restaurant."""
+        data = request.json or {}
+        return MenuService.create(restaurant_id, data.get("name")), 201
+
+
+@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "menu_id": "The menu's ID (UUID).",
+    }
+)
+class RestaurantMenuDetail(Resource):
+    @namespace.response(200, "Menu retrieved successfully.", menu_detail_response_model)
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, menu_id: UUID):
+        """Get one menu with nested categories and items."""
+        return MenuService.get_detail(restaurant_id, menu_id), 200
+
+    @namespace.expect(menu_update_model, validate=True)
+    @namespace.response(200, "Menu updated successfully.", menu_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def put(self, restaurant_id: UUID, menu_id: UUID):
+        """Replace menu fields."""
+        data = request.json or {}
+        return MenuService.update(restaurant_id, menu_id, data.get("name")), 200
+
+    @namespace.response(204, "Menu deleted successfully.")
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def delete(self, restaurant_id: UUID, menu_id: UUID):
+        """Delete a menu by ID."""
+        MenuService.delete(restaurant_id, menu_id)
+        return "", 204
+
+
+@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>/categories")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "menu_id": "The menu's ID (UUID).",
+    }
+)
+class RestaurantMenuCategoryList(Resource):
+    @namespace.response(
+        200,
+        "Categories retrieved successfully.",
+        menu_category_list_response_model,
+    )
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, menu_id: UUID):
+        """List all categories for a menu."""
+        return MenuCategoryService.get_all(restaurant_id, menu_id), 200
+
+    @namespace.expect(menu_category_create_model, validate=True)
+    @namespace.response(201, "Category created successfully.", menu_category_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: UUID, menu_id: UUID):
+        """Create a category in a menu."""
+        data = request.json or {}
+        return (
+            MenuCategoryService.create(
+                restaurant_id=restaurant_id,
+                menu_id=menu_id,
+                name=data.get("name"),
+                display_order=data.get("displayOrder", 0),
+            ),
+            201,
+        )
+
+
+@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>/categories/<uuid:category_id>")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "menu_id": "The menu's ID (UUID).",
+        "category_id": "The category's ID (UUID).",
+    }
+)
+class RestaurantMenuCategoryDetail(Resource):
+    @namespace.response(200, "Category retrieved successfully.", menu_category_detail_response_model)
+    @namespace.response(404, "Restaurant, menu or category not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID):
+        """Get one category with nested items."""
+        return MenuCategoryService.get_detail(restaurant_id, menu_id, category_id), 200
+
+    @namespace.expect(menu_category_update_model, validate=True)
+    @namespace.response(200, "Category updated successfully.", menu_category_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant, menu or category not found.")
+    @require_restaurant_admin("restaurant_id")
+    def put(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID):
+        """Replace category fields."""
+        data = request.json or {}
+        return (
+            MenuCategoryService.update(
+                restaurant_id=restaurant_id,
+                menu_id=menu_id,
+                category_id=category_id,
+                name=data.get("name"),
+                display_order=data.get("displayOrder"),
+                is_active=data.get("isActive"),
+            ),
+            200,
+        )
+
+    @namespace.response(204, "Category deleted successfully.")
+    @namespace.response(404, "Restaurant, menu or category not found.")
+    @require_restaurant_admin("restaurant_id")
+    def delete(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID):
+        """Delete a category by ID."""
+        MenuCategoryService.delete(restaurant_id, menu_id, category_id)
+        return "", 204
+
+
+@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>/categories/<uuid:category_id>/items")
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "menu_id": "The menu's ID (UUID).",
+        "category_id": "The category's ID (UUID).",
+    }
+)
+class RestaurantMenuItemList(Resource):
+    @namespace.response(200, "Items retrieved successfully.", menu_item_list_response_model)
+    @namespace.response(404, "Restaurant, menu or category not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID):
+        """List all menu items for a category."""
+        return MenuItemService.get_all_for_category(restaurant_id, menu_id, category_id), 200
+
+    @namespace.expect(menu_item_create_model, validate=True)
+    @namespace.response(201, "Item created successfully.", menu_item_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant, menu or category not found.")
+    @require_restaurant_admin("restaurant_id")
+    def post(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID):
+        """Create a menu item in a category."""
+        data = request.json or {}
+        return (
+            MenuItemService.create_for_category(
+                restaurant_id=restaurant_id,
+                menu_id=menu_id,
+                category_id=category_id,
+                name=data.get("name"),
+                description=data.get("description"),
+                price=data.get("price"),
+                is_available=data.get("isAvailable", True),
+            ),
+            201,
+        )
+
+
+@namespace.route(
+    "/<uuid:restaurant_id>/menus/<uuid:menu_id>/categories/<uuid:category_id>/items/<uuid:item_id>"
+)
+@namespace.doc(
+    params={
+        "restaurant_id": "The restaurant's ID (UUID).",
+        "menu_id": "The menu's ID (UUID).",
+        "category_id": "The category's ID (UUID).",
+        "item_id": "The item's ID (UUID).",
+    }
+)
+class RestaurantMenuItemDetail(Resource):
+    @namespace.response(200, "Item retrieved successfully.", menu_item_response_model)
+    @namespace.response(404, "Restaurant, menu, category or item not found.")
+    @require_restaurant_admin("restaurant_id")
+    def get(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID, item_id: UUID):
+        """Get one menu item by ID."""
+        return (
+            MenuItemService.get_by_id_for_category(
+                restaurant_id,
+                menu_id,
+                category_id,
+                item_id,
+            ),
+            200,
+        )
+
+    @namespace.expect(menu_item_update_model, validate=True)
+    @namespace.response(200, "Item updated successfully.", menu_item_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant, menu, category or item not found.")
+    @require_restaurant_admin("restaurant_id")
+    def put(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID, item_id: UUID):
+        """Replace menu item fields."""
+        data = request.json or {}
+        return (
+            MenuItemService.update_for_category(
+                restaurant_id=restaurant_id,
+                menu_id=menu_id,
+                category_id=category_id,
+                item_id=item_id,
+                name=data.get("name"),
+                description=data.get("description"),
+                price=data.get("price"),
+                is_available=data.get("isAvailable"),
+            ),
+            200,
+        )
+
+    @namespace.response(204, "Item deleted successfully.")
+    @namespace.response(404, "Restaurant, menu, category or item not found.")
+    @require_restaurant_admin("restaurant_id")
+    def delete(self, restaurant_id: UUID, menu_id: UUID, category_id: UUID, item_id: UUID):
+        """Delete a menu item by ID."""
+        MenuItemService.delete_for_category(restaurant_id, menu_id, category_id, item_id)
         return "", 204
 
 
