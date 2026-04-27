@@ -1203,35 +1203,6 @@ reservation_cancel_model = Model(
     },
 )
 
-reservation_create_model = Model(
-    "ReservationCreateRequest",
-    {
-        "partySize": fields.Integer(
-            required=True,
-            description="Cantidad de comensales.",
-            min=1,
-            example=4,
-        ),
-        "date": fields.String(
-            required=True,
-            description="Fecha de la reserva (YYYY-MM-DD).",
-            example="2026-05-10",
-        ),
-        "timeSlot": fields.String(
-            required=True,
-            description="Horario de la reserva (HH:MM o HH:MM:SS).",
-            example="21:00",
-        ),
-        "notes": fields.String(
-            required=False,
-            allow_null=True,
-            description="Notas adicionales.",
-            max_length=2000,
-            example="Festejo de cumpleaños.",
-        ),
-    },
-)
-
 # ── Tables ──────────────────────────────────────────────────────────────────
 
 _TABLE_WRITABLE_FIELDS = {

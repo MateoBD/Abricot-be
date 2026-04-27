@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from uuid import UUID
 
 from sqlalchemy import delete, exists, func, select
@@ -11,10 +11,24 @@ from app.models.reservation_table import ReservationTableModel
 
 class ReservationRepository:
     @staticmethod
-    def create(reservation: ReservationModel) -> ReservationModel:
+    def create(
+        reservation: ReservationModel,
+        *,
+        auto_commit: bool = True,
+    ) -> ReservationModel:
         db.session.add(reservation)
-        db.session.commit()
+        db.session.flush()
+        if auto_commit:
+            db.session.commit()
         return reservation
+
+    @staticmethod
+    def commit() -> None:
+        db.session.commit()
+
+    @staticmethod
+    def rollback() -> None:
+        db.session.rollback()
 
     @staticmethod
     def get_by_id(reservation_id: UUID) -> ReservationModel | None:
@@ -147,10 +161,37 @@ class ReservationRepository:
 
     @staticmethod
     def get_occupied_table_ids_at(
-        restaurant_id: UUID, on_date: date, time_slot: time
+        restaurant_id: UUID,
+        on_date: date,
+        time_slot: time,
+        *,
+        exclude_reservation_id: UUID | None = None,
     ) -> set[UUID]:
+        """
+        Get table IDs occupied by confirmed reservations that overlap with the given time interval.
+        
+        The slot duration is obtained from the restaurant's default_slot_duration_minutes.
+        Overlapping is detected by checking if there's any intersection between:
+        - [time_slot, time_slot + slot_duration_minutes)
+        - [existing_reservation.time_slot, existing_reservation.time_slot + existing_duration)
+        
+        Two intervals [a1, a2) and [b1, b2) overlap if and only if: a1 < b2 AND b1 < a2
+        """
+        # Convert time_slot to datetime for interval calculation
+        from datetime import datetime
+        from app.repositories.restaurant_repository import RestaurantRepository
+        
+        restaurant = RestaurantRepository.get_by_id(restaurant_id)
+        if restaurant is None:
+            return set()
+        
+        slot_duration_minutes = restaurant.default_slot_duration_minutes
+        slot_start = datetime.combine(on_date, time_slot)
+        slot_end = slot_start + timedelta(minutes=slot_duration_minutes)
+        
+        # Get all confirmed reservations for this restaurant and date
         q = (
-            select(ReservationTableModel.table_id)
+            select(ReservationTableModel.table_id, ReservationModel.time_slot)
             .join(
                 ReservationModel,
                 ReservationTableModel.reservation_id == ReservationModel.id,
@@ -158,8 +199,23 @@ class ReservationRepository:
             .where(
                 ReservationModel.restaurant_id == restaurant_id,
                 ReservationModel.date == on_date,
-                ReservationModel.time_slot == time_slot,
                 ReservationModel.status == ReservationStatus.CONFIRMED,
             )
         )
-        return set(db.session.execute(q).scalars())
+        if exclude_reservation_id is not None:
+            q = q.where(ReservationModel.id != exclude_reservation_id)
+        
+        occupied_table_ids = set()
+        results = db.session.execute(q).all()
+        
+        existing_duration_minutes = restaurant.default_slot_duration_minutes
+        
+        for table_id, existing_time_slot in results:
+            existing_start = datetime.combine(on_date, existing_time_slot)
+            existing_end = existing_start + timedelta(minutes=existing_duration_minutes)
+            
+            # Check if intervals overlap: slot_start < existing_end AND existing_start < slot_end
+            if slot_start < existing_end and existing_start < slot_end:
+                occupied_table_ids.add(table_id)
+        
+        return occupied_table_ids

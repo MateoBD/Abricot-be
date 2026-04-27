@@ -3,7 +3,7 @@ from datetime import date, datetime, time, timedelta
 from itertools import combinations
 from uuid import UUID
 
-from app.exceptions.errors import NotFoundError, ValidationError
+from app.exceptions.errors import ConflictError, NotFoundError, ValidationError
 from app.models.table import TableModel
 from app.repositories.reservation_repository import ReservationRepository
 from app.repositories.reservation_table_repository import ReservationTableRepository
@@ -30,10 +30,17 @@ def _slots_for_range(opens_at: time, closes_at: time, slot_duration: int) -> lis
 class AvailabilityService:
     @staticmethod
     def get_occupied_table_ids_at(
-        restaurant_id: UUID, on_date: date, time_slot: time
+        restaurant_id: UUID,
+        on_date: date,
+        time_slot: time,
+        *,
+        exclude_reservation_id: UUID | None = None,
     ) -> set[UUID]:
         return ReservationRepository.get_occupied_table_ids_at(
-            restaurant_id=restaurant_id, on_date=on_date, time_slot=time_slot
+            restaurant_id=restaurant_id,
+            on_date=on_date,
+            time_slot=time_slot,
+            exclude_reservation_id=exclude_reservation_id,
         )
 
     @staticmethod
@@ -49,13 +56,16 @@ class AvailabilityService:
         if not restaurant:
             return None
 
-        occupied = AvailabilityService.get_occupied_table_ids_at(
-            restaurant_id, on_date, time_slot
-        )
         if lock_rows:
+            # Locking table rows first serializes concurrent assignment attempts for the same restaurant.
             active_tables = TableRepository.get_active_for_update(restaurant_id)
         else:
             active_tables = TableRepository.get_active(restaurant_id)
+        occupied = AvailabilityService.get_occupied_table_ids_at(
+            restaurant_id,
+            on_date,
+            time_slot,
+        )
         available = [t for t in active_tables if t.id not in occupied]
 
         # Try single table first (least waste)
@@ -130,6 +140,50 @@ class AvailabilityService:
 
     @staticmethod
     def assign_tables_for_reservation(
-        reservation_id: UUID, table_ids: list[UUID]
+        reservation_id: UUID,
+        table_ids: list[UUID],
     ) -> None:
-        ReservationTableRepository.create_bulk(reservation_id, table_ids)
+        """
+        Assign tables to a reservation within an explicit transaction with row-level locking.
+        
+        This method ensures atomicity and prevents concurrent double-assignment by:
+        1. Locking the target tables with SELECT ... FOR UPDATE
+        2. Verifying availability again within the transaction (re-check)
+        3. Creating the reservation_table associations
+        4. Committing atomically
+        """
+        try:
+            # Get reservation to access restaurant_id
+            reservation = ReservationRepository.get_by_id(reservation_id)
+            if not reservation:
+                raise NotFoundError(f"Reservation with id={reservation_id} not found.")
+            
+            # Lock target tables for exclusive access
+            TableRepository.get_active_for_update(reservation.restaurant_id)
+            
+            # Re-check occupancy within transaction to catch any races (defense-in-depth against TOCTOU)
+            restaurant = RestaurantRepository.get_by_id(reservation.restaurant_id)
+            if not restaurant:
+                raise NotFoundError(f"Restaurant with id={reservation.restaurant_id} not found.")
+            
+            occupied = AvailabilityService.get_occupied_table_ids_at(
+                reservation.restaurant_id,
+                reservation.date,
+                reservation.time_slot,
+                exclude_reservation_id=reservation_id,
+            )
+            conflicts = [tid for tid in table_ids if tid in occupied]
+            if conflicts:
+                raise ConflictError(
+                    "One or more tables became occupied during assignment.",
+                    {"tableIds": "Conflict detected"},
+                )
+            
+            # Assign tables within transaction
+            ReservationTableRepository.create_bulk(
+                reservation_id, table_ids, auto_commit=False
+            )
+            ReservationRepository.commit()
+        except Exception:
+            ReservationRepository.rollback()
+            raise

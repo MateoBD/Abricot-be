@@ -1,4 +1,4 @@
-import random
+import secrets
 import string
 from datetime import date, time
 import logging
@@ -7,20 +7,74 @@ from uuid import UUID
 from app.exceptions.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.models.enums import ReservationSource, ReservationStatus
 from app.models.reservation import ReservationModel
+from app.models.enums import UserRole
 from app.repositories.reservation_repository import ReservationRepository
 from app.repositories.reservation_table_repository import ReservationTableRepository
 from app.repositories.restaurant_repository import RestaurantRepository
+from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.user_repository import UserRepository
 from app.utils.list_envelope import paginated_list_envelope
 
 logger = logging.getLogger(__name__)
+_CONFIRMATION_CODE_LENGTH = 8
+_CONFIRMATION_CODE_ATTEMPTS = 5
 
 
 def _generate_confirmation_code() -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(_CONFIRMATION_CODE_LENGTH))
+
+
+def _generate_unique_confirmation_code() -> str:
+    for _ in range(_CONFIRMATION_CODE_ATTEMPTS):
+        candidate = _generate_confirmation_code()
+        if not ReservationRepository.get_by_code(candidate):
+            return candidate
+    raise ConflictError(
+        "Could not generate a unique confirmation code. Please try again.",
+        {"confirmationCode": "Could not allocate unique code"},
+    )
 
 
 class ReservationService:
+    @staticmethod
+    def _is_restaurant_admin_or_super_admin(user_id: UUID, restaurant_id: UUID) -> bool:
+        user = UserRepository.get_by_id(user_id)
+        if not user:
+            return False
+        if user.role == UserRole.SUPER_ADMIN:
+            return True
+        if user.role != UserRole.RESTAURANT_ADMIN:
+            return False
+        return RestaurantAdminRepository.is_admin(
+            user_id=user_id,
+            restaurant_id=restaurant_id,
+        )
+
+    @staticmethod
+    def _assert_can_access_reservation(
+        reservation: ReservationModel,
+        requesting_user_id: UUID,
+        *,
+        message: str,
+    ) -> None:
+        if reservation.user_id == requesting_user_id:
+            return
+        if ReservationService._is_restaurant_admin_or_super_admin(
+            requesting_user_id,
+            reservation.restaurant_id,
+        ):
+            return
+        raise ForbiddenError(
+            message,
+            {
+                "authorization": (
+                    "User must be reservation owner, SUPER_ADMIN, or a RESTAURANT_ADMIN assigned "
+                    "to this restaurant."
+                )
+            },
+        )
+
     @staticmethod
     def parse_required_date(value: str) -> date:
         try:
@@ -147,6 +201,7 @@ class ReservationService:
         notes: str | None = None,
     ) -> dict:
         from app.services.availability_service import AvailabilityService
+        from app.services.business_hours_service import BusinessHoursService
 
         if not RestaurantRepository.get_by_id(restaurant_id):
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
@@ -155,8 +210,33 @@ class ReservationService:
         if party_size < 1:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
+        # Validate that restaurant is open on the requested date
+        if not BusinessHoursService.is_open_on(restaurant_id, on_date):
+            raise ValidationError(
+                f"Restaurant is closed on {on_date.isoformat()}.",
+                {"date": "Restaurant is closed"},
+            )
+
+        # Validate that time_slot is within operating hours
+        time_range = BusinessHoursService.get_time_range(restaurant_id, on_date)
+        if time_range is None:
+            raise ValidationError(
+                f"No operating hours defined for {on_date.isoformat()}.",
+                {"date": "No operating hours"},
+            )
+        opens_at, closes_at = time_range
+        if not (opens_at <= time_slot < closes_at):
+            raise ValidationError(
+                f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
+                {"timeSlot": "Outside operating hours"},
+            )
+
         assignment = AvailabilityService.find_table_assignment(
-            restaurant_id, on_date, time_slot, party_size
+            restaurant_id,
+            on_date,
+            time_slot,
+            party_size,
+            lock_rows=True,
         )
         if assignment is None:
             raise ConflictError(
@@ -164,7 +244,7 @@ class ReservationService:
                 {"timeSlot": "Not available"},
             )
 
-        code = _generate_confirmation_code()
+        code = _generate_unique_confirmation_code()
         reservation = ReservationModel(
             restaurant_id=restaurant_id,
             user_id=user_id,
@@ -176,8 +256,17 @@ class ReservationService:
             notes=notes,
             confirmation_code=code,
         )
-        ReservationRepository.create(reservation)
-        ReservationTableRepository.create_bulk(reservation.id, [t.id for t in assignment])
+        try:
+            ReservationRepository.create(reservation, auto_commit=False)
+            ReservationTableRepository.create_bulk(
+                reservation.id,
+                [t.id for t in assignment],
+                auto_commit=False,
+            )
+            ReservationRepository.commit()
+        except Exception:
+            ReservationRepository.rollback()
+            raise
         logger.info("Reservation created: id=%s code=%s", reservation.id, code)
         return ReservationService._to_payload(reservation)
 
@@ -196,6 +285,7 @@ class ReservationService:
         notes: str | None = None,
     ) -> dict:
         from app.services.availability_service import AvailabilityService
+        from app.services.business_hours_service import BusinessHoursService
 
         if not RestaurantRepository.get_by_id(restaurant_id):
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
@@ -226,8 +316,33 @@ class ReservationService:
         if party_size < 1:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
+        # Validate that restaurant is open on the requested date
+        if not BusinessHoursService.is_open_on(restaurant_id, on_date):
+            raise ValidationError(
+                f"Restaurant is closed on {on_date.isoformat()}.",
+                {"date": "Restaurant is closed"},
+            )
+
+        # Validate that time_slot is within operating hours
+        time_range = BusinessHoursService.get_time_range(restaurant_id, on_date)
+        if time_range is None:
+            raise ValidationError(
+                f"No operating hours defined for {on_date.isoformat()}.",
+                {"date": "No operating hours"},
+            )
+        opens_at, closes_at = time_range
+        if not (opens_at <= time_slot < closes_at):
+            raise ValidationError(
+                f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
+                {"timeSlot": "Outside operating hours"},
+            )
+
         assignment = AvailabilityService.find_table_assignment(
-            restaurant_id, on_date, time_slot, party_size
+            restaurant_id,
+            on_date,
+            time_slot,
+            party_size,
+            lock_rows=True,
         )
         if assignment is None:
             raise ConflictError(
@@ -235,7 +350,7 @@ class ReservationService:
                 {"timeSlot": "Not available"},
             )
 
-        code = _generate_confirmation_code()
+        code = _generate_unique_confirmation_code()
         reservation = ReservationModel(
             restaurant_id=restaurant_id,
             user_id=user_id,
@@ -250,8 +365,17 @@ class ReservationService:
             notes=notes,
             confirmation_code=code,
         )
-        ReservationRepository.create(reservation)
-        ReservationTableRepository.create_bulk(reservation.id, [t.id for t in assignment])
+        try:
+            ReservationRepository.create(reservation, auto_commit=False)
+            ReservationTableRepository.create_bulk(
+                reservation.id,
+                [t.id for t in assignment],
+                auto_commit=False,
+            )
+            ReservationRepository.commit()
+        except Exception:
+            ReservationRepository.rollback()
+            raise
         logger.info(
             "Admin reservation created: id=%s code=%s admin=%s", reservation.id, code, admin_user_id
         )
@@ -270,13 +394,11 @@ class ReservationService:
             raise NotFoundError(
                 f"Reservation with id={reservation_id} not found for restaurant id={restaurant_id}."
             )
-        if reservation.user_id != requesting_user_id:
-            from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
-            is_admin = RestaurantAdminRepository.is_admin(
-                user_id=requesting_user_id, restaurant_id=reservation.restaurant_id
-            )
-            if not is_admin:
-                raise ForbiddenError("You do not have access to this reservation.")
+        ReservationService._assert_can_access_reservation(
+            reservation,
+            requesting_user_id,
+            message="You do not have access to this reservation.",
+        )
         return ReservationService._to_payload(reservation)
 
     @staticmethod
@@ -290,6 +412,8 @@ class ReservationService:
     def reassign_tables(
         reservation_id: UUID, table_ids: list[UUID], requesting_user_id: UUID
     ) -> dict:
+        from app.repositories.table_repository import TableRepository
+
         reservation = ReservationRepository.get_by_id(reservation_id)
         if not reservation:
             raise NotFoundError(f"Reservation with id={reservation_id} not found.")
@@ -299,8 +423,24 @@ class ReservationService:
         ):
             raise ForbiddenError("Only restaurant admins can reassign tables.")
 
+        active_tables = TableRepository.get_active_for_update(reservation.restaurant_id)
+        active_table_ids = {row.id for row in active_tables}
+        invalid_table_ids = [tid for tid in table_ids if tid not in active_table_ids]
+        if invalid_table_ids:
+            raise ValidationError(
+                "One or more tables are not active in this restaurant.",
+                {"tableIds": "Invalid table ids"},
+            )
+
+        restaurant = RestaurantRepository.get_by_id(reservation.restaurant_id)
+        if not restaurant:
+            raise NotFoundError(f"Restaurant with id={reservation.restaurant_id} not found.")
+
         occupied = ReservationRepository.get_occupied_table_ids_at(
-            reservation.restaurant_id, reservation.date, reservation.time_slot
+            reservation.restaurant_id,
+            reservation.date,
+            reservation.time_slot,
+            exclude_reservation_id=reservation_id,
         )
         conflicts = [tid for tid in table_ids if tid in occupied]
         if conflicts:
@@ -309,8 +449,20 @@ class ReservationService:
                 {"tableIds": "Conflict detected"},
             )
 
-        ReservationTableRepository.delete_by_reservation(reservation_id)
-        ReservationTableRepository.create_bulk(reservation_id, table_ids)
+        try:
+            ReservationTableRepository.delete_by_reservation(
+                reservation_id,
+                auto_commit=False,
+            )
+            ReservationTableRepository.create_bulk(
+                reservation_id,
+                table_ids,
+                auto_commit=False,
+            )
+            ReservationRepository.commit()
+        except Exception:
+            ReservationRepository.rollback()
+            raise
         logger.info("Reservation tables reassigned: id=%s", reservation_id)
         return ReservationService._to_payload(reservation)
 
@@ -334,12 +486,11 @@ class ReservationService:
             raise ConflictError(
                 f"Cannot cancel a reservation with status '{reservation.status.value}'."
             )
-        if reservation.user_id != requesting_user_id:
-            from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
-            if not RestaurantAdminRepository.is_admin(
-                user_id=requesting_user_id, restaurant_id=reservation.restaurant_id
-            ):
-                raise ForbiddenError("You do not have permission to cancel this reservation.")
+        ReservationService._assert_can_access_reservation(
+            reservation,
+            requesting_user_id,
+            message="You do not have permission to cancel this reservation.",
+        )
 
         ReservationRepository.cancel_and_release_tables(reservation)
         logger.info(
@@ -372,6 +523,6 @@ class ReservationService:
             raise ConflictError(
                 f"Cannot mark as no-show a reservation with status '{reservation.status.value}'."
             )
-        ReservationRepository.update_status(reservation, ReservationStatus.NO_SHOW)
+        ReservationRepository.mark_no_show_and_release_tables(reservation)
         logger.info("Reservation marked no-show: id=%s", reservation_id)
         return ReservationService._to_payload(reservation)

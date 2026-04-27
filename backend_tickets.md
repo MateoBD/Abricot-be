@@ -91,7 +91,7 @@ Estado revisado contra el repo (`app/`). **Cerrado en Basics**: auth, perfil de 
 
 ### Chores
 - [ ] Definir reglas de asignacion de mesas (mesa unica vs combinacion)
-- [ ] Asegurar transacciones atomicas para evitar sobre-reservas
+- [x] Asegurar transacciones atomicas para evitar sobre-reservas — lock pesimista de mesas con `SELECT ... FOR UPDATE` + escritura de reserva/mesas en una sola transaccion (`ReservationService.create/create_for_admin` con `lock_rows=True`, `ReservationRepository.create(auto_commit=False)`, `ReservationTableRepository.create_bulk(auto_commit=False)`, commit unico)
 - [ ] Agregar indices para busquedas por restaurante, fecha y estado
 - [ ] Agregar test de concurrencia para creacion de reservas
 - [ ] Documentar flujo de reserva y reglas de negocio
