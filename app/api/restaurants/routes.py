@@ -129,6 +129,7 @@ for _model in (
     menu_detail_response_model,
     menu_list_response_model,
     menu_category_response_model,
+    menu_category_detail_response_model,
     menu_category_create_model,
     menu_category_update_model,
     menu_category_list_response_model,

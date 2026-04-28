@@ -13,6 +13,7 @@ from app.models.location import CityModel, CountryModel, NeighbourhoodModel, Pro
 from app.models.menu import MenuModel  # noqa: F401
 from app.models.menu_category import MenuCategoryModel  # noqa: F401
 from app.models.menu_item import MenuItemModel  # noqa: F401
+from app.models.notification_event import NotificationEventModel  # noqa: F401
 from app.models.notification_preference import NotificationPreferenceModel  # noqa: F401
 from app.models.order import OrderModel  # noqa: F401
 from app.models.order_item import OrderItemModel  # noqa: F401
@@ -38,6 +39,7 @@ __all__ = [
 	"MenuItemModel",
 	"MenuModel",
 	"NeighbourhoodModel",
+	"NotificationEventModel",
 	"NotificationPreferenceModel",
 	"OrderItemModel",
 	"OrderModel",

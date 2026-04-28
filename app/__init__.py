@@ -16,6 +16,7 @@ def create_app(config_name: str | None = None) -> Flask:
     Creates and configures the Flask application:
     - Loads the appropriate config class (production or testing).
     - Initialises all extensions: SQLAlchemy, Flask-Migrate, JWT, Bcrypt, CORS.
+    - Initialises async notification worker.
     - Registers all API namespaces and blueprints.
     - Registers centralised error handlers.
 
@@ -44,6 +45,19 @@ def create_app(config_name: str | None = None) -> Flask:
     from app.extensions import init_extensions
 
     init_extensions(app)
+
+    # Initialize async notification worker
+    from app.services.notification_service import set_async_worker, _send_email_sync
+    from app.services.async_queue import AsyncNotificationWorker
+
+    worker = AsyncNotificationWorker(send_func=_send_email_sync)
+    worker.start()
+    set_async_worker(worker)
+
+    # Register shutdown handler for graceful worker cleanup
+    @app.teardown_appcontext
+    def shutdown_worker(exception=None):
+        worker.stop(timeout=5.0)
 
     from app.api import register_blueprints
 

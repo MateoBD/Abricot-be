@@ -159,3 +159,65 @@ user_restaurants_list_model = Model(
         "perPage": fields.Integer(example=2),
     },
 )
+
+notification_preference_response_model = Model(
+    "NotificationPreferenceResponse",
+    {
+        "id": fields.String(
+            description="ID de la preferencia (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "userId": fields.String(
+            description="ID del usuario (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "restaurantId": fields.String(
+            description="ID del restaurante (UUID).",
+            example="018f1234-5678-7abc-8def-123456789abc",
+            pattern=_UUID_STRING_PATTERN,
+        ),
+        "receivePromotions": fields.Boolean(
+            description="Recibir notificaciones de promociones.",
+            example=True,
+        ),
+        "receiveOrderUpdates": fields.Boolean(
+            description="Recibir notificaciones de actualización de pedidos.",
+            example=True,
+        ),
+        "receiveReservationReminders": fields.Boolean(
+            description="Recibir recordatorios de reservas.",
+            example=True,
+        ),
+    },
+)
+
+notification_preference_update_model = Model(
+    "NotificationPreferenceUpdateRequest",
+    {
+        "receivePromotions": fields.Boolean(
+            description="Recibir notificaciones de promociones.",
+            example=True,
+        ),
+        "receiveOrderUpdates": fields.Boolean(
+            description="Recibir notificaciones de actualización de pedidos.",
+            example=True,
+        ),
+        "receiveReservationReminders": fields.Boolean(
+            description="Recibir recordatorios de reservas.",
+            example=True,
+        ),
+    },
+)
+
+paginated_notification_preference_model = Model(
+    "PaginatedNotificationPreferenceResponse",
+    {
+        "data": fields.List(fields.Nested(notification_preference_response_model)),
+        "total": fields.Integer(example=5),
+        "page": fields.Integer(example=1),
+        "perPage": fields.Integer(example=20),
+    },
+)
+

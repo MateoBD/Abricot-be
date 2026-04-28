@@ -14,6 +14,9 @@ from app.api.users.schemas import (
     user_reservation_response_model,
     user_restaurant_response_model,
     user_restaurants_list_model,
+    notification_preference_response_model,
+    notification_preference_update_model,
+    paginated_notification_preference_model,
 )
 from app.middleware.auth import (
     require_authentication,
@@ -41,6 +44,9 @@ for _model in (
     paginated_user_order_model,
     user_restaurant_response_model,
     user_restaurants_list_model,
+    notification_preference_response_model,
+    notification_preference_update_model,
+    paginated_notification_preference_model,
 ):
     namespace.models[_model.name] = _model
 
@@ -159,3 +165,60 @@ class UserRestaurants(Resource):
     def get(self, user_id: UUID):
         """List restaurants administered by the authenticated user."""
         return UserService.get_my_restaurants(user_id), 200
+
+
+@namespace.route("/<uuid:user_id>/notification-preferences")
+@namespace.doc(
+    params={
+        "user_id": "UUID of the user — must be the same as the authenticated user (JWT `sub`)."
+    }
+)
+class UserNotificationPreferences(Resource):
+    @namespace.expect(_pagination_parser)
+    @namespace.response(200, "Notification preferences retrieved successfully.", paginated_notification_preference_model)
+    @namespace.response(403, "Forbidden — user id does not match the authenticated user.")
+    @namespace.response(404, "User not found.")
+    @require_path_user_matches_jwt("user_id")
+    def get(self, user_id: UUID):
+        """Get all notification preferences for the authenticated user."""
+        from app.services.notification_preference_service import NotificationPreferenceService
+        args = _pagination_parser.parse_args()
+        result = NotificationPreferenceService.get_all_for_user(user_id)
+        return result, 200
+
+
+@namespace.route("/<uuid:user_id>/notification-preferences/<uuid:restaurant_id>")
+@namespace.doc(
+    params={
+        "user_id": "UUID of the user — must be the same as the authenticated user (JWT `sub`).",
+        "restaurant_id": "UUID of the restaurant.",
+    }
+)
+class UserNotificationPreferenceDetail(Resource):
+    @namespace.response(200, "Notification preference retrieved successfully.", notification_preference_response_model)
+    @namespace.response(403, "Forbidden — user id does not match the authenticated user.")
+    @namespace.response(404, "User or restaurant not found.")
+    @require_path_user_matches_jwt("user_id")
+    def get(self, user_id: UUID, restaurant_id: UUID):
+        """Get notification preference for a specific restaurant."""
+        from app.services.notification_preference_service import NotificationPreferenceService
+        return NotificationPreferenceService.get_or_create(user_id, restaurant_id), 200
+
+    @namespace.expect(notification_preference_update_model, validate=True)
+    @namespace.response(200, "Notification preference updated successfully.", notification_preference_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(403, "Forbidden — user id does not match the authenticated user.")
+    @namespace.response(404, "User or restaurant not found.")
+    @require_path_user_matches_jwt("user_id")
+    def put(self, user_id: UUID, restaurant_id: UUID):
+        """Update notification preferences for a specific restaurant."""
+        from app.services.notification_preference_service import NotificationPreferenceService
+        data = request.json
+        return NotificationPreferenceService.update(
+            user_id=user_id,
+            restaurant_id=restaurant_id,
+            receive_promotions=data.get("receivePromotions"),
+            receive_order_updates=data.get("receiveOrderUpdates"),
+            receive_reservation_reminders=data.get("receiveReservationReminders"),
+        ), 200
+

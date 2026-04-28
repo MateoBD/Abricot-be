@@ -41,12 +41,14 @@ class NotificationPreferenceRepository:
 
     @staticmethod
     def update(
-        pref: NotificationPreferenceModel,
+        user_id: UUID,
+        restaurant_id: UUID,
         *,
         receive_promotions: bool | None = None,
         receive_order_updates: bool | None = None,
         receive_reservation_reminders: bool | None = None,
     ) -> NotificationPreferenceModel:
+        pref = NotificationPreferenceRepository.get_or_create(user_id, restaurant_id)
         if receive_promotions is not None:
             pref.receive_promotions = receive_promotions
         if receive_order_updates is not None:
