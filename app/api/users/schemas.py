@@ -115,7 +115,7 @@ user_order_response_model = Model(
     {
         "id": fields.String(description="ID del pedido (UUID).", example="018f1234-5678-7abc-8def-123456789abc"),
         "restaurantId": fields.String(description="ID del restaurante (UUID)."),
-        "status": fields.String(description="Estado: PENDING | CONFIRMED | IN_PREPARATION | READY | COMPLETED | CANCELLED.", example="COMPLETED"),
+        "status": fields.String(description="Estado: PENDING | CONFIRMED | READY | COMPLETED | CANCELLED.", example="COMPLETED"),
         "totalAmount": fields.String(description="Total del pedido.", example="2500.00"),
         "notes": fields.String(description="Notas del pedido.", allow_null=True),
         "estimatedReadyAt": fields.String(description="Hora estimada de listo (ISO 8601).", allow_null=True),

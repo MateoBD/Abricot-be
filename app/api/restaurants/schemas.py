@@ -356,6 +356,17 @@ menu_update_model = Model(
     },
 )
 
+menu_patch_model = Model(
+    "MenuPatchRequest",
+    {
+        "isActive": fields.Boolean(
+            required=True,
+            description="Whether this menu is the active menu for the restaurant.",
+            example=True,
+        ),
+    },
+)
+
 menu_response_model = Model(
     "MenuResponse",
     {
@@ -858,62 +869,6 @@ orders_report_response_model = Model(
     },
 )
 
-reservations_by_status_item_model = Model(
-    "ReservationsByStatusItem",
-    {
-        "status": fields.String(
-            description="Estado de la reserva.",
-            example="CONFIRMED",
-        ),
-        "count": fields.Integer(
-            description="Cantidad de reservas en ese estado.",
-            example=42,
-        ),
-    },
-)
-
-orders_metrics_model = Model(
-    "OrdersMetrics",
-    {
-        "total": fields.Integer(
-            description="Cantidad total de pedidos.",
-            example=340,
-        ),
-        "totalRevenue": fields.String(
-            description="Ingresos totales de pedidos.",
-            example="850000.00",
-            pattern=r"^\d+(\.\d{2})$",
-        ),
-        "averageOrderValue": fields.String(
-            description="Ticket promedio de pedidos.",
-            example="2500.00",
-            pattern=r"^\d+(\.\d{2})$",
-        ),
-        "byStatus": fields.List(
-            fields.Nested(orders_by_status_item_model),
-            description="Desglose de pedidos por estado.",
-        ),
-    },
-)
-
-reservations_metrics_model = Model(
-    "ReservationsMetrics",
-    {
-        "total": fields.Integer(
-            description="Cantidad total de reservas.",
-            example=145,
-        ),
-        "totalGuests": fields.Integer(
-            description="Cantidad total de comensales.",
-            example=582,
-        ),
-        "byStatus": fields.List(
-            fields.Nested(reservations_by_status_item_model),
-            description="Desglose de reservas por estado.",
-        ),
-    },
-)
-
 general_metrics_response_model = Model(
     "GeneralMetricsResponse",
     {
@@ -926,13 +881,39 @@ general_metrics_response_model = Model(
             analytics_period_model,
             description="Período aplicado para calcular métricas.",
         ),
-        "orders": fields.Nested(
-            orders_metrics_model,
-            description="Métricas de pedidos.",
+        "totalOrders": fields.Integer(
+            description="Cantidad de pedidos del periodo.",
+            example=340,
         ),
-        "reservations": fields.Nested(
-            reservations_metrics_model,
-            description="Métricas de reservas.",
+        "totalReservations": fields.Integer(
+            description="Cantidad de reservas del periodo.",
+            example=145,
+        ),
+        "totalRevenue": fields.String(
+            description="Ingresos totales de pedidos en el periodo.",
+            example="850000.00",
+            pattern=r"^\d+(\.\d{2})$",
+        ),
+        "averageOrderValue": fields.String(
+            description="Ticket promedio de pedidos en el periodo.",
+            example="2500.00",
+            pattern=r"^\d+(\.\d{2})$",
+        ),
+        "totalCovers": fields.Integer(
+            description="Cantidad total de comensales reservados.",
+            example=582,
+        ),
+        "completedReservations": fields.Integer(
+            description="Cantidad de reservas completadas.",
+            example=104,
+        ),
+        "cancelledReservations": fields.Integer(
+            description="Cantidad de reservas canceladas.",
+            example=16,
+        ),
+        "noShowReservations": fields.Integer(
+            description="Cantidad de reservas marcadas como no-show.",
+            example=5,
         ),
     },
 )
@@ -1084,6 +1065,44 @@ reservation_create_model = Model(
             max_length=2000,
             example="Mesa tranquila, por favor.",
         ),
+        "source": fields.String(
+            required=False,
+            description=(
+                "Reservation origin. Omit or use ONLINE for customer self-service. "
+                "PHONE and EVENT require restaurant-admin permissions."
+            ),
+            pattern=_RESERVATION_SOURCE_PATTERN,
+            example="ONLINE",
+        ),
+        "guestName": fields.String(
+            required=False,
+            allow_null=True,
+            description="Guest/group name for admin-created PHONE/EVENT reservations.",
+            max_length=150,
+            example="Grupo Perez",
+        ),
+        "guestPhone": fields.String(
+            required=False,
+            allow_null=True,
+            description="Guest/group contact phone for admin-created PHONE/EVENT reservations.",
+            pattern=_PHONE_PATTERN,
+            example="+54 11 4444-5555",
+        ),
+        "guestEmail": fields.String(
+            required=False,
+            allow_null=True,
+            description="Guest/group contact email for admin-created PHONE/EVENT reservations.",
+            pattern=_EMAIL_PATTERN,
+            max_length=255,
+            example="grupo@example.com",
+        ),
+        "userId": fields.String(
+            required=False,
+            allow_null=True,
+            description="Registered user UUID to associate with an admin-created reservation.",
+            pattern=_UUID_STRING_PATTERN,
+            example="018f1234-5678-7abc-8def-123456789abc",
+        ),
     },
 )
 
@@ -1205,6 +1224,24 @@ reservation_cancel_model = Model(
 
 # ── Tables ──────────────────────────────────────────────────────────────────
 
+reservation_status_patch_model = Model(
+    "ReservationStatusPatchRequest",
+    {
+        "status": fields.String(
+            required=True,
+            description="Target reservation status: CANCELLED, COMPLETED, or NO_SHOW.",
+            pattern=r"^(CANCELLED|COMPLETED|NO_SHOW)$",
+            example="CANCELLED",
+        ),
+        "reason": fields.String(
+            required=False,
+            description="Optional cancellation reason. Used only when status=CANCELLED.",
+            max_length=500,
+            example="El cliente aviso que no podia asistir.",
+        ),
+    },
+)
+
 _TABLE_WRITABLE_FIELDS = {
     "number": fields.Integer(
         required=True,
@@ -1317,6 +1354,44 @@ table_bulk_create_model = Model(
 )
 
 # ── Business Hours ───────────────────────────────────────────────────────────
+
+table_collection_create_model = Model(
+    "TableCollectionCreateRequest",
+    {
+        "number": fields.Integer(
+            required=False,
+            description="Single-table number. Required when groups is omitted.",
+            min=1,
+            example=5,
+        ),
+        "capacity": fields.Integer(
+            required=False,
+            description="Single-table capacity. Required when groups is omitted.",
+            min=1,
+            example=4,
+        ),
+        "name": fields.String(
+            required=False,
+            allow_null=True,
+            description="Optional descriptive name for single-table creation.",
+            max_length=100,
+            example="Mesa del jardin",
+        ),
+        "isJoinable": fields.Boolean(
+            required=False,
+            description="Whether the single table can be joined with others.",
+            example=True,
+        ),
+        "groups": fields.List(
+            fields.Nested(table_group_model),
+            required=False,
+            description=(
+                "Bulk-create groups. When present, number/capacity/name are ignored "
+                "and the response is a paginated table list."
+            ),
+        ),
+    },
+)
 
 business_hours_item_model = Model(
     "BusinessHoursItem",

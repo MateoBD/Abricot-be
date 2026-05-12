@@ -114,6 +114,10 @@ class AnalyticsService:
             start_date=start_date,
             end_date=end_date,
         )
+        reservations_by_status = {
+            row["status"]: row["count"]
+            for row in reservations_data["reservationsByStatus"]
+        }
 
         return {
             "restaurantId": str(restaurant_id),
@@ -121,17 +125,16 @@ class AnalyticsService:
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None,
             },
-            "orders": {
-                "total": orders_data["totalOrders"],
-                "totalRevenue": orders_data["totalRevenue"],
-                "averageOrderValue": orders_data["averageOrderValue"],
-                "byStatus": orders_data["ordersByStatus"],
-            },
-            "reservations": {
-                "total": reservations_data["totalReservations"],
-                "totalGuests": reservations_data["totalGuests"],
-                "byStatus": reservations_data["reservationsByStatus"],
-            },
+            "totalOrders": orders_data["totalOrders"],
+            "totalReservations": reservations_data["totalReservations"],
+            "totalRevenue": AnalyticsService._format_money(orders_data["totalRevenue"]),
+            "averageOrderValue": AnalyticsService._format_money(
+                orders_data["averageOrderValue"]
+            ),
+            "totalCovers": reservations_data["totalGuests"],
+            "completedReservations": reservations_by_status.get("COMPLETED", 0),
+            "cancelledReservations": reservations_by_status.get("CANCELLED", 0),
+            "noShowReservations": reservations_by_status.get("NO_SHOW", 0),
         }
 
     @staticmethod

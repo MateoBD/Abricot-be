@@ -73,7 +73,10 @@ class AuthService:
         user = UserRepository.get_by_email(email)
 
         if not user or not bcrypt.check_password_hash(user.password_hash, password):
-            raise UnauthorizedError("Invalid email or password.")
+            raise UnauthorizedError(
+                "Invalid email or password.",
+                public_message="Invalid email or password.",
+            )
 
         access_token = create_access_token(identity=str(user.id))
         refresh_token = create_refresh_token(identity=str(user.id))

@@ -13,11 +13,11 @@ from app.api.restaurants.schemas import (
     business_hours_item_model,
     business_hours_response_model,
     orders_by_status_item_model,
-    orders_metrics_model,
     menu_create_model,
     menu_category_response_model,
     menu_detail_response_model,
     menu_list_response_model,
+    menu_patch_model,
     menu_response_model,
     menu_update_model,
     paginated_business_hours_response_model,
@@ -27,10 +27,9 @@ from app.api.restaurants.schemas import (
     paginated_table_response_model,
     general_metrics_response_model,
     orders_report_response_model,
-    reservation_admin_create_model,
-    reservation_cancel_model,
     reservation_create_model,
     reservation_response_model,
+    reservation_status_patch_model,
     reservation_table_assignment_item_model,
     restaurant_admin_add_model,
     restaurant_admin_response_model,
@@ -38,7 +37,7 @@ from app.api.restaurants.schemas import (
     restaurant_response_model,
     restaurant_update_model,
     table_assignment_item_model,
-    table_bulk_create_model,
+    table_collection_create_model,
     table_create_model,
     table_group_model,
     table_response_model,
@@ -56,8 +55,6 @@ from app.api.restaurants.schemas import (
     promotion_create_model,
     promotion_response_model,
     promotions_admin_list_envelope_model,
-    reservations_by_status_item_model,
-    reservations_metrics_model,
     revenue_by_day_item_model,
     menu_category_create_model,
     menu_category_detail_response_model,
@@ -69,8 +66,10 @@ from app.api.restaurants.schemas import (
     menu_item_response_model,
 )
 from app.middleware.auth import (
+    ensure_current_user_is_restaurant_admin,
     get_current_user_id,
     require_authentication,
+    require_path_user_matches_jwt,
     require_restaurant_admin,
     require_roles,
 )
@@ -118,12 +117,10 @@ for _model in (
     analytics_period_model,
     orders_by_status_item_model,
     revenue_by_day_item_model,
-    reservations_by_status_item_model,
-    orders_metrics_model,
-    reservations_metrics_model,
     orders_report_response_model,
     general_metrics_response_model,
     menu_create_model,
+    menu_patch_model,
     menu_update_model,
     menu_response_model,
     menu_detail_response_model,
@@ -139,14 +136,13 @@ for _model in (
     menu_item_response_model,
     availability_response_model,
     reservation_create_model,
-    reservation_admin_create_model,
-    reservation_cancel_model,
+    reservation_status_patch_model,
     reservation_table_assignment_item_model,
     reservation_response_model,
     paginated_reservation_response_model,
     table_create_model,
     table_update_model,
-    table_bulk_create_model,
+    table_collection_create_model,
     table_group_model,
     table_response_model,
     paginated_table_response_model,
@@ -182,6 +178,13 @@ _photo_parser.add_argument(
 )
 
 _analytics_date_range_parser = reqparse.RequestParser()
+_analytics_date_range_parser.add_argument(
+    "report",
+    type=str,
+    location="args",
+    required=True,
+    help="Analytics report: orders or metrics.",
+)
 _analytics_date_range_parser.add_argument(
     "start",
     type=str,
@@ -382,9 +385,19 @@ class RestaurantDetail(Resource):
 class RestaurantMenuList(Resource):
     @namespace.response(200, "Menus retrieved successfully.", menu_list_response_model)
     @namespace.response(404, "Restaurant not found.")
-    @require_restaurant_admin("restaurant_id")
     def get(self, restaurant_id: UUID):
-        """List all menus for a restaurant."""
+        """List menus for a restaurant, or fetch the active menu with isActive=true."""
+        if str(request.args.get("isActive", "")).lower() == "true":
+            menu = MenuService.get_active_menu(restaurant_id)
+            if not menu:
+                return {
+                    "message": "Restaurant has no active menu.",
+                    "code": "NOT_FOUND",
+                    "errors": {},
+                }, 404
+            return menu, 200
+
+        ensure_current_user_is_restaurant_admin(restaurant_id)
         return MenuService.get_all(restaurant_id), 200
 
     @namespace.expect(menu_create_model, validate=True)
@@ -422,6 +435,20 @@ class RestaurantMenuDetail(Resource):
         """Replace menu fields."""
         data = request.json or {}
         return MenuService.update(restaurant_id, menu_id, data.get("name")), 200
+
+    @namespace.expect(menu_patch_model, validate=True)
+    @namespace.response(200, "Menu activation state updated successfully.", menu_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant or menu not found.")
+    @require_restaurant_admin("restaurant_id")
+    def patch(self, restaurant_id: UUID, menu_id: UUID):
+        """Update menu state fields."""
+        data = request.json or {}
+        if "isActive" not in data:
+            raise ValidationError("isActive is required.", {"isActive": "Required"})
+        if data.get("isActive"):
+            return MenuService.activate(restaurant_id, menu_id), 200
+        return MenuService.deactivate(restaurant_id, menu_id), 200
 
     @namespace.response(204, "Menu deleted successfully.")
     @namespace.response(404, "Restaurant or menu not found.")
@@ -611,76 +638,32 @@ class RestaurantMenuItemDetail(Resource):
         return "", 204
 
 
-@namespace.route("/<uuid:restaurant_id>/menus/active")
-@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
-class RestaurantActiveMenu(Resource):
-    @namespace.response(200, "Active menu retrieved successfully.", menu_detail_response_model)
-    @namespace.response(404, "Restaurant not found or has no active menu.")
-    def get(self, restaurant_id: UUID):
-        """Get the current active menu with nested categories and items."""
-        menu = MenuService.get_active_menu(restaurant_id)
-        if not menu:
-            return {
-                "message": "Restaurant has no active menu.",
-                "code": "NOT_FOUND",
-                "errors": {},
-            }, 404
-        return menu, 200
-
-
-@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>/activate")
+@namespace.route("/<uuid:restaurant_id>/reviews/<uuid:user_id>")
 @namespace.doc(
     params={
         "restaurant_id": "The restaurant's ID (UUID).",
-        "menu_id": "The menu's ID (UUID).",
-    }
-)
-class RestaurantMenuActivate(Resource):
-    @namespace.response(200, "Menu activated successfully.", menu_response_model)
-    @namespace.response(404, "Restaurant or menu not found.")
-    @require_restaurant_admin("restaurant_id")
-    def patch(self, restaurant_id: UUID, menu_id: UUID):
-        """Mark one menu as active and deactivate the others for the restaurant."""
-        return MenuService.activate(restaurant_id, menu_id), 200
-
-
-@namespace.route("/<uuid:restaurant_id>/menus/<uuid:menu_id>/deactivate")
-@namespace.doc(
-    params={
-        "restaurant_id": "The restaurant's ID (UUID).",
-        "menu_id": "The menu's ID (UUID).",
-    }
-)
-class RestaurantMenuDeactivate(Resource):
-    @namespace.response(200, "Menu deactivated successfully.", menu_response_model)
-    @namespace.response(404, "Restaurant or menu not found.")
-    @require_restaurant_admin("restaurant_id")
-    def patch(self, restaurant_id: UUID, menu_id: UUID):
-        """Mark a menu as inactive."""
-        return MenuService.deactivate(restaurant_id, menu_id), 200
-
-
-@namespace.route("/<uuid:restaurant_id>/my-review")
-@namespace.doc(
-    params={"restaurant_id": "The restaurant's ID (UUID)."},
+        "user_id": "The authenticated user's ID (UUID).",
+    },
     description=(
         "Un usuario autenticado solo puede tener una puntuación por restaurante: "
         "el mismo PUT actualiza su nota. El promedio del restaurante sale en "
         "GET de restaurante / listado."
     ),
 )
-class MyRestaurantReview(Resource):
+class RestaurantReviewDetail(Resource):
     @namespace.expect(my_restaurant_review_request_model, validate=True)
     @namespace.response(200, "Reseña guardada o actualizada.", my_restaurant_review_response_model)
     @namespace.response(400, "Validation error.")
+    @namespace.response(403, "Forbidden.")
     @namespace.response(404, "Restaurant not found.")
     @require_authentication()
-    def put(self, restaurant_id: UUID):
+    @require_path_user_matches_jwt("user_id")
+    def put(self, restaurant_id: UUID, user_id: UUID):
         """Crear o reemplazar la puntuación (1–5) del usuario para este restaurante."""
         data = request.json or {}
         return (
             RestaurantReviewService.set_my_review(
-                get_current_user_id(),
+                user_id,
                 restaurant_id,
                 data.get("score"),
             ),
@@ -859,7 +842,7 @@ class RestaurantPhoto(Resource):
     @namespace.response(400, "No file provided.")
     @namespace.response(404, "Restaurant not found.")
     @require_restaurant_admin("restaurant_id")
-    def post(self, restaurant_id: UUID):
+    def put(self, restaurant_id: UUID):
         """Upload a photo for a restaurant via multipart/form-data."""
         args = _photo_parser.parse_args()
         file = args["file"]
@@ -915,48 +898,34 @@ class RestaurantAdminDetail(Resource):
         return "", 204
 
 
-@namespace.route("/<uuid:restaurant_id>/analytics/orders")
+@namespace.route("/<uuid:restaurant_id>/analytics")
 @namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
-class RestaurantOrdersReport(Resource):
-    @namespace.response(
-        200,
-        "Orders analytics retrieved successfully.",
-        orders_report_response_model,
-    )
+class RestaurantAnalytics(Resource):
+    @namespace.response(200, "Analytics report retrieved successfully.")
     @namespace.response(400, "Validation error.")
     @namespace.response(404, "Restaurant not found.")
     @namespace.expect(_analytics_date_range_parser)
     @require_restaurant_admin("restaurant_id")
     def get(self, restaurant_id: UUID):
-        """Get orders analytics report for a restaurant within a date range."""
+        """Get an analytics report for a restaurant within a date range."""
         args = _analytics_date_range_parser.parse_args()
-        return AnalyticsService.get_orders_report(
-            restaurant_id=restaurant_id,
-            start=args.get("start"),
-            end=args.get("end"),
-        ), 200
-
-
-@namespace.route("/<uuid:restaurant_id>/analytics/metrics")
-@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
-class RestaurantGeneralMetrics(Resource):
-    @namespace.response(
-        200,
-        "General metrics retrieved successfully.",
-        general_metrics_response_model,
-    )
-    @namespace.response(400, "Validation error.")
-    @namespace.response(404, "Restaurant not found.")
-    @namespace.expect(_analytics_date_range_parser)
-    @require_restaurant_admin("restaurant_id")
-    def get(self, restaurant_id: UUID):
-        """Get general metrics for a restaurant (orders, reservations, revenue) within a date range."""
-        args = _analytics_date_range_parser.parse_args()
-        return AnalyticsService.get_general_metrics(
-            restaurant_id=restaurant_id,
-            start=args.get("start"),
-            end=args.get("end"),
-        ), 200
+        report = str(args.get("report", "")).lower()
+        if report == "orders":
+            return AnalyticsService.get_orders_report(
+                restaurant_id=restaurant_id,
+                start=args.get("start"),
+                end=args.get("end"),
+            ), 200
+        if report == "metrics":
+            return AnalyticsService.get_general_metrics(
+                restaurant_id=restaurant_id,
+                start=args.get("start"),
+                end=args.get("end"),
+            ), 200
+        raise ValidationError(
+            "Invalid analytics report.",
+            {"report": "Must be one of: orders, metrics"},
+        )
 
 
 @namespace.route("/<uuid:restaurant_id>/reservations")
@@ -986,12 +955,48 @@ class RestaurantReservationList(Resource):
     @namespace.expect(reservation_create_model, validate=True)
     @namespace.response(201, "Reservation created successfully.", reservation_response_model)
     @namespace.response(400, "Validation error.")
+    @namespace.response(403, "Forbidden.")
     @namespace.response(404, "Restaurant not found.")
     @namespace.response(409, "No table availability for requested slot.")
     @require_authentication()
     def post(self, restaurant_id: UUID):
-        """Create a reservation as a logged-in customer (source=ONLINE)."""
+        """Create a reservation. ONLINE is customer self-service; PHONE/EVENT is admin-created."""
         data = request.json or {}
+        source = str(data.get("source") or "ONLINE").upper()
+        if source in ("PHONE", "EVENT"):
+            ensure_current_user_is_restaurant_admin(restaurant_id)
+
+            user_id_raw = data.get("userId")
+            user_id = None
+            if user_id_raw is not None:
+                try:
+                    user_id = UUID(str(user_id_raw))
+                except (TypeError, ValueError) as error:
+                    raise ValidationError(
+                        "Invalid userId.",
+                        {"userId": "Must be a valid UUID"},
+                    ) from error
+
+            return ReservationService.create_for_admin(
+                restaurant_id=restaurant_id,
+                admin_user_id=get_current_user_id(),
+                party_size=data.get("partySize"),
+                on_date=ReservationService.parse_required_date(data.get("date")),
+                time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
+                source=ReservationService.parse_required_admin_source(source),
+                guest_name=data.get("guestName"),
+                guest_phone=data.get("guestPhone"),
+                guest_email=data.get("guestEmail"),
+                user_id=user_id,
+                notes=data.get("notes"),
+            ), 201
+
+        if source != "ONLINE":
+            raise ValidationError(
+                "Invalid source.",
+                {"source": "Must be one of: ONLINE, PHONE, EVENT"},
+            )
+
         return ReservationService.create(
             restaurant_id=restaurant_id,
             user_id=get_current_user_id(),
@@ -1000,46 +1005,6 @@ class RestaurantReservationList(Resource):
             time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
             notes=data.get("notes"),
         ), 201
-
-@namespace.route("/<uuid:restaurant_id>/reservations/admin")
-@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
-class RestaurantReservationAdminCreate(Resource):
-    @namespace.expect(reservation_admin_create_model, validate=True)
-    @namespace.response(201, "Reservation created successfully.", reservation_response_model)
-    @namespace.response(400, "Validation error.")
-    @namespace.response(403, "Forbidden.")
-    @namespace.response(404, "Restaurant or user not found.")
-    @namespace.response(409, "No table availability for requested slot.")
-    @require_restaurant_admin("restaurant_id")
-    def post(self, restaurant_id: UUID):
-        """Create a reservation as restaurant admin for PHONE/EVENT source."""
-        data = request.json or {}
-
-        user_id_raw = data.get("userId")
-        user_id = None
-        if user_id_raw is not None:
-            try:
-                user_id = UUID(str(user_id_raw))
-            except (TypeError, ValueError) as error:
-                raise ValidationError(
-                    "Invalid userId.",
-                    {"userId": "Must be a valid UUID"},
-                ) from error
-
-        return ReservationService.create_for_admin(
-            restaurant_id=restaurant_id,
-            admin_user_id=get_current_user_id(),
-            party_size=data.get("partySize"),
-            on_date=ReservationService.parse_required_date(data.get("date")),
-            time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
-            source=ReservationService.parse_required_admin_source(data.get("source")),
-            guest_name=data.get("guestName"),
-            guest_phone=data.get("guestPhone"),
-            guest_email=data.get("guestEmail"),
-            user_id=user_id,
-            notes=data.get("notes"),
-        ), 201
-
 
 @namespace.route("/<uuid:restaurant_id>/reservations/<uuid:reservation_id>")
 @namespace.doc(
@@ -1062,31 +1027,6 @@ class RestaurantReservationDetail(Resource):
         ), 200
 
 
-@namespace.route("/<uuid:restaurant_id>/reservations/<uuid:reservation_id>/cancel")
-@namespace.doc(
-    params={
-        "restaurant_id": "The restaurant's ID (UUID).",
-        "reservation_id": "The reservation's ID (UUID).",
-    }
-)
-class RestaurantReservationCancel(Resource):
-    @namespace.expect(reservation_cancel_model, validate=True)
-    @namespace.response(200, "Reservation cancelled successfully.", reservation_response_model)
-    @namespace.response(403, "Forbidden.")
-    @namespace.response(404, "Reservation not found.")
-    @namespace.response(409, "Reservation cannot be cancelled in current status.")
-    @require_authentication()
-    def post(self, restaurant_id: UUID, reservation_id: UUID):
-        """Cancel a reservation and release assigned tables."""
-        data = request.json or {}
-        return ReservationService.cancel(
-            reservation_id=reservation_id,
-            requesting_user_id=get_current_user_id(),
-            reason=data.get("reason"),
-            restaurant_id=restaurant_id,
-        ), 200
-
-
 # ── Tables ───────────────────────────────────────────────────────────────────
 
 
@@ -1100,38 +1040,36 @@ class RestaurantTableList(Resource):
         """List all tables for a restaurant."""
         return TableService.get_all(restaurant_id), 200
 
-    @namespace.expect(table_create_model, validate=True)
-    @namespace.response(201, "Table created successfully.", table_response_model)
+    @namespace.expect(table_collection_create_model, validate=True)
+    @namespace.response(201, "Table or tables created successfully.")
     @namespace.response(400, "Validation error.")
     @namespace.response(404, "Restaurant not found.")
     @namespace.response(409, "Table number already exists for this restaurant.")
     @require_restaurant_admin("restaurant_id")
     def post(self, restaurant_id: UUID):
-        """Create a single table for a restaurant."""
+        """Create a single table, or bulk-create tables when groups is present."""
         data = request.json or {}
+        if "groups" in data:
+            return TableService.create_bulk(
+                restaurant_id=restaurant_id,
+                groups=data.get("groups"),
+            ), 201
+
+        if data.get("number") is None or data.get("capacity") is None:
+            raise ValidationError(
+                "number and capacity are required for single-table creation.",
+                {
+                    "number": "Required when groups is omitted",
+                    "capacity": "Required when groups is omitted",
+                },
+            )
+
         return TableService.create(
             restaurant_id=restaurant_id,
             number=data.get("number"),
             capacity=data.get("capacity"),
             name=data.get("name"),
             is_joinable=data.get("isJoinable", True),
-        ), 201
-
-
-@namespace.route("/<uuid:restaurant_id>/tables/bulk")
-@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
-class RestaurantTableBulk(Resource):
-    @namespace.expect(table_bulk_create_model, validate=True)
-    @namespace.response(201, "Tables created successfully.", paginated_table_response_model)
-    @namespace.response(400, "Validation error.")
-    @namespace.response(404, "Restaurant not found.")
-    @require_restaurant_admin("restaurant_id")
-    def post(self, restaurant_id: UUID):
-        """Bulk-create tables from groups of {quantity, capacity, isJoinable}."""
-        data = request.json or {}
-        return TableService.create_bulk(
-            restaurant_id=restaurant_id,
-            groups=data.get("groups", []),
         ), 201
 
 

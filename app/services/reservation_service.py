@@ -409,6 +409,50 @@ class ReservationService:
         return ReservationService._to_payload(reservation)
 
     @staticmethod
+    def transition_status(
+        reservation_id: UUID,
+        requesting_user_id: UUID,
+        status: str,
+        reason: str | None = None,
+    ) -> dict:
+        try:
+            target_status = ReservationStatus(str(status).upper())
+        except (TypeError, ValueError) as error:
+            raise ValidationError(
+                "Invalid reservation status.",
+                {"status": "Must be one of: CANCELLED, COMPLETED, NO_SHOW"},
+            ) from error
+
+        if target_status == ReservationStatus.CANCELLED:
+            return ReservationService.cancel(
+                reservation_id=reservation_id,
+                requesting_user_id=requesting_user_id,
+                reason=reason,
+            )
+
+        if target_status not in (
+            ReservationStatus.COMPLETED,
+            ReservationStatus.NO_SHOW,
+        ):
+            raise ValidationError(
+                "Unsupported reservation status transition.",
+                {"status": "Must be one of: CANCELLED, COMPLETED, NO_SHOW"},
+            )
+
+        reservation = ReservationRepository.get_by_id(reservation_id)
+        if not reservation:
+            raise NotFoundError(f"Reservation with id={reservation_id} not found.")
+        if not ReservationService._is_restaurant_admin_or_super_admin(
+            requesting_user_id,
+            reservation.restaurant_id,
+        ):
+            raise ForbiddenError("Only restaurant admins can update reservation status.")
+
+        if target_status == ReservationStatus.COMPLETED:
+            return ReservationService.complete(reservation_id)
+        return ReservationService.mark_no_show(reservation_id)
+
+    @staticmethod
     def reassign_tables(
         reservation_id: UUID, table_ids: list[UUID], requesting_user_id: UUID
     ) -> dict:

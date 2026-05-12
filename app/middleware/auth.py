@@ -6,6 +6,7 @@ from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from flask_jwt_extended.exceptions import JWTExtendedException
 from jwt.exceptions import PyJWTError
 
+from app.exceptions.errors import ForbiddenError, UnauthorizedError
 from app.models.enums import UserRole
 from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.user_repository import UserRepository
@@ -177,6 +178,55 @@ def require_restaurant_admin(restaurant_id_param: str):
         return wrapper
 
     return decorator
+
+
+def ensure_current_user_is_restaurant_admin(restaurant_id: UUID) -> None:
+    """Raises when the current JWT user is not an admin for the restaurant."""
+    try:
+        verify_jwt_in_request()
+    except (JWTExtendedException, PyJWTError) as e:
+        logger.warning(f"Access token validation failed: {e}")
+        raise UnauthorizedError(
+            "Missing or invalid authentication token.",
+            {"authorization": "Bearer access token required"},
+        ) from e
+
+    user_id = get_current_user_id()
+    user = UserRepository.get_by_id(user_id)
+    if not user:
+        logger.warning(f"Authenticated user does not exist: user_id={user_id}")
+        raise UnauthorizedError(
+            "Missing or invalid authentication token.",
+            {"authorization": "Authenticated user does not exist"},
+        )
+
+    if user.role == UserRole.SUPER_ADMIN:
+        return
+
+    if user.role != UserRole.RESTAURANT_ADMIN:
+        logger.warning(
+            "Restaurant admin check failed for user_id=%s role=%s",
+            user_id,
+            user.role.value,
+        )
+        raise ForbiddenError(
+            "You do not have permission to access this resource.",
+            {"authorization": "Restaurant admin role required"},
+        )
+
+    if not RestaurantAdminRepository.is_admin(
+        user_id=user_id,
+        restaurant_id=restaurant_id,
+    ):
+        logger.warning(
+            "Restaurant ownership check failed for user_id=%s restaurant_id=%s",
+            user_id,
+            restaurant_id,
+        )
+        raise ForbiddenError(
+            "You do not have permission to access this resource.",
+            {"authorization": "Restaurant admin assignment required"},
+        )
 
 
 def require_path_user_matches_jwt(user_id_param: str = "user_id"):

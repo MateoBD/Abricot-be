@@ -157,24 +157,23 @@ python -m pytest
 
 ## API Endpoints
 
-### Auth — `/auth`
+The API uses canonical REST resources. The complete frontend-oriented endpoint
+guide lives in [`docs/rest-api-endpoints.md`](docs/rest-api-endpoints.md).
 
-| Method | Endpoint          | Description              | Auth required |
-|--------|-------------------|--------------------------|---------------|
-| POST   | `/auth/register`  | Register a new user      | No            |
-| POST   | `/auth/login`     | Login and get JWT token  | No            |
+High-level entry points:
 
-### Restaurants — `/restaurants`
+| Method | Endpoint | Description | Auth required |
+|--------|----------|-------------|---------------|
+| POST | `/users` | Register a new user | No |
+| POST | `/sessions` | Login and get JWT tokens | No |
+| POST | `/access-tokens` | Refresh an access token | Refresh token |
+| GET | `/lookups` | Read location/metadata lookups | Yes |
+| GET/POST | `/restaurants/` | Search or create restaurants | Create requires admin |
+| GET/PUT/DELETE | `/restaurants/<id>` | Restaurant detail lifecycle | Write/delete require admin |
+| GET/PATCH | `/reservations/<id>` | Reservation detail and status lifecycle | Yes |
 
-| Method | Endpoint                  | Description             | Auth required |
-|--------|---------------------------|-------------------------|---------------|
-| GET    | `/restaurants/`           | List all restaurants    | Yes           |
-| POST   | `/restaurants/`           | Create a restaurant     | Yes           |
-| GET    | `/restaurants/<id>`       | Get restaurant by ID    | Yes           |
-| PUT    | `/restaurants/<id>`       | Update restaurant       | Yes           |
-| DELETE | `/restaurants/<id>`       | Delete restaurant       | Yes           |
-
-Protected endpoints require `Authorization: Bearer <token>` in the request header.
+Protected endpoints require `Authorization: Bearer <accessToken>` in the request
+header, except `POST /access-tokens`, which requires the refresh token.
 
 ---
 

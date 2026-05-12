@@ -6,3 +6,6 @@ extend-select = ["S"]
 ignore = [
     "S101",  # Allow use of assert statements
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

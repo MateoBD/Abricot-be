@@ -114,7 +114,7 @@ auth_response_model = Model(
         "refreshToken": fields.String(
             description=(
                 "Token de refresco de larga duración (30 días). "
-                "Enviarlo como: Authorization: Bearer <refreshToken> a POST /auth/refresh "
+                "Enviarlo como: Authorization: Bearer <refreshToken> a POST /access-tokens "
                 "para obtener un nuevo accessToken sin volver a autenticarse."
             ),
             example="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",

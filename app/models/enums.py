@@ -25,7 +25,6 @@ class ReservationStatus(str, Enum):
 class OrderStatus(str, Enum):
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
-    IN_PREPARATION = "IN_PREPARATION"
     READY = "READY"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"

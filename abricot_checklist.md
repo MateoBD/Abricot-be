@@ -130,7 +130,7 @@ Los ítems marcados con ✅ ya existen y están correctos. Los marcados con 🔧
 - [x] `UserRole` — CUSTOMER, RESTAURANT_ADMIN, SUPER_ADMIN (`app/models/enums.py`)
 - [x] `ReservationSource` — ONLINE, PHONE, EVENT
 - [x] `ReservationStatus` — CONFIRMED, CANCELLED, COMPLETED, NO_SHOW
-- [x] `OrderStatus` — PENDING, CONFIRMED, IN_PREPARATION, READY, COMPLETED, CANCELLED
+- [x] `OrderStatus` — PENDING, CONFIRMED, READY, COMPLETED, CANCELLED
 - [x] `DiscountType` — PERCENTAGE, FIXED_AMOUNT, FREE_ITEM
 
 ---

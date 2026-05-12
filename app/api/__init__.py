@@ -1,5 +1,3 @@
-import logging
-
 from flask import Blueprint, Flask
 from flask_restx import Api
 from flask_restx.resource import Resource
@@ -7,14 +5,23 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException
 
 from app.exceptions.errors import AppError
-
-logger = logging.getLogger(__name__)
-
+from app.error_handlers import (
+    app_error_payload,
+    http_exception_payload,
+    integrity_error_payload,
+    log_handled_error,
+    unexpected_error_payload,
+    value_error_payload,
+)
 
 def register_blueprints(app: Flask) -> None:
-    from app.api.auth.routes import namespace as auth_namespace
+    from app.api.auth.routes import (
+        access_tokens_namespace,
+        namespace as sessions_namespace,
+    )
     from app.api.reservations.routes import namespace as reservations_namespace
     from app.api.restaurants.routes import namespace as restaurant_namespace
+    from app.api.system.lookup_routes import namespace as lookup_namespace
     from app.api.system.routes import namespace as system_namespace
     from app.api.users.routes import namespace as users_namespace
 
@@ -37,8 +44,10 @@ def register_blueprints(app: Flask) -> None:
     )
 
     _register_api_error_handlers(api)
-    api.add_namespace(auth_namespace)
+    api.add_namespace(sessions_namespace)
+    api.add_namespace(access_tokens_namespace)
     api.add_namespace(system_namespace)
+    api.add_namespace(lookup_namespace)
     api.add_namespace(users_namespace)
     api.add_namespace(restaurant_namespace)
     api.add_namespace(reservations_namespace)
@@ -64,39 +73,31 @@ def register_blueprints(app: Flask) -> None:
 
 def _register_api_error_handlers(api: Api) -> None:
     @api.errorhandler(AppError)
-    def handle_app_error(e: AppError):
-        return {
-            "message": e.message,
-            "code": e.code,
-            "errors": e.payload,
-        }, e.status_code
+    def handle_app_error(error: AppError):
+        payload, status_code = app_error_payload(error)
+        log_handled_error(error, payload, status_code)
+        return payload, status_code
 
     @api.errorhandler(IntegrityError)
-    def handle_integrity_error(e: IntegrityError):
-        logger.warning(f"IntegrityError: {e}")
-        return {
-            "message": "Resource already exists.",
-            "code": "CONFLICT",
-            "errors": {},
-        }, 409
+    def handle_integrity_error(error: IntegrityError):
+        payload, status_code = integrity_error_payload(error)
+        log_handled_error(error, payload, status_code)
+        return payload, status_code
 
     @api.errorhandler(HTTPException)
-    def handle_http_exception(e: HTTPException):
-        return {
-            "message": e.description,
-            "code": type(e).__name__,
-            "errors": {},
-        }, e.code
+    def handle_http_exception(error: HTTPException):
+        payload, status_code = http_exception_payload(error)
+        log_handled_error(error, payload, status_code)
+        return payload, status_code
 
     @api.errorhandler(ValueError)
-    def handle_value_error(e: ValueError):
-        return {"message": str(e), "code": "VALUE_ERROR", "errors": {}}, 400
+    def handle_value_error(error: ValueError):
+        payload, status_code = value_error_payload(error)
+        log_handled_error(error, payload, status_code)
+        return payload, status_code
 
     @api.errorhandler(Exception)
-    def handle_unexpected(e: Exception):
-        logger.exception("Unexpected error in API layer")
-        return {
-            "message": "Internal server error.",
-            "code": "INTERNAL_ERROR",
-            "errors": {},
-        }, 500
+    def handle_unexpected(error: Exception):
+        payload, status_code = unexpected_error_payload(error)
+        log_handled_error(error, payload, status_code)
+        return payload, status_code

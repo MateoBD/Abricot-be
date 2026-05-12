@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 _VALID_TRANSITIONS: dict[OrderStatus, set[OrderStatus]] = {
     OrderStatus.PENDING: {OrderStatus.CONFIRMED},
     OrderStatus.CONFIRMED: {OrderStatus.READY},
-    OrderStatus.IN_PREPARATION: {OrderStatus.READY},
     OrderStatus.READY: {OrderStatus.COMPLETED},
     OrderStatus.COMPLETED: set(),
     OrderStatus.CANCELLED: set(),
