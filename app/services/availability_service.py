@@ -18,8 +18,12 @@ _SLOT_STEP_MINUTES = 30
 
 def _slots_for_range(opens_at: time, closes_at: time, slot_duration: int) -> list[time]:
     slots: list[time] = []
-    current = datetime.combine(date.today(), opens_at)
-    end = datetime.combine(date.today(), closes_at) - timedelta(minutes=slot_duration)
+    base_date = date.today()
+    current = datetime.combine(base_date, opens_at)
+    closes_at_datetime = datetime.combine(base_date, closes_at)
+    if closes_at <= opens_at:
+        closes_at_datetime += timedelta(days=1)
+    end = closes_at_datetime - timedelta(minutes=slot_duration)
     step = timedelta(minutes=_SLOT_STEP_MINUTES)
     while current <= end:
         slots.append(current.time())

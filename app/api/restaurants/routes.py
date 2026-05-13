@@ -1006,6 +1006,30 @@ class RestaurantReservationList(Resource):
             notes=data.get("notes"),
         ), 201
 
+
+@namespace.route("/<uuid:restaurant_id>/public-reservations")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantPublicReservationList(Resource):
+    @namespace.expect(reservation_create_model, validate=True)
+    @namespace.response(201, "Reservation created successfully.", reservation_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    @namespace.response(409, "No table availability for requested slot.")
+    def post(self, restaurant_id: UUID):
+        """Create an ONLINE guest reservation from the public embeddable widget."""
+        data = request.json or {}
+        return ReservationService.create_guest_online(
+            restaurant_id=restaurant_id,
+            party_size=data.get("partySize"),
+            on_date=ReservationService.parse_required_date(data.get("date")),
+            time_slot=ReservationService.parse_required_time(data.get("timeSlot")),
+            guest_name=data.get("guestName"),
+            guest_phone=data.get("guestPhone"),
+            guest_email=data.get("guestEmail"),
+            notes=data.get("notes"),
+        ), 201
+
+
 @namespace.route("/<uuid:restaurant_id>/reservations/<uuid:reservation_id>")
 @namespace.doc(
     params={
@@ -1161,6 +1185,27 @@ class RestaurantAvailability(Resource):
     @require_authentication()
     def get(self, restaurant_id: UUID):
         """Get available time slots for a given date and party size."""
+        args = _availability_parser.parse_args()
+        raw_date = args.get("date")
+        party_size = args.get("partySize")
+        on_date = ReservationService.parse_required_date(raw_date)
+        slots = AvailabilityService.get_available_slots(restaurant_id, on_date, party_size)
+        return {
+            "date": on_date.isoformat(),
+            "partySize": party_size,
+            "slots": slots,
+        }, 200
+
+
+@namespace.route("/<uuid:restaurant_id>/public-availability")
+@namespace.doc(params={"restaurant_id": "The restaurant's ID (UUID)."})
+class RestaurantPublicAvailability(Resource):
+    @namespace.expect(_availability_parser)
+    @namespace.response(200, "Availability retrieved successfully.", availability_response_model)
+    @namespace.response(400, "Validation error.")
+    @namespace.response(404, "Restaurant not found.")
+    def get(self, restaurant_id: UUID):
+        """Get public available time slots for the embeddable reservation widget."""
         args = _availability_parser.parse_args()
         raw_date = args.get("date")
         party_size = args.get("partySize")
