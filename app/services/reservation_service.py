@@ -36,6 +36,12 @@ def _generate_unique_confirmation_code() -> str:
     )
 
 
+def _time_in_business_range(time_slot: time, opens_at: time, closes_at: time) -> bool:
+    if opens_at < closes_at:
+        return opens_at <= time_slot < closes_at
+    return time_slot >= opens_at or time_slot < closes_at
+
+
 class ReservationService:
     @staticmethod
     def _is_restaurant_admin_or_super_admin(user_id: UUID, restaurant_id: UUID) -> bool:
@@ -225,7 +231,7 @@ class ReservationService:
                 {"date": "No operating hours"},
             )
         opens_at, closes_at = time_range
-        if not (opens_at <= time_slot < closes_at):
+        if not _time_in_business_range(time_slot, opens_at, closes_at):
             raise ValidationError(
                 f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
                 {"timeSlot": "Outside operating hours"},
@@ -268,6 +274,115 @@ class ReservationService:
             ReservationRepository.rollback()
             raise
         logger.info("Reservation created: id=%s code=%s", reservation.id, code)
+        try:
+            from app.services.notification_service import NotificationService
+
+            NotificationService.send_reservation_confirmation(reservation.id)
+        except Exception:
+            logger.exception(
+                "reservation_confirmation_enqueue_failed",
+                extra={"reservation_id": str(reservation.id)},
+            )
+        return ReservationService._to_payload(reservation)
+
+    @staticmethod
+    def create_guest_online(
+        restaurant_id: UUID,
+        party_size: int,
+        on_date: date,
+        time_slot: time,
+        guest_name: str,
+        guest_email: str,
+        guest_phone: str | None = None,
+        notes: str | None = None,
+    ) -> dict:
+        from app.services.availability_service import AvailabilityService
+        from app.services.business_hours_service import BusinessHoursService
+
+        if not RestaurantRepository.get_by_id(restaurant_id):
+            raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
+
+        normalized_guest_name = (guest_name or "").strip()
+        normalized_guest_email = (guest_email or "").strip()
+        normalized_guest_phone = (guest_phone or "").strip() or None
+        if not normalized_guest_name:
+            raise ValidationError("guestName is required.", {"guestName": "Required"})
+        if not normalized_guest_email:
+            raise ValidationError("guestEmail is required.", {"guestEmail": "Required"})
+        if not isinstance(party_size, int):
+            raise ValidationError("partySize must be an integer.", {"partySize": "Invalid type"})
+        if party_size < 1:
+            raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
+
+        if not BusinessHoursService.is_open_on(restaurant_id, on_date):
+            raise ValidationError(
+                f"Restaurant is closed on {on_date.isoformat()}.",
+                {"date": "Restaurant is closed"},
+            )
+
+        time_range = BusinessHoursService.get_time_range(restaurant_id, on_date)
+        if time_range is None:
+            raise ValidationError(
+                f"No operating hours defined for {on_date.isoformat()}.",
+                {"date": "No operating hours"},
+            )
+        opens_at, closes_at = time_range
+        if not _time_in_business_range(time_slot, opens_at, closes_at):
+            raise ValidationError(
+                f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
+                {"timeSlot": "Outside operating hours"},
+            )
+
+        assignment = AvailabilityService.find_table_assignment(
+            restaurant_id,
+            on_date,
+            time_slot,
+            party_size,
+            lock_rows=True,
+        )
+        if assignment is None:
+            raise ConflictError(
+                "No tables available for the requested date, time, and party size.",
+                {"timeSlot": "Not available"},
+            )
+
+        code = _generate_unique_confirmation_code()
+        reservation = ReservationModel(
+            restaurant_id=restaurant_id,
+            user_id=None,
+            guest_name=normalized_guest_name,
+            guest_phone=normalized_guest_phone,
+            guest_email=normalized_guest_email,
+            party_size=party_size,
+            date=on_date,
+            time_slot=time_slot,
+            source=ReservationSource.ONLINE,
+            status=ReservationStatus.CONFIRMED,
+            notes=notes,
+            confirmation_code=code,
+        )
+        try:
+            ReservationRepository.create(reservation, auto_commit=False)
+            ReservationTableRepository.create_bulk(
+                reservation.id,
+                [t.id for t in assignment],
+                auto_commit=False,
+            )
+            ReservationRepository.commit()
+        except Exception:
+            ReservationRepository.rollback()
+            raise
+
+        logger.info("Guest reservation created: id=%s code=%s", reservation.id, code)
+        try:
+            from app.services.notification_service import NotificationService
+
+            NotificationService.send_reservation_confirmation(reservation.id)
+        except Exception:
+            logger.exception(
+                "reservation_confirmation_enqueue_failed",
+                extra={"reservation_id": str(reservation.id)},
+            )
         return ReservationService._to_payload(reservation)
 
     @staticmethod
@@ -331,7 +446,7 @@ class ReservationService:
                 {"date": "No operating hours"},
             )
         opens_at, closes_at = time_range
-        if not (opens_at <= time_slot < closes_at):
+        if not _time_in_business_range(time_slot, opens_at, closes_at):
             raise ValidationError(
                 f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
                 {"timeSlot": "Outside operating hours"},
