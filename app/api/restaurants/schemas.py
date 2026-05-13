@@ -1393,6 +1393,22 @@ table_collection_create_model = Model(
     },
 )
 
+business_hours_range_model = Model(
+    "BusinessHoursRange",
+    {
+        "opensAt": fields.String(
+            required=True,
+            description="Hora de apertura del tramo (HH:MM).",
+            example="11:00",
+        ),
+        "closesAt": fields.String(
+            required=True,
+            description="Hora de cierre del tramo (HH:MM). Debe ser posterior a opensAt.",
+            example="15:00",
+        ),
+    },
+)
+
 business_hours_item_model = Model(
     "BusinessHoursItem",
     {
@@ -1405,22 +1421,16 @@ business_hours_item_model = Model(
         ),
         "isClosed": fields.Boolean(
             required=True,
-            description="Si el restaurante está cerrado ese día.",
+            description="Si el restaurante está cerrado ese día. "
+            "Cuando es true se ignoran los ranges y se eliminan los existentes.",
             example=False,
         ),
-        "opensAt": fields.String(
+        "ranges": fields.List(
+            fields.Nested(business_hours_range_model),
             required=False,
-            allow_null=True,
-            missing=None,
-            description="Hora de apertura (HH:MM). Omitir si isClosed=true.",
-            example="12:00",
-        ),
-        "closesAt": fields.String(
-            required=False,
-            allow_null=True,
-            missing=None,
-            description="Hora de cierre (HH:MM). Omitir si isClosed=true.",
-            example="23:00",
+            description="Tramos de apertura del día. Requerido (mínimo 1) cuando isClosed=false. "
+            "Los tramos no pueden superponerse y deben tener closesAt > opensAt.",
+            example=[{"opensAt": "11:00", "closesAt": "15:00"}, {"opensAt": "19:00", "closesAt": "23:30"}],
         ),
     },
 )
@@ -1431,7 +1441,7 @@ business_hours_bulk_update_model = Model(
         "hours": fields.List(
             fields.Nested(business_hours_item_model),
             required=True,
-            description="Lista de horarios a actualizar (puede incluir todos los días).",
+            description="Lista de días a actualizar. Puede ser parcial (solo los días que cambian).",
         )
     },
 )
@@ -1439,24 +1449,13 @@ business_hours_bulk_update_model = Model(
 business_hours_response_model = Model(
     "BusinessHoursResponse",
     {
-        "id": fields.String(
-            description="ID del registro (UUID).",
-            example="018f1234-5678-7abc-8def-123456789abc",
-            pattern=_UUID_STRING_PATTERN,
-        ),
-        "restaurantId": fields.String(
-            description="ID del restaurante (UUID).",
-            example="018f1234-5678-7abc-8def-123456789abd",
-            pattern=_UUID_STRING_PATTERN,
-        ),
         "dayOfWeek": fields.Integer(description="0=Lunes, 6=Domingo.", example=0),
-        "opensAt": fields.String(
-            description="Hora de apertura (HH:MM:SS).", allow_null=True, example="12:00:00"
+        "dayName": fields.String(description="Nombre del día en español.", example="Lunes"),
+        "isClosed": fields.Boolean(description="True si no hay tramos configurados.", example=False),
+        "ranges": fields.List(
+            fields.Nested(business_hours_range_model),
+            description="Tramos de apertura del día, ordenados por hora de inicio.",
         ),
-        "closesAt": fields.String(
-            description="Hora de cierre (HH:MM:SS).", allow_null=True, example="23:00:00"
-        ),
-        "isClosed": fields.Boolean(description="Cerrado ese día.", example=False),
     },
 )
 
@@ -1465,7 +1464,7 @@ paginated_business_hours_response_model = Model(
     {
         "data": fields.List(
             fields.Nested(business_hours_response_model),
-            description="Horarios del restaurante.",
+            description="Horarios del restaurante (7 entradas, una por día).",
         ),
         "total": fields.Integer(example=7),
         "page": fields.Integer(example=1),

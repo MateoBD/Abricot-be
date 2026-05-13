@@ -110,14 +110,16 @@ class AvailabilityService:
         if party_size < 1:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
-        time_range = BusinessHoursService.get_time_range(restaurant_id, on_date)
-        if time_range is None:
+        time_ranges = BusinessHoursService.get_time_ranges(restaurant_id, on_date)
+        if not time_ranges:
             return []
 
-        opens_at, closes_at = time_range
         slot_duration = restaurant.default_slot_duration_minutes
 
-        slots = _slots_for_range(opens_at, closes_at, slot_duration)
+        # Collect slots from every opening window; preserve ordering across ranges.
+        slots: list[time] = []
+        for opens_at, closes_at in time_ranges:
+            slots.extend(_slots_for_range(opens_at, closes_at, slot_duration))
         result: list[dict] = []
 
         for slot in slots:

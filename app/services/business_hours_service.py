@@ -9,7 +9,15 @@ from app.utils.list_envelope import list_envelope
 
 logger = logging.getLogger(__name__)
 
-_DAY_NAMES = {0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"}
+_DAY_NAMES = {
+    0: "Lunes",
+    1: "Martes",
+    2: "Miércoles",
+    3: "Jueves",
+    4: "Viernes",
+    5: "Sábado",
+    6: "Domingo",
+}
 
 
 def _parse_time(value: str | None, field: str) -> time | None:
@@ -23,125 +31,139 @@ def _parse_time(value: str | None, field: str) -> time | None:
         ) from err
 
 
+def _validate_ranges(day: int, ranges: list[dict]) -> list[dict]:
+    """Parse, validate, and sort a list of range dicts.
+
+    Each input dict must have `opensAt` and `closesAt` string keys.
+    Returns a list of dicts with `opens_at` / `closes_at` time objects,
+    sorted by opens_at and verified to be non-overlapping.
+    """
+    parsed: list[dict] = []
+    for r in ranges:
+        opens_at = _parse_time(r.get("opensAt"), "opensAt")
+        closes_at = _parse_time(r.get("closesAt"), "closesAt")
+
+        if opens_at is None or closes_at is None:
+            raise ValidationError(
+                f"Day {day}: opensAt and closesAt are required in every range.",
+                {"ranges": "opensAt and closesAt required"},
+            )
+        if opens_at == closes_at:
+            raise ValidationError(
+                f"Day {day}: opensAt and closesAt cannot be the same.",
+                {"ranges": "opensAt must differ from closesAt"},
+            )
+        if closes_at < opens_at:
+            raise ValidationError(
+                f"Day {day}: closes_at must be after opens_at "
+                "(midnight-crossing is not supported for multi-range days).",
+                {"ranges": "closesAt must be after opensAt"},
+            )
+        parsed.append({"opens_at": opens_at, "closes_at": closes_at})
+
+    # Sort by opening time for deterministic ordering and overlap detection.
+    parsed.sort(key=lambda r: r["opens_at"])
+
+    # Detect overlapping ranges: range[i].closes_at must be <= range[i+1].opens_at.
+    for i in range(len(parsed) - 1):
+        a, b = parsed[i], parsed[i + 1]
+        if a["closes_at"] > b["opens_at"]:
+            raise ValidationError(
+                f"Day {day}: ranges overlap — "
+                f"{a['opens_at'].isoformat()}–{a['closes_at'].isoformat()} "
+                f"overlaps with {b['opens_at'].isoformat()}–{b['closes_at'].isoformat()}.",
+                {"ranges": "Overlapping ranges"},
+            )
+
+    return parsed
+
+
+def _group_to_days(
+    rows: list,
+) -> list[dict]:
+    """Group flat range rows into a 7-entry list keyed by day_of_week."""
+    by_day: dict[int, list] = {d: [] for d in range(7)}
+    for row in rows:
+        by_day[row.day_of_week].append(row)
+
+    result = []
+    for day in range(7):
+        day_ranges = by_day[day]
+        result.append(
+            {
+                "dayOfWeek": day,
+                "dayName": _DAY_NAMES[day],
+                "isClosed": len(day_ranges) == 0,
+                "ranges": [
+                    {
+                        "opensAt": r.opens_at.isoformat(),
+                        "closesAt": r.closes_at.isoformat(),
+                    }
+                    for r in day_ranges
+                ],
+            }
+        )
+    return result
+
+
 class BusinessHoursService:
     @staticmethod
     def get_all(restaurant_id: UUID) -> dict:
         if not RestaurantRepository.get_by_id(restaurant_id):
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
-        
-        # Ensure all 7 days exist
-        BusinessHoursService._ensure_all_days_exist(restaurant_id)
-        
-        # Refresh session to see latest changes
-        from app.extensions import db
-        db.session.expunge_all()
-        
-        hours = BusinessHoursRepository.get_all(restaurant_id)
-        logger.info(f"Loaded {len(hours)} business hours for restaurant {restaurant_id}")
-        return list_envelope([h.to_dict() for h in hours])
-
-    @staticmethod
-    def _ensure_all_days_exist(restaurant_id: UUID) -> None:
-        """Ensure all 7 days (0-6) exist for the restaurant."""
-        from app.extensions import db
-        
-        existing_hours = BusinessHoursRepository.get_all(restaurant_id)
-        existing_days = {h.day_of_week for h in existing_hours}
-        logger.info(f"Existing days for restaurant {restaurant_id}: {sorted(existing_days)}")
-        
-        # Create missing days (default: closed)
-        missing_days = [d for d in range(7) if d not in existing_days]
-        if missing_days:
-            logger.info(f"Creating missing days for restaurant {restaurant_id}: {missing_days}")
-            data = [
-                {
-                    "day_of_week": day,
-                    "opens_at": None,
-                    "closes_at": None,
-                    "is_closed": True,
-                }
-                for day in missing_days
-            ]
-            BusinessHoursRepository.upsert_bulk(restaurant_id, data)
-            db.session.expunge_all()
-            logger.info(f"Successfully created missing days for restaurant {restaurant_id}")
-        else:
-            logger.info(f"All 7 days already exist for restaurant {restaurant_id}")
+        rows = BusinessHoursRepository.get_all(restaurant_id)
+        return list_envelope(_group_to_days(rows))
 
     @staticmethod
     def bulk_update(restaurant_id: UUID, hours_data: list[dict]) -> dict:
         if not RestaurantRepository.get_by_id(restaurant_id):
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
 
-        parsed: list[dict] = []
+        from app.extensions import db
+
         for row in hours_data:
             day = row.get("dayOfWeek")
             if day is None or not isinstance(day, int) or day < 0 or day > 6:
                 raise ValidationError(
-                    "dayOfWeek must be an integer between 0 (Monday) and 6 (Sunday).",
+                    "dayOfWeek must be an integer between 0 (Lunes) and 6 (Domingo).",
                     {"dayOfWeek": "Must be 0–6"},
                 )
-            is_closed = bool(row.get("isClosed", False))
-            
-            # If closed, ignore opensAt/closesAt (treat as None)
-            if is_closed:
-                opens_at = None
-                closes_at = None
-            else:
-                # If open, get the time values (may be None, which will trigger validation error below)
-                opens_at = _parse_time(row.get("opensAt"), "opensAt")
-                closes_at = _parse_time(row.get("closesAt"), "closesAt")
-                
-                # Validate that times are provided when open
-                if opens_at is None or closes_at is None:
-                    raise ValidationError(
-                        f"opensAt and closesAt are required when isClosed is false (day={day}).",
-                        {"opensAt": "Required", "closesAt": "Required"},
-                    )
-                
-                # Validate that opening time is before closing time
-                # Allow crossing midnight (e.g., 21:00 - 03:00)
-                if opens_at == closes_at:
-                    raise ValidationError(
-                        f"opensAt and closesAt cannot be the same (day={day}).",
-                        {"opensAt": "Must differ from closesAt"},
-                    )
-                
-                # If closing time is earlier than opening, assume it crosses midnight (valid)
-                # Otherwise, validate that opening is before closing
-                if closes_at < opens_at:
-                    logger.debug(f"Day {day}: crossing midnight ({opens_at} - {closes_at})")
-                else:
-                    # Normal case: opening before closing on same day
-                    pass
-            
-            parsed.append(
-                {
-                    "day_of_week": day,
-                    "opens_at": opens_at,
-                    "closes_at": closes_at,
-                    "is_closed": is_closed,
-                }
-            )
 
-        updated = BusinessHoursRepository.upsert_bulk(restaurant_id, parsed)
-        logger.info("Business hours updated: restaurant_id=%s", restaurant_id)
-        return list_envelope([h.to_dict() for h in updated])
+            is_closed = bool(row.get("isClosed", False))
+
+            if is_closed:
+                BusinessHoursRepository.replace_day(restaurant_id, day, [])
+            else:
+                raw_ranges = row.get("ranges") or []
+                if not raw_ranges:
+                    raise ValidationError(
+                        f"Day {day}: at least one range is required when isClosed is false.",
+                        {"ranges": "Required when open"},
+                    )
+                validated = _validate_ranges(day, raw_ranges)
+                BusinessHoursRepository.replace_day(restaurant_id, day, validated)
+
+        db.session.commit()
+        rows = BusinessHoursRepository.get_all(restaurant_id)
+        logger.info("Business hours updated for restaurant_id=%s", restaurant_id)
+        return list_envelope(_group_to_days(rows))
+
+    # ── Availability helpers ──────────────────────────────────────────────────
 
     @staticmethod
     def is_open_on(restaurant_id: UUID, on_date: date) -> bool:
         day_of_week = on_date.weekday()
-        hours = BusinessHoursRepository.get_for_date(restaurant_id, day_of_week)
-        if hours is None:
-            return False
-        return not hours.is_closed
+        rows = BusinessHoursRepository.get_for_date(restaurant_id, day_of_week)
+        return len(rows) > 0
 
     @staticmethod
-    def get_time_range(
+    def get_time_ranges(
         restaurant_id: UUID, on_date: date
-    ) -> tuple[time, time] | None:
+    ) -> list[tuple[time, time]]:
+        """Return all (opens_at, closes_at) pairs for a given date, in order.
+
+        Returns an empty list if the restaurant is closed on that day.
+        """
         day_of_week = on_date.weekday()
-        hours = BusinessHoursRepository.get_for_date(restaurant_id, day_of_week)
-        if hours is None or hours.is_closed or hours.opens_at is None or hours.closes_at is None:
-            return None
-        return hours.opens_at, hours.closes_at
+        rows = BusinessHoursRepository.get_for_date(restaurant_id, day_of_week)
+        return [(r.opens_at, r.closes_at) for r in rows]
