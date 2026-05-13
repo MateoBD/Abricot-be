@@ -42,3 +42,5 @@ sam-recipients-events/
 /.cursor/
 
 /.localmcp/
+
+swagger.json
