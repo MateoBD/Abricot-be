@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 
 from app.extensions import db
 from app.models.business_hours import BusinessHoursModel
@@ -29,8 +29,10 @@ class BusinessHoursRepository:
             day = row["day_of_week"]
             existing = db.session.execute(
                 select(BusinessHoursModel).where(
-                    BusinessHoursModel.restaurant_id == restaurant_id,
-                    BusinessHoursModel.day_of_week == day,
+                    and_(
+                        BusinessHoursModel.restaurant_id == restaurant_id,
+                        BusinessHoursModel.day_of_week == day,
+                    )
                 )
             ).scalar_one_or_none()
             if existing:
@@ -58,7 +60,9 @@ class BusinessHoursRepository:
     def get_for_date(restaurant_id: UUID, day_of_week: int) -> BusinessHoursModel | None:
         return db.session.execute(
             select(BusinessHoursModel).where(
-                BusinessHoursModel.restaurant_id == restaurant_id,
-                BusinessHoursModel.day_of_week == day_of_week,
+                and_(
+                    BusinessHoursModel.restaurant_id == restaurant_id,
+                    BusinessHoursModel.day_of_week == day_of_week,
+                )
             )
         ).scalar_one_or_none()

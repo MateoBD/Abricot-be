@@ -1411,13 +1411,15 @@ business_hours_item_model = Model(
         "opensAt": fields.String(
             required=False,
             allow_null=True,
-            description="Hora de apertura (HH:MM). Requerido si isClosed=false.",
+            missing=None,
+            description="Hora de apertura (HH:MM). Omitir si isClosed=true.",
             example="12:00",
         ),
         "closesAt": fields.String(
             required=False,
             allow_null=True,
-            description="Hora de cierre (HH:MM). Requerido si isClosed=false.",
+            missing=None,
+            description="Hora de cierre (HH:MM). Omitir si isClosed=true.",
             example="23:00",
         ),
     },

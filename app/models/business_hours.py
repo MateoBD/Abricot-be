@@ -6,6 +6,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.extensions import db
 from app.utils.uuid7 import new_uuid7
 
+_DAY_NAMES = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"}
+
 
 class BusinessHoursModel(db.Model):
     __tablename__ = "business_hours"
@@ -38,6 +40,7 @@ class BusinessHoursModel(db.Model):
             "id": str(self.id),
             "restaurantId": str(self.restaurant_id),
             "dayOfWeek": self.day_of_week,
+            "dayName": _DAY_NAMES.get(self.day_of_week, "Desconocido"),
             "opensAt": self.opens_at.isoformat() if self.opens_at else None,
             "closesAt": self.closes_at.isoformat() if self.closes_at else None,
             "isClosed": self.is_closed,
