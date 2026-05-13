@@ -87,6 +87,8 @@ class RestaurantService:
         payload["reviewCount"] = rc
         return payload
 
+    _VALID_SORT_VALUES = frozenset({"name", "newest", "rating"})
+
     @staticmethod
     def search(
         *,
@@ -97,11 +99,14 @@ class RestaurantService:
         neighbourhood_id: str | UUID | None = None,
         price_range_id: str | UUID | None = None,
         cuisine_type_ids: list[str | UUID] | None = None,
+        sort: str = "name",
         page: int = 1,
         per_page: int = 20,
     ) -> dict:
         page = max(page, 1)
         per_page = max(min(per_page, 100), 1)
+        if sort not in RestaurantService._VALID_SORT_VALUES:
+            sort = "name"
         cid_country = _parse_uuid_opt(country_id) if country_id else None
         cid_province = _parse_uuid_opt(province_id) if province_id else None
         cid_city = _parse_uuid_opt(city_id) if city_id else None
@@ -119,6 +124,7 @@ class RestaurantService:
             neighbourhood_id=cid_neigh,
             price_range_id=cid_price,
             cuisine_type_ids=c_cuisines,
+            sort=sort,
             page=page,
             per_page=per_page,
         )

@@ -6,6 +6,7 @@ from app.extensions import db
 from app.models.location import CityModel, ProvinceModel
 from app.models.restaurant import RestaurantModel
 from app.models.restaurant_cuisine import RestaurantCuisineModel
+from app.models.restaurant_review import RestaurantReviewModel
 
 CUISINE_UNSET = object()
 
@@ -70,6 +71,7 @@ class RestaurantRepository:
         neighbourhood_id: UUID | None = None,
         price_range_id: UUID | None = None,
         cuisine_type_ids: list[UUID] | None = None,
+        sort: str = "name",
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[RestaurantModel], int]:
@@ -125,11 +127,26 @@ class RestaurantRepository:
         per_page = max(min(per_page, 100), 1)
         offset = (page - 1) * per_page
 
+        if sort == "newest":
+            order_clause = RestaurantModel.created_at.desc()
+        elif sort == "rating":
+            avg_sub = (
+                select(
+                    func.coalesce(func.avg(RestaurantReviewModel.score * 1.0), 0.0)
+                )
+                .where(RestaurantReviewModel.restaurant_id == RestaurantModel.id)
+                .correlate(RestaurantModel)
+                .scalar_subquery()
+            )
+            order_clause = avg_sub.desc()
+        else:
+            order_clause = RestaurantModel.name.asc()
+
         rows = list(
             db.session.execute(
                 select(RestaurantModel)
                 .where(where_clause)
-                .order_by(RestaurantModel.name)
+                .order_by(order_clause)
                 .offset(offset)
                 .limit(per_page)
             ).scalars()

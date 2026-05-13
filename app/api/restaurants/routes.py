@@ -302,6 +302,7 @@ class RestaurantList(Resource):
             neighbourhood_id=q.get("neighbourhoodId"),
             price_range_id=q.get("priceRangeId"),
             cuisine_type_ids=_cuisine_type_ids_from_query(),
+            sort=q.get("sort", "name"),
             page=page,
             per_page=per_page,
         ), 200
