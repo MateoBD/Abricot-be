@@ -47,7 +47,7 @@ resource "aws_apigatewayv2_api" "http" {
 
   cors_configuration {
     allow_headers = ["Authorization", "Content-Type"]
-    allow_methods = ["GET", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PUT", "OPTIONS"]
     allow_origins = distinct([local.frontend_base_url, "http://localhost:5173"])
     max_age       = 300
   }
@@ -97,6 +97,14 @@ resource "aws_lambda_function" "this" {
       variables = local.lambda_environment[each.key]
     }
   }
+
+  dynamic "vpc_config" {
+    for_each = each.value.vpc_enabled ? [1] : []
+    content {
+      subnet_ids         = each.value.subnet_ids
+      security_group_ids = each.value.security_group_ids
+    }
+  }
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
@@ -129,6 +137,8 @@ resource "aws_apigatewayv2_route" "auth_test" {
 }
 
 resource "aws_apigatewayv2_route" "users_post" {
+  count = local.rds_proxy_enabled ? 1 : 0
+
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "POST /users"
   target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"
@@ -137,6 +147,8 @@ resource "aws_apigatewayv2_route" "users_post" {
 }
 
 resource "aws_apigatewayv2_route" "users_get" {
+  count = local.rds_proxy_enabled ? 1 : 0
+
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "GET /users/{userId}"
   target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"
@@ -145,6 +157,8 @@ resource "aws_apigatewayv2_route" "users_get" {
 }
 
 resource "aws_apigatewayv2_route" "users_put" {
+  count = local.rds_proxy_enabled ? 1 : 0
+
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "PUT /users/{userId}"
   target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"

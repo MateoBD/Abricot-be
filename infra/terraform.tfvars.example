@@ -13,14 +13,38 @@ frontend_base_url = "http://localhost:5173"
 # Optional. Must be globally unique within the AWS region.
 # cognito_domain_prefix = "abricot-tp3-your-team"
 
-# PASO 2 uses an existing PostgreSQL/RDS database. Terraform does not create RDS/RDS Proxy here.
-existing_db_host     = "<existing-rds-or-postgres-host>"
-existing_db_port     = 5432
-existing_db_name     = "<database-name>"
-existing_db_username = "<database-username>"
-existing_db_password = "<database-password>"
-existing_db_sslmode  = "prefer"
+# Keep false for PASO 1-only validation/plan. This avoids requiring any VPC/RDS
+# variables and keeps users-service-lambda outside VPC.
+enable_private_database_infra = false
 
-# Optional: provide a Lambda layer containing psycopg2-binary for users-service.
-# If empty, package the dependency into lambdas/users_service before apply.
+# PASO 2.2B private database infra. Only used when enable_private_database_infra=true.
+network_strategy = "dedicated_vpc" # or "default_vpc_private_subnets"
+
+# Required only for network_strategy="default_vpc_private_subnets".
+# vpc_id               = "vpc-xxxxxxxx"
+# nat_public_subnet_id = "subnet-public-for-nat"
+
+# Dedicated VPC defaults are lab-sized and may be adjusted before plan.
+vpc_cidr                 = "10.42.0.0/16"
+availability_zones       = ["us-east-1a", "us-east-1b"]
+public_subnet_cidrs      = ["10.42.0.0/24", "10.42.1.0/24"]
+private_app_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]
+private_db_subnet_cidrs  = ["10.42.20.0/24", "10.42.21.0/24"]
+
+# Required only when enable_private_database_infra=true.
+postgres_port     = 5432
+postgres_db       = "abricot"
+postgres_user     = "abricot_app"
+postgres_password = "<database-password>"
+postgres_sslmode  = "require"
+
+# RDS Proxy for PostgreSQL needs Secrets Manager credentials and an IAM role for
+# RDS Proxy to read the secret. If AWS Lab blocks either, PASO 2.2B is blocked.
+create_db_secret  = true
+# db_secret_arn   = "arn:aws:secretsmanager:us-east-1:<account-id>:secret:<secret>"
+rds_proxy_role_arn = "arn:aws:iam::<account-id>:role/<provided-rds-proxy-role>"
+create_rds_proxy   = true
+
+# Optional: provide a Lambda layer containing psycopg2-binary for users-service
+# before enabling private database infra.
 users_service_layer_arns = []

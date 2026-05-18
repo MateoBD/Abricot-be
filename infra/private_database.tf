@@ -1,0 +1,279 @@
+resource "aws_vpc" "private" {
+  count = local.dedicated_vpc_enabled ? 1 : 0
+
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+}
+
+resource "aws_internet_gateway" "private" {
+  count = local.dedicated_vpc_enabled ? 1 : 0
+
+  vpc_id = aws_vpc.private[0].id
+}
+
+resource "aws_subnet" "public" {
+  count = local.dedicated_vpc_enabled ? length(var.public_subnet_cidrs) : 0
+
+  vpc_id                  = local.private_vpc_id
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = var.availability_zones[count.index]
+  map_public_ip_on_launch = true
+}
+
+resource "aws_route_table" "public" {
+  count = local.dedicated_vpc_enabled ? 1 : 0
+
+  vpc_id = local.private_vpc_id
+}
+
+resource "aws_route" "public_internet" {
+  count = local.dedicated_vpc_enabled ? 1 : 0
+
+  route_table_id         = aws_route_table.public[0].id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.private[0].id
+}
+
+resource "aws_route_table_association" "public" {
+  count = local.dedicated_vpc_enabled ? length(aws_subnet.public) : 0
+
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public[0].id
+}
+
+resource "aws_subnet" "private_app" {
+  count = local.private_database_enabled ? length(var.private_app_subnet_cidrs) : 0
+
+  vpc_id                  = local.private_vpc_id
+  cidr_block              = var.private_app_subnet_cidrs[count.index]
+  availability_zone       = var.availability_zones[count.index]
+  map_public_ip_on_launch = false
+}
+
+resource "aws_subnet" "private_db" {
+  count = local.private_database_enabled ? length(var.private_db_subnet_cidrs) : 0
+
+  vpc_id                  = local.private_vpc_id
+  cidr_block              = var.private_db_subnet_cidrs[count.index]
+  availability_zone       = var.availability_zones[count.index]
+  map_public_ip_on_launch = false
+}
+
+resource "aws_eip" "nat" {
+  count = local.private_database_enabled ? 1 : 0
+
+  domain = "vpc"
+}
+
+resource "aws_nat_gateway" "this" {
+  count = local.private_database_enabled ? 1 : 0
+
+  allocation_id = aws_eip.nat[0].id
+  subnet_id     = local.nat_subnet_id
+
+  depends_on = [aws_route.public_internet]
+}
+
+resource "aws_route_table" "private_app" {
+  count = local.private_database_enabled ? length(aws_subnet.private_app) : 0
+
+  vpc_id = local.private_vpc_id
+}
+
+resource "aws_route" "private_app_nat" {
+  count = local.private_database_enabled ? length(aws_route_table.private_app) : 0
+
+  route_table_id         = aws_route_table.private_app[count.index].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.this[0].id
+}
+
+resource "aws_route_table_association" "private_app" {
+  count = local.private_database_enabled ? length(aws_subnet.private_app) : 0
+
+  subnet_id      = aws_subnet.private_app[count.index].id
+  route_table_id = aws_route_table.private_app[count.index].id
+}
+
+resource "aws_route_table" "private_db" {
+  count = local.private_database_enabled ? 1 : 0
+
+  vpc_id = local.private_vpc_id
+}
+
+resource "aws_route_table_association" "private_db" {
+  count = local.private_database_enabled ? length(aws_subnet.private_db) : 0
+
+  subnet_id      = aws_subnet.private_db[count.index].id
+  route_table_id = aws_route_table.private_db[0].id
+}
+
+resource "aws_security_group" "lambda" {
+  count = local.private_database_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-lambda-sg"
+  description = "DB-backed Lambda egress to RDS Proxy only."
+  vpc_id      = local.private_vpc_id
+  ingress     = []
+  egress      = []
+}
+
+resource "aws_security_group" "rds_proxy" {
+  count = local.private_database_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-rds-proxy-sg"
+  description = "RDS Proxy access from DB-backed Lambdas."
+  vpc_id      = local.private_vpc_id
+  ingress     = []
+  egress      = []
+}
+
+resource "aws_security_group" "rds" {
+  count = local.private_database_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-rds-sg"
+  description = "Private RDS access from RDS Proxy only."
+  vpc_id      = local.private_vpc_id
+  ingress     = []
+  egress      = []
+}
+
+resource "aws_security_group_rule" "lambda_to_rds_proxy" {
+  count = local.private_database_enabled ? 1 : 0
+
+  type                     = "egress"
+  from_port                = var.postgres_port
+  to_port                  = var.postgres_port
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.lambda[0].id
+  source_security_group_id = aws_security_group.rds_proxy[0].id
+}
+
+resource "aws_security_group_rule" "lambda_https_egress" {
+  count = local.private_database_enabled ? 1 : 0
+
+  type              = "egress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.lambda[0].id
+}
+
+resource "aws_security_group_rule" "rds_proxy_from_lambda" {
+  count = local.private_database_enabled ? 1 : 0
+
+  type                     = "ingress"
+  from_port                = var.postgres_port
+  to_port                  = var.postgres_port
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_proxy[0].id
+  source_security_group_id = aws_security_group.lambda[0].id
+}
+
+resource "aws_security_group_rule" "rds_proxy_to_rds" {
+  count = local.private_database_enabled ? 1 : 0
+
+  type                     = "egress"
+  from_port                = var.postgres_port
+  to_port                  = var.postgres_port
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_proxy[0].id
+  source_security_group_id = aws_security_group.rds[0].id
+}
+
+resource "aws_security_group_rule" "rds_from_proxy" {
+  count = local.private_database_enabled ? 1 : 0
+
+  type                     = "ingress"
+  from_port                = var.postgres_port
+  to_port                  = var.postgres_port
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds[0].id
+  source_security_group_id = aws_security_group.rds_proxy[0].id
+}
+
+resource "aws_db_subnet_group" "private" {
+  count = local.private_database_enabled ? 1 : 0
+
+  name       = "${local.name_prefix}-private-db"
+  subnet_ids = local.private_db_subnet_ids
+}
+
+resource "aws_db_instance" "postgres" {
+  count = local.private_database_enabled ? 1 : 0
+
+  identifier             = "${local.name_prefix}-postgres"
+  engine                 = "postgres"
+  instance_class         = var.rds_instance_class
+  allocated_storage      = var.rds_allocated_storage
+  db_name                = var.postgres_db
+  username               = var.postgres_user
+  password               = var.postgres_password
+  port                   = var.postgres_port
+  db_subnet_group_name   = aws_db_subnet_group.private[0].name
+  vpc_security_group_ids = [aws_security_group.rds[0].id]
+  publicly_accessible    = false
+  multi_az               = false
+  deletion_protection    = false
+  skip_final_snapshot    = true
+}
+
+resource "aws_secretsmanager_secret" "db" {
+  count = local.private_database_enabled && var.create_db_secret ? 1 : 0
+
+  name = "${local.name_prefix}/postgres"
+}
+
+resource "aws_secretsmanager_secret_version" "db" {
+  count = local.private_database_enabled && var.create_db_secret ? 1 : 0
+
+  secret_id = aws_secretsmanager_secret.db[0].id
+  secret_string = jsonencode({
+    username = var.postgres_user
+    password = var.postgres_password
+    engine   = "postgres"
+    host     = aws_db_instance.postgres[0].address
+    port     = var.postgres_port
+    dbname   = var.postgres_db
+  })
+}
+
+resource "aws_db_proxy" "users" {
+  count = local.rds_proxy_enabled ? 1 : 0
+
+  name                   = "${local.name_prefix}-users-proxy"
+  engine_family          = "POSTGRESQL"
+  idle_client_timeout    = 1800
+  require_tls            = true
+  role_arn               = var.rds_proxy_role_arn
+  vpc_security_group_ids = [aws_security_group.rds_proxy[0].id]
+  vpc_subnet_ids         = local.private_db_subnet_ids
+
+  auth {
+    auth_scheme = "SECRETS"
+    iam_auth    = "DISABLED"
+    secret_arn  = local.db_secret_arn
+  }
+}
+
+resource "aws_db_proxy_default_target_group" "users" {
+  count = local.rds_proxy_enabled ? 1 : 0
+
+  db_proxy_name = aws_db_proxy.users[0].name
+
+  connection_pool_config {
+    connection_borrow_timeout    = 120
+    max_connections_percent      = 90
+    max_idle_connections_percent = 50
+  }
+}
+
+resource "aws_db_proxy_target" "users" {
+  count = local.rds_proxy_enabled ? 1 : 0
+
+  db_instance_identifier = aws_db_instance.postgres[0].identifier
+  db_proxy_name          = aws_db_proxy.users[0].name
+  target_group_name      = aws_db_proxy_default_target_group.users[0].name
+}

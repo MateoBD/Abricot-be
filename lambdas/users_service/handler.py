@@ -165,6 +165,7 @@ def _is_admin(claims: dict[str, Any]) -> bool:
 
 def _db_required_env() -> list[str]:
     return [
+        "DB_TARGET",
         "POSTGRES_HOST",
         "POSTGRES_DB",
         "POSTGRES_USER",
@@ -181,6 +182,9 @@ def _db_connect():
     if missing:
         raise RuntimeError(f"missing_db_env:{','.join(missing)}")
 
+    if os.environ.get("DB_TARGET") != "RDS_PROXY":
+        raise RuntimeError("invalid_db_target")
+
     try:
         import psycopg2
         from psycopg2.extras import RealDictCursor
@@ -193,7 +197,7 @@ def _db_connect():
         dbname=os.environ["POSTGRES_DB"],
         user=os.environ["POSTGRES_USER"],
         password=os.environ["POSTGRES_PASSWORD"],
-        sslmode=os.environ.get("POSTGRES_SSLMODE", "prefer"),
+        sslmode=os.environ.get("POSTGRES_SSLMODE", "require"),
         connect_timeout=5,
         cursor_factory=RealDictCursor,
     )
