@@ -72,7 +72,11 @@ class AuthService:
         email = email.strip().lower()
         user = UserRepository.get_by_email(email)
 
-        if not user or not bcrypt.check_password_hash(user.password_hash, password):
+        if (
+            not user
+            or user.password_hash.startswith("COGNITO_ONLY:")
+            or not bcrypt.check_password_hash(user.password_hash, password)
+        ):
             raise UnauthorizedError(
                 "Invalid email or password.",
                 public_message="Invalid email or password.",

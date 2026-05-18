@@ -12,3 +12,15 @@ frontend_base_url = "http://localhost:5173"
 
 # Optional. Must be globally unique within the AWS region.
 # cognito_domain_prefix = "abricot-tp3-your-team"
+
+# PASO 2 uses an existing PostgreSQL/RDS database. Terraform does not create RDS/RDS Proxy here.
+existing_db_host     = "<existing-rds-or-postgres-host>"
+existing_db_port     = 5432
+existing_db_name     = "<database-name>"
+existing_db_username = "<database-username>"
+existing_db_password = "<database-password>"
+existing_db_sslmode  = "prefer"
+
+# Optional: provide a Lambda layer containing psycopg2-binary for users-service.
+# If empty, package the dependency into lambdas/users_service before apply.
+users_service_layer_arns = []

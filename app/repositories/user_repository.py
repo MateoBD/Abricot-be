@@ -33,6 +33,12 @@ class UserRepository:
         ).scalar_one_or_none()
 
     @staticmethod
+    def get_by_cognito_sub(cognito_sub: str) -> UserModel | None:
+        return db.session.execute(
+            db.select(UserModel).where(UserModel.cognito_sub == cognito_sub)
+        ).scalar_one_or_none()
+
+    @staticmethod
     def get_by_id(user_id: UUID) -> UserModel | None:
         return db.session.get(UserModel, user_id)
 
@@ -55,6 +61,12 @@ class UserRepository:
     def update_profile(user: UserModel, *, name: str, surname: str) -> UserModel:
         user.name = name
         user.surname = surname
+        db.session.commit()
+        return user
+
+    @staticmethod
+    def link_cognito_sub(user: UserModel, *, cognito_sub: str) -> UserModel:
+        user.cognito_sub = cognito_sub
         db.session.commit()
         return user
 

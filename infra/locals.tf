@@ -27,6 +27,12 @@ locals {
       COGNITO_CLIENT_ID        = aws_cognito_user_pool_client.spa.id
       COGNITO_DOMAIN           = local.cognito_domain
       FRONTEND_CALLBACK_URL    = local.frontend_callback_url
+      POSTGRES_HOST            = var.existing_db_host
+      POSTGRES_PORT            = tostring(var.existing_db_port)
+      POSTGRES_DB              = var.existing_db_name
+      POSTGRES_USER            = var.existing_db_username
+      POSTGRES_PASSWORD        = var.existing_db_password
+      POSTGRES_SSLMODE         = var.existing_db_sslmode
     }
   }
 
@@ -34,11 +40,13 @@ locals {
     health = {
       handler    = "handler.handler"
       source_dir = "${path.module}/../lambdas/health"
+      layers     = []
       timeout    = 5
     }
     users_service = {
       handler    = "handler.handler"
       source_dir = "${path.module}/../lambdas/users_service"
+      layers     = var.users_service_layer_arns
       timeout    = 10
     }
   }

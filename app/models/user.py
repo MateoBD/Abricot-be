@@ -16,6 +16,9 @@ class UserModel(db.Model):
         Uuid(as_uuid=True), primary_key=True, default=new_uuid7
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    cognito_sub: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, unique=True, index=True
+    )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     surname: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -34,6 +37,7 @@ class UserModel(db.Model):
         return {
             "id": str(self.id),
             "email": self.email,
+            "cognitoSub": self.cognito_sub,
             "name": self.name,
             "surname": self.surname,
             "role": self.role.value,

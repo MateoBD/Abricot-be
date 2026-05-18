@@ -88,6 +88,7 @@ resource "aws_lambda_function" "this" {
   role             = var.lambda_role_arn
   runtime          = var.lambda_runtime
   source_code_hash = data.archive_file.lambda[each.key].output_base64sha256
+  layers           = each.value.layers
   timeout          = each.value.timeout
 
   dynamic "environment" {
@@ -122,6 +123,30 @@ resource "aws_apigatewayv2_route" "callback" {
 resource "aws_apigatewayv2_route" "auth_test" {
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "GET /auth-test"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "users_post" {
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /users"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "users_get" {
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /users/{userId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "users_put" {
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /users/{userId}"
   target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id

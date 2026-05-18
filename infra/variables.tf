@@ -55,3 +55,46 @@ variable "lambda_role_arn" {
     error_message = "lambda_role_arn must be an IAM role ARN, for example arn:aws:iam::<account-id>:role/LabRole."
   }
 }
+
+variable "existing_db_host" {
+  description = "Existing PostgreSQL/RDS host reachable by users-service-lambda. PASO 2 does not create RDS."
+  type        = string
+  default     = ""
+}
+
+variable "existing_db_port" {
+  description = "Existing PostgreSQL/RDS port."
+  type        = number
+  default     = 5432
+}
+
+variable "existing_db_name" {
+  description = "Existing PostgreSQL/RDS database name."
+  type        = string
+  default     = ""
+}
+
+variable "existing_db_username" {
+  description = "Existing PostgreSQL/RDS username."
+  type        = string
+  default     = ""
+}
+
+variable "existing_db_password" {
+  description = "Existing PostgreSQL/RDS password. For AWS Lab PASO 2 this is passed directly as Lambda env until Secrets/RDS Proxy are approved."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "existing_db_sslmode" {
+  description = "PostgreSQL sslmode for the existing database connection."
+  type        = string
+  default     = "prefer"
+}
+
+variable "users_service_layer_arns" {
+  description = "Optional Lambda Layer ARNs for users-service dependencies such as psycopg2-binary. No layer is created by this Terraform."
+  type        = list(string)
+  default     = []
+}
