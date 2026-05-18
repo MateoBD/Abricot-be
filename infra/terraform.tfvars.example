@@ -1,0 +1,14 @@
+project_name = "abricot-tp3"
+aws_region   = "us-east-1"
+
+# AWS Academy Lab role ARN. Keep this as a variable so Terraform does not call iam:GetRole.
+lambda_role_arn = "arn:aws:iam::<account-id>:role/LabRole"
+
+# For local smoke tests:
+frontend_base_url = "http://localhost:5173"
+
+# For TP deploy, replace with the S3 website endpoint, for example:
+# frontend_base_url = "http://<bucket-name>.s3-website-us-east-1.amazonaws.com"
+
+# Optional. Must be globally unique within the AWS region.
+# cognito_domain_prefix = "abricot-tp3-your-team"
