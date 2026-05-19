@@ -1,101 +1,178 @@
-# Abricot TP3 PASO 1/PASO 2.2B infra
+# Abricot TP3 Infrastructure
 
-Terraform root for the Cognito + API Gateway + Lambda smoke test and the
-optional PASO 2.2B private database infrastructure.
+Terraform root for the Abricot TP3 AWS architecture.
 
-## Scope
-
-This step creates only:
+## What This Creates
 
 - Cognito User Pool, App Client, and Hosted UI domain.
-- HTTP API Gateway with:
+- API Gateway HTTP API with:
   - public `GET /health`
   - public `GET /callback`
   - protected `GET /auth-test`
+  - protected `POST /users`
+  - protected `GET /users/{userId}`
+  - protected `PUT /users/{userId}`
 - Python Lambdas:
   - `health-lambda`
   - `users-service-lambda`
-- Required outputs.
-- PASO 2.1 protected users routes, only when RDS Proxy is enabled:
-  - `POST /users`
-  - `GET /users/{userId}`
-  - `PUT /users/{userId}`
-- Optional PASO 2.2B private infra when `enable_private_database_infra=true`:
-  - private app subnets
-  - private DB subnets
-  - NAT Gateway for Cognito `/oauth2/token`
-  - `lambda-sg`, `rds-proxy-sg`, `rds-sg`
-  - private RDS PostgreSQL
-  - RDS Proxy if AWS Lab permits/provides IAM role and secret support
+- A dedicated VPC with:
+  - 2 public subnets for NAT
+  - 2 private app subnets for Lambda
+  - 2 private DB subnets for RDS and RDS Proxy
+  - NAT Gateway for private Lambda egress
+- Private PostgreSQL RDS.
+- RDS Proxy in private DB subnets.
+- Secrets Manager secret for RDS Proxy credentials.
+- Three explicit security groups: `lambda-sg`, `rds-proxy-sg`, `rds-sg`.
 
-AWS Academy Lab notes:
+Terraform does not create IAM roles and does not use `data.aws_iam_role`.
+Both Lambda and RDS Proxy receive the AWS Academy `LabRole` ARN through
+variables.
 
-- Terraform does not create Lambda IAM roles or attach IAM policies.
-- Terraform does not look up `LabRole` with `iam:GetRole`; set `lambda_role_arn` instead.
-- Terraform does not create explicit CloudWatch log groups or API Gateway access logs.
-- Terraform does not add resource tags.
-- `enable_private_database_infra=false` by default keeps PASO 1 plans isolated
-  from VPC/RDS/RDS Proxy variables and DB-backed `/users` routes.
-- RDS Proxy for PostgreSQL requires Secrets Manager credentials and an IAM role
-  that RDS Proxy can assume. This Terraform accepts `rds_proxy_role_arn` as a
-  variable and never uses `data.aws_iam_role`.
+## Architecture
 
-Still out of scope here: creating orders-service, SNS, SQS, workers, SES, and
-any separate callback Lambda.
+1. User opens the frontend from S3 website hosting or local dev.
+2. Frontend redirects to Cognito Hosted UI.
+3. Cognito redirects to API Gateway `GET /callback`.
+4. `GET /callback` is public and invokes `users-service-lambda`.
+5. `users-service-lambda` exchanges the authorization code with Cognito and
+   redirects to frontend `/auth/callback#access_token=...`.
+6. Protected frontend calls use `Authorization: Bearer <access_token>`.
+7. API Gateway validates JWTs with the Cognito authorizer.
+8. DB-backed users routes invoke `users-service-lambda` in private app subnets.
+9. `users-service-lambda` reaches PostgreSQL only through RDS Proxy.
 
-## PASO 2.2B feature flag
+## Why RDS Is Private
 
-Keep this value for PASO 1-only validation and plans:
+The RDS instance is created with `publicly_accessible = false`, placed only in
+private DB subnets, and attached only to `rds-sg`. There is no public inbound
+rule and no direct Lambda-to-RDS rule.
+
+## Why RDS Proxy Exists
+
+RDS Proxy is the only database endpoint exposed to `users-service-lambda`. This
+keeps Lambda from connecting directly to RDS and gives a controlled connection
+layer between Lambda and PostgreSQL.
+
+RDS Proxy requires a Secrets Manager secret and an IAM role it can assume. In
+AWS Academy Lab, the only allowed role input is:
 
 ```hcl
-enable_private_database_infra = false
+rds_proxy_role_arn = "arn:aws:iam::<account-id>:role/LabRole"
 ```
 
-When false:
+If LabRole cannot be used by RDS Proxy in the lab account, stop and report the
+blocker. Do not use public RDS or direct DB access as a fallback.
 
-- no RDS, RDS Proxy, NAT, subnet, or SG resources are created
-- private DB variables are not required
-- `users-service-lambda` stays in the PASO 1 working shape, outside VPC
+## Why Lambda Needs NAT
 
-When true:
+`users-service-lambda` runs in private app subnets. It still handles
+`GET /callback`, so it must call Cognito `/oauth2/token` over the internet.
+The private app subnets route outbound internet traffic through NAT Gateway.
 
-- Terraform attempts to add the private network/RDS/RDS Proxy stack
-- `users-service-lambda` is placed in private app subnets
-- DB access goes only through RDS Proxy
+## Security Groups
 
-## Networking contract
+| Component | Security Group | Rules |
+|---|---|---|
+| `users-service-lambda` | `lambda-sg` | Outbound TCP 5432 to `rds-proxy-sg`; outbound TCP 443 to internet through NAT. |
+| RDS Proxy | `rds-proxy-sg` | Inbound TCP 5432 from `lambda-sg`; outbound TCP 5432 to `rds-sg`. |
+| RDS PostgreSQL | `rds-sg` | Inbound TCP 5432 only from `rds-proxy-sg`. |
 
-`users-service-lambda` handles both `/callback` and `/users/*`. Because it is
-configured inside private app subnets for database access, those subnets must
-also have outbound internet through NAT so `/callback` can exchange the Cognito
-authorization code at `/oauth2/token`.
+No Lambda direct access to RDS is configured. No public access to RDS is
+configured.
 
-Required existing AWS pieces:
+## Variables
 
-- NAT egress from private app subnets.
-- `lambda-sg` outbound TCP 5432 to `rds-proxy-sg`.
-- `rds-proxy-sg` inbound TCP 5432 from `lambda-sg`.
-- `rds-proxy-sg` outbound TCP 5432 to `rds-sg`.
-- `rds-sg` inbound TCP 5432 from `rds-proxy-sg`.
+The normal deliverable path only needs these values in `terraform.tfvars`:
 
-Do not configure Lambda to use a direct RDS instance endpoint.
+```hcl
+project_name = "abricot-tp3"
+aws_region   = "us-east-1"
 
-## Usage
+lambda_role_arn    = "arn:aws:iam::<account-id>:role/LabRole"
+rds_proxy_role_arn = "arn:aws:iam::<account-id>:role/LabRole"
+
+frontend_callback_url = "http://localhost:5173/auth/callback"
+
+postgres_db       = "abricot"
+postgres_user     = "abricot_app"
+postgres_password = "CHANGE_ME_STRONG_PASSWORD"
+
+enable_full_private_stack = true
+users_service_layer_arns  = []
+```
+
+Internal network and database defaults live in `locals.tf`: CIDRs, AZs, RDS
+size, PostgreSQL port, SSL mode, Cognito scopes, and Lambda runtime.
+
+## Deploy From Zero
 
 ```bash
-cd infra
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Edit `terraform.tfvars`:
+
+- Replace `<account-id>` in both LabRole ARNs.
+- Replace `postgres_password` with a strong password.
+- Replace `frontend_callback_url` with the S3 website callback URL for deployed
+  frontend, or keep localhost for local smoke tests.
+- Set `users_service_layer_arns` only if `psycopg2` is supplied through a
+  Lambda Layer. Otherwise package the dependency into `lambdas/users_service`
+  before applying.
+
+Then run:
+
+```bash
 terraform init
 terraform fmt
 terraform validate
-terraform plan -var-file=terraform.tfvars
+terraform plan
+terraform apply
 ```
 
-Start from `terraform.tfvars.example` and set a globally unique
-`cognito_domain_prefix` if the default is already taken in the AWS account.
-Set `lambda_role_arn` to the AWS Lab role ARN, for example
-`arn:aws:iam::<account-id>:role/LabRole`.
-Set `enable_private_database_infra=true` only when intentionally planning PASO
-2.2B. Then set `postgres_db`, `postgres_user`, `postgres_password`, and
-`rds_proxy_role_arn`. If `create_db_secret=false`, also set `db_secret_arn`.
-Set `users_service_layer_arns` to a Lambda layer that contains `psycopg2-binary`,
-or package that dependency into `lambdas/users_service` before apply.
+## Destroy And Recreate
+
+The stack is designed to be destroyable and recreateable:
+
+```bash
+terraform destroy
+terraform apply
+```
+
+If the Cognito User Pool contains users, AWS may block deletion unless the pool
+is cleaned first. Do not manually delete random resources outside Terraform
+unless state recovery is planned.
+
+## Optional Two-Phase Recovery
+
+The normal path is one full stack apply with:
+
+```hcl
+enable_full_private_stack = true
+```
+
+If AWS provider behavior rejects changing `users-service-lambda` from no
+`vpc_config` to `vpc_config` in the same apply, use this emergency sequence:
+
+Phase 1:
+
+```hcl
+enable_full_private_stack = true
+recovery_skip_lambda_private_attachment = true
+```
+
+Apply only if the plan creates or repairs VPC, NAT, private RDS, RDS Proxy, and
+RDS Proxy target without destroying PASO 1.
+
+Phase 2:
+
+```hcl
+enable_full_private_stack = true
+recovery_skip_lambda_private_attachment = false
+```
+
+Then plan/apply the Lambda private subnet attachment and `/users` routes.
+
+This is only a recovery path. Do not present public RDS, direct DB access, or
+removing RDS Proxy as alternatives.

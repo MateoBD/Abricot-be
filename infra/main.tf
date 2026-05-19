@@ -11,10 +11,6 @@ resource "aws_cognito_user_pool" "main" {
     require_symbols   = false
     require_uppercase = true
   }
-
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "aws_cognito_user_pool_client" "spa" {
@@ -25,7 +21,7 @@ resource "aws_cognito_user_pool_client" "spa" {
   prevent_user_existence_errors        = "ENABLED"
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = var.cognito_scopes
+  allowed_oauth_scopes                 = local.cognito_scopes
   callback_urls                        = local.callback_urls
   logout_urls                          = distinct([local.frontend_base_url, local.frontend_callback_url])
   supported_identity_providers         = ["COGNITO"]
@@ -86,7 +82,7 @@ resource "aws_lambda_function" "this" {
   filename         = data.archive_file.lambda[each.key].output_path
   handler          = each.value.handler
   role             = var.lambda_role_arn
-  runtime          = var.lambda_runtime
+  runtime          = local.lambda_runtime
   source_code_hash = data.archive_file.lambda[each.key].output_base64sha256
   layers           = each.value.layers
   timeout          = each.value.timeout
@@ -137,7 +133,7 @@ resource "aws_apigatewayv2_route" "auth_test" {
 }
 
 resource "aws_apigatewayv2_route" "users_post" {
-  count = local.rds_proxy_enabled ? 1 : 0
+  count = local.users_routes_enabled ? 1 : 0
 
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "POST /users"
@@ -147,7 +143,7 @@ resource "aws_apigatewayv2_route" "users_post" {
 }
 
 resource "aws_apigatewayv2_route" "users_get" {
-  count = local.rds_proxy_enabled ? 1 : 0
+  count = local.users_routes_enabled ? 1 : 0
 
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "GET /users/{userId}"
@@ -157,7 +153,7 @@ resource "aws_apigatewayv2_route" "users_get" {
 }
 
 resource "aws_apigatewayv2_route" "users_put" {
-  count = local.rds_proxy_enabled ? 1 : 0
+  count = local.users_routes_enabled ? 1 : 0
 
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "PUT /users/{userId}"

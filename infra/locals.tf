@@ -3,35 +3,38 @@ data "aws_caller_identity" "current" {}
 locals {
   name_prefix = lower(var.project_name)
 
-  frontend_base_url        = trimsuffix(var.frontend_base_url, "/")
-  frontend_callback_path   = startswith(var.frontend_callback_path, "/") ? var.frontend_callback_path : "/${var.frontend_callback_path}"
-  frontend_callback_url    = "${local.frontend_base_url}${local.frontend_callback_path}"
+  frontend_callback_url = trimsuffix(var.frontend_callback_url, "/")
+  frontend_base_url     = trimsuffix(trimsuffix(local.frontend_callback_url, "/auth/callback"), "/")
+
   api_gateway_url          = trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")
   api_gateway_callback_url = "${local.api_gateway_url}/callback"
 
-  cognito_domain_prefix = coalesce(
-    var.cognito_domain_prefix,
-    "${local.name_prefix}-${data.aws_caller_identity.current.account_id}",
-  )
-  cognito_domain = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
+  cognito_domain_prefix = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}"
+  cognito_domain        = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
+  cognito_scopes        = ["openid", "email", "profile"]
+  callback_urls         = distinct([local.api_gateway_callback_url, local.frontend_callback_url])
 
-  callback_urls = distinct(compact([
-    local.api_gateway_callback_url,
-    var.local_dev_callback_url,
-  ]))
+  lambda_runtime = "python3.12"
 
-  private_database_enabled = var.enable_private_database_infra
-  dedicated_vpc_enabled    = local.private_database_enabled && var.network_strategy == "dedicated_vpc"
-  default_vpc_enabled      = local.private_database_enabled && var.network_strategy == "default_vpc_private_subnets"
+  full_private_stack_enabled        = var.enable_full_private_stack
+  lambda_private_attachment_enabled = local.full_private_stack_enabled && !var.recovery_skip_lambda_private_attachment
+  users_routes_enabled              = local.lambda_private_attachment_enabled
+  private_vpc_id                    = local.full_private_stack_enabled ? aws_vpc.private[0].id : null
+  private_app_subnet_ids            = local.full_private_stack_enabled ? aws_subnet.private_app[*].id : []
+  private_db_subnet_ids             = local.full_private_stack_enabled ? aws_subnet.private_db[*].id : []
+  lambda_security_group_ids         = local.full_private_stack_enabled ? [aws_security_group.lambda[0].id] : []
+  rds_proxy_endpoint                = local.full_private_stack_enabled ? aws_db_proxy.users[0].endpoint : null
 
-  private_vpc_id              = local.dedicated_vpc_enabled ? aws_vpc.private[0].id : var.vpc_id
-  nat_subnet_id               = local.dedicated_vpc_enabled ? aws_subnet.public[0].id : var.nat_public_subnet_id
-  private_app_subnet_ids      = local.private_database_enabled ? aws_subnet.private_app[*].id : []
-  private_db_subnet_ids       = local.private_database_enabled ? aws_subnet.private_db[*].id : []
-  lambda_security_group_ids   = local.private_database_enabled ? [aws_security_group.lambda[0].id] : []
-  db_secret_arn             = local.private_database_enabled && var.create_db_secret ? aws_secretsmanager_secret.db[0].arn : var.db_secret_arn
-  rds_proxy_enabled         = local.private_database_enabled && var.create_rds_proxy
-  rds_proxy_endpoint        = local.rds_proxy_enabled ? aws_db_proxy.users[0].endpoint : null
+  vpc_cidr                 = "10.42.0.0/16"
+  availability_zones       = ["us-east-1a", "us-east-1b"]
+  public_subnet_cidrs      = ["10.42.0.0/24", "10.42.1.0/24"]
+  private_app_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]
+  private_db_subnet_cidrs  = ["10.42.20.0/24", "10.42.21.0/24"]
+
+  postgres_port         = 5432
+  postgres_sslmode      = "require"
+  rds_instance_class    = "db.t3.micro"
+  rds_allocated_storage = 20
 
   users_service_base_environment = {
     API_GATEWAY_CALLBACK_URL = local.api_gateway_callback_url
@@ -40,18 +43,18 @@ locals {
     FRONTEND_CALLBACK_URL    = local.frontend_callback_url
   }
 
-  users_service_db_environment = local.rds_proxy_enabled ? {
+  users_service_db_environment = local.lambda_private_attachment_enabled ? {
     DB_TARGET         = "RDS_PROXY"
     POSTGRES_HOST     = local.rds_proxy_endpoint
-    POSTGRES_PORT     = tostring(var.postgres_port)
+    POSTGRES_PORT     = tostring(local.postgres_port)
     POSTGRES_DB       = var.postgres_db
     POSTGRES_USER     = var.postgres_user
     POSTGRES_PASSWORD = var.postgres_password
-    POSTGRES_SSLMODE  = var.postgres_sslmode
+    POSTGRES_SSLMODE  = local.postgres_sslmode
   } : {}
 
   lambda_environment = {
-    health = {}
+    health        = {}
     users_service = merge(local.users_service_base_environment, local.users_service_db_environment)
   }
 
@@ -70,7 +73,7 @@ locals {
       source_dir         = "${path.module}/../lambdas/users_service"
       layers             = var.users_service_layer_arns
       timeout            = 10
-      vpc_enabled        = local.private_database_enabled
+      vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
     }

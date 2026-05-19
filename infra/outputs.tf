@@ -15,7 +15,7 @@ output "cognito_domain" {
 
 output "cognito_login_url" {
   description = "Hosted UI login URL - paste into browser to start OAuth flow."
-  value       = "${local.cognito_domain}/login?client_id=${aws_cognito_user_pool_client.spa.id}&response_type=code&scope=${join("+", var.cognito_scopes)}&redirect_uri=${urlencode(local.api_gateway_callback_url)}"
+  value       = "${local.cognito_domain}/login?client_id=${aws_cognito_user_pool_client.spa.id}&response_type=code&scope=${join("+", local.cognito_scopes)}&redirect_uri=${urlencode(local.api_gateway_callback_url)}"
 }
 
 output "api_gateway_url" {
@@ -50,17 +50,27 @@ output "auth_test_url" {
 
 output "users_url" {
   description = "Protected users collection endpoint."
-  value       = local.rds_proxy_enabled ? "${local.api_gateway_url}/users" : null
+  value       = local.users_routes_enabled ? "${local.api_gateway_url}/users" : null
 }
 
 output "user_url_template" {
   description = "Protected user profile endpoint template."
-  value       = local.rds_proxy_enabled ? "${local.api_gateway_url}/users/{userId}" : null
+  value       = local.users_routes_enabled ? "${local.api_gateway_url}/users/{userId}" : null
 }
 
 output "private_database_infra_enabled" {
-  description = "Whether PASO 2.2B private database infrastructure is enabled."
-  value       = var.enable_private_database_infra
+  description = "Whether the full private stack is enabled."
+  value       = local.full_private_stack_enabled
+}
+
+output "users_service_private_attachment_enabled" {
+  description = "Whether users-service-lambda is attached to private app subnets."
+  value       = local.lambda_private_attachment_enabled
+}
+
+output "users_routes_enabled" {
+  description = "Whether DB-backed /users API Gateway routes are enabled."
+  value       = local.users_routes_enabled
 }
 
 output "private_app_subnet_ids" {
