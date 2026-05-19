@@ -79,8 +79,13 @@ output "private_app_subnet_ids" {
 }
 
 output "private_db_subnet_ids" {
-  description = "Private DB subnet IDs for private RDS/RDS Proxy when PASO 2.2B is enabled."
+  description = "Private DB subnet IDs across two AZs for Multi-AZ private RDS and RDS Proxy."
   value       = local.private_db_subnet_ids
+}
+
+output "rds_multi_az_enabled" {
+  description = "Whether private PostgreSQL RDS is configured as Multi-AZ primary/standby."
+  value       = local.full_private_stack_enabled ? true : false
 }
 
 output "lambda_security_group_ids" {
@@ -91,4 +96,9 @@ output "lambda_security_group_ids" {
 output "rds_proxy_endpoint" {
   description = "RDS Proxy endpoint used as POSTGRES_HOST when PASO 2.2B creates a proxy."
   value       = local.rds_proxy_endpoint
+}
+
+output "db_migration_lambda_name" {
+  description = "Internal Lambda used to run Flask-Migrate/Alembic migrations inside the private VPC."
+  value       = local.lambda_private_attachment_enabled ? aws_lambda_function.this["db_migrate"].function_name : null
 }

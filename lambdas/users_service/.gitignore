@@ -1,0 +1,7 @@
+# pip install -t . outputs — never commit installed packages
+*.dist-info/
+*.egg-info/
+psycopg2/
+__pycache__/
+*.pyc
+*.pyo

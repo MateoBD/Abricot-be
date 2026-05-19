@@ -10,26 +10,6 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "lambda_role_arn" {
-  description = "AWS Academy LabRole ARN used by Lambda. Terraform does not create or read IAM roles."
-  type        = string
-
-  validation {
-    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/LabRole$", var.lambda_role_arn))
-    error_message = "lambda_role_arn must be the AWS LabRole ARN, for example arn:aws:iam::<account-id>:role/LabRole."
-  }
-}
-
-variable "rds_proxy_role_arn" {
-  description = "AWS Academy LabRole ARN used by RDS Proxy to read the DB secret. Terraform does not create or read IAM roles."
-  type        = string
-
-  validation {
-    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/LabRole$", var.rds_proxy_role_arn))
-    error_message = "rds_proxy_role_arn must be the AWS LabRole ARN, for example arn:aws:iam::<account-id>:role/LabRole."
-  }
-}
-
 variable "frontend_callback_url" {
   description = "Frontend SPA callback URL that receives Cognito tokens in the hash fragment."
   type        = string
@@ -74,10 +54,4 @@ variable "recovery_skip_lambda_private_attachment" {
   description = "Emergency two-phase toggle only. Keep false for normal delivery; set true only if AWS provider fails when adding Lambda vpc_config in the same apply."
   type        = bool
   default     = false
-}
-
-variable "users_service_layer_arns" {
-  description = "Optional Lambda Layer ARNs for users-service dependencies such as psycopg2. Leave empty if dependencies are packaged into the Lambda source."
-  type        = list(string)
-  default     = []
 }

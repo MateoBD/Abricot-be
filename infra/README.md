@@ -15,19 +15,20 @@ Terraform root for the Abricot TP3 AWS architecture.
 - Python Lambdas:
   - `health-lambda`
   - `users-service-lambda`
+  - `db-migrate-lambda` for internal Flask-Migrate/Alembic upgrades
 - A dedicated VPC with:
   - 2 public subnets for NAT
   - 2 private app subnets for Lambda
-  - 2 private DB subnets for RDS and RDS Proxy
+  - 2 private DB subnets in different AZs for RDS and RDS Proxy
   - NAT Gateway for private Lambda egress
-- Private PostgreSQL RDS.
+- Private Multi-AZ PostgreSQL RDS, with primary/standby managed by AWS.
 - RDS Proxy in private DB subnets.
 - Secrets Manager secret for RDS Proxy credentials.
 - Three explicit security groups: `lambda-sg`, `rds-proxy-sg`, `rds-sg`.
 
 Terraform does not create IAM roles and does not use `data.aws_iam_role`.
-Both Lambda and RDS Proxy receive the AWS Academy `LabRole` ARN through
-variables.
+Both Lambda and RDS Proxy use the AWS Academy `LabRole` ARN derived from the
+current account ID through `data.aws_caller_identity.current.account_id`.
 
 ## Architecture
 
@@ -41,12 +42,35 @@ variables.
 7. API Gateway validates JWTs with the Cognito authorizer.
 8. DB-backed users routes invoke `users-service-lambda` in private app subnets.
 9. `users-service-lambda` reaches PostgreSQL only through RDS Proxy.
+10. Database migrations run on demand through `db-migrate-lambda`, also inside
+    private app subnets and also through RDS Proxy.
+
+## Diagram
+
+```mermaid
+flowchart LR
+  Frontend["S3 frontend or local dev"] --> Cognito["Cognito Hosted UI"]
+  Cognito --> Callback["API Gateway GET /callback public"]
+  Callback --> UsersLambda["users-service-lambda private app subnets lambda-sg"]
+  UsersLambda --> Token["Cognito /oauth2/token via NAT"]
+  Frontend --> ApiProtected["API Gateway protected routes"]
+  ApiProtected --> UsersLambda
+  UsersLambda --> Proxy["RDS Proxy private DB subnets rds-proxy-sg"]
+  DbMigrate["db-migrate-lambda private app subnets lambda-sg"] --> Proxy
+  Proxy --> RdsPrimary["RDS PostgreSQL primary private DB subnet AZ A rds-sg"]
+  Proxy --> RdsStandby["RDS PostgreSQL standby private DB subnet AZ B rds-sg"]
+```
+
+The diagram shows RDS primary/standby because Terraform sets `multi_az = true`.
+The application still connects only to RDS Proxy, not directly to either RDS
+instance.
 
 ## Why RDS Is Private
 
-The RDS instance is created with `publicly_accessible = false`, placed only in
-private DB subnets, and attached only to `rds-sg`. There is no public inbound
-rule and no direct Lambda-to-RDS rule.
+The RDS instance is created with `publicly_accessible = false` and
+`multi_az = true`, placed only in private DB subnets across two AZs, and
+attached only to `rds-sg`. There is no public inbound rule and no direct
+Lambda-to-RDS rule.
 
 ## Why RDS Proxy Exists
 
@@ -54,11 +78,14 @@ RDS Proxy is the only database endpoint exposed to `users-service-lambda`. This
 keeps Lambda from connecting directly to RDS and gives a controlled connection
 layer between Lambda and PostgreSQL.
 
+`db-migrate-lambda` also connects only to RDS Proxy. It is not exposed through
+API Gateway and is invoked manually when schema changes need to be applied.
+
 RDS Proxy requires a Secrets Manager secret and an IAM role it can assume. In
-AWS Academy Lab, the only allowed role input is:
+AWS Academy Lab, the only allowed role is LabRole. Terraform derives it as:
 
 ```hcl
-rds_proxy_role_arn = "arn:aws:iam::<account-id>:role/LabRole"
+local.lab_role_arn = "arn:aws:iam::<account-id>:role/LabRole"
 ```
 
 If LabRole cannot be used by RDS Proxy in the lab account, stop and report the
@@ -89,9 +116,6 @@ The normal deliverable path only needs these values in `terraform.tfvars`:
 project_name = "abricot-tp3"
 aws_region   = "us-east-1"
 
-lambda_role_arn    = "arn:aws:iam::<account-id>:role/LabRole"
-rds_proxy_role_arn = "arn:aws:iam::<account-id>:role/LabRole"
-
 frontend_callback_url = "http://localhost:5173/auth/callback"
 
 postgres_db       = "abricot"
@@ -99,27 +123,41 @@ postgres_user     = "abricot_app"
 postgres_password = "CHANGE_ME_STRONG_PASSWORD"
 
 enable_full_private_stack = true
-users_service_layer_arns  = []
 ```
 
 Internal network and database defaults live in `locals.tf`: CIDRs, AZs, RDS
 size, PostgreSQL port, SSL mode, Cognito scopes, and Lambda runtime.
 
+The AWS provider sets `region = var.aws_region`, defaulting to `us-east-1`.
+Terraform does not require exporting `AWS_DEFAULT_REGION` or `AWS_REGION`.
+
 ## Deploy From Zero
 
+The Lambda packages use `pg8000`, a pure-Python PostgreSQL driver. This avoids
+native `_psycopg` binary compatibility issues and lets `package_lambdas.sh` run
+with the available `python3` as long as Python and pip are installed.
+
+From `/Repositorio/Abricot-be`:
+
 ```bash
+python3 --version
+./scripts/package_lambdas.sh
+cd infra
 cp terraform.tfvars.example terraform.tfvars
 ```
 
 Edit `terraform.tfvars`:
 
-- Replace `<account-id>` in both LabRole ARNs.
-- Replace `postgres_password` with a strong password.
-- Replace `frontend_callback_url` with the S3 website callback URL for deployed
-  frontend, or keep localhost for local smoke tests.
-- Set `users_service_layer_arns` only if `psycopg2` is supplied through a
-  Lambda Layer. Otherwise package the dependency into `lambdas/users_service`
-  before applying.
+- Required: replace `postgres_password` with a strong password.
+- Optional: keep `aws_region = "us-east-1"` unless the lab explicitly uses a
+  different region.
+- Optional: replace `frontend_callback_url` with the S3 website callback URL
+  for deployed frontend, or keep localhost for local smoke tests.
+
+If updating an older local `terraform.tfvars`, remove `lambda_role_arn` and
+`rds_proxy_role_arn`; Terraform now derives LabRole automatically. Also remove
+`users_service_layer_arns`; this delivery packages dependencies into
+`build/lambdas/*` instead of using Lambda Layers.
 
 Then run:
 
@@ -129,6 +167,65 @@ terraform fmt
 terraform validate
 terraform plan
 terraform apply
+```
+
+`./scripts/package_lambdas.sh` creates `build/lambdas/health`,
+`build/lambdas/users_service`, and `build/lambdas/db_migrate`. Terraform zips
+those build folders with `archive_file`. The `build/` folder is generated and
+gitignored.
+
+## Database Migrations
+
+RDS is private and Multi-AZ, so the laptop cannot run `flask db upgrade`
+against it directly. The cloud equivalent is `abricot-tp3-db-migrate`.
+
+Run migrations after Terraform creates or updates the private database stack,
+and before testing DB-backed routes such as `POST /users`.
+
+Invoke the migration Lambda:
+
+```bash
+aws lambda invoke \
+  --function-name abricot-tp3-db-migrate \
+  --payload '{"action":"upgrade"}' \
+  --cli-binary-format raw-in-base64-out \
+  --region us-east-1 \
+  migration-response.json
+cat migration-response.json
+```
+
+Validate that the schema exists through the same private path:
+
+```bash
+aws lambda invoke \
+  --function-name abricot-tp3-db-migrate \
+  --payload '{"action":"validate"}' \
+  --cli-binary-format raw-in-base64-out \
+  --region us-east-1 \
+  schema-validation-response.json
+cat schema-validation-response.json
+```
+
+The validation response includes the current Alembic revision and the list of
+tables visible in the `public` schema. This is the expected validation path
+because there is no public or direct DB access from the laptop.
+
+## Optional AWS CLI Verification
+
+Terraform itself uses `var.aws_region`, so no region environment variable is
+required. For raw AWS CLI checks, either configure a default once:
+
+```bash
+aws configure set region us-east-1
+```
+
+or keep commands copy-paste safe with `--region us-east-1`:
+
+```bash
+aws sts get-caller-identity --region us-east-1
+aws rds describe-db-instances --db-instance-identifier abricot-tp3-postgres --region us-east-1
+aws rds describe-db-proxies --db-proxy-name abricot-tp3-users-proxy --region us-east-1
+aws apigatewayv2 get-apis --region us-east-1
 ```
 
 ## Destroy And Recreate

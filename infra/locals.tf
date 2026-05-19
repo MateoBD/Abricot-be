@@ -1,7 +1,8 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  name_prefix = lower(var.project_name)
+  name_prefix  = lower(var.project_name)
+  lab_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
 
   frontend_callback_url = trimsuffix(var.frontend_callback_url, "/")
   frontend_base_url     = trimsuffix(trimsuffix(local.frontend_callback_url, "/auth/callback"), "/")
@@ -53,16 +54,22 @@ locals {
     POSTGRES_SSLMODE  = local.postgres_sslmode
   } : {}
 
+  db_migration_environment = merge(local.users_service_db_environment, {
+    DB_MIGRATION_REVISION = "head"
+    MIGRATIONS_DIR        = "migrations"
+  })
+
   lambda_environment = {
     health        = {}
     users_service = merge(local.users_service_base_environment, local.users_service_db_environment)
+    db_migrate    = local.db_migration_environment
   }
 
-  lambda_functions = {
+  api_lambda_functions = {
     health = {
       handler            = "handler.handler"
-      source_dir         = "${path.module}/../lambdas/health"
-      layers             = []
+      source_dir         = "${path.module}/../build/lambdas/health"
+      excludes           = []
       timeout            = 5
       vpc_enabled        = false
       subnet_ids         = []
@@ -70,12 +77,26 @@ locals {
     }
     users_service = {
       handler            = "handler.handler"
-      source_dir         = "${path.module}/../lambdas/users_service"
-      layers             = var.users_service_layer_arns
+      source_dir         = "${path.module}/../build/lambdas/users_service"
+      excludes           = []
       timeout            = 10
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
     }
   }
+
+  private_lambda_functions = local.lambda_private_attachment_enabled ? {
+    db_migrate = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/db_migrate"
+      excludes           = []
+      timeout            = 120
+      vpc_enabled        = true
+      subnet_ids         = local.private_app_subnet_ids
+      security_group_ids = local.lambda_security_group_ids
+    }
+  } : {}
+
+  lambda_functions = merge(local.api_lambda_functions, local.private_lambda_functions)
 }

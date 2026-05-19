@@ -1,0 +1,1 @@
+{"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": "{\"ok\": true, \"operation\": \"alembic upgrade\", \"target_revision\": \"head\", \"current_revision\": \"f2a3b4c5d6e7\", \"db_target\": \"RDS_PROXY\"}"}

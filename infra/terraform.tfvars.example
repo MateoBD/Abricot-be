@@ -1,10 +1,6 @@
 project_name = "abricot-tp3"
 aws_region   = "us-east-1"
 
-# AWS Academy exposes LabRole. Terraform must not create or read IAM roles.
-lambda_role_arn    = "arn:aws:iam::<account-id>:role/LabRole"
-rds_proxy_role_arn = "arn:aws:iam::<account-id>:role/LabRole"
-
 # Local dev callback. For S3 deploy, replace with:
 # frontend_callback_url = "http://<bucket-name>.s3-website-us-east-1.amazonaws.com/auth/callback"
 frontend_callback_url = "http://localhost:5173/auth/callback"
@@ -15,10 +11,6 @@ postgres_password = "CHANGE_ME_STRONG_PASSWORD"
 
 # Normal TP3 deliverable path: final private architecture on.
 enable_full_private_stack = true
-
-# Optional only if dependencies are supplied through a Lambda Layer instead of
-# being packaged into lambdas/users_service.
-users_service_layer_arns = []
 
 # Emergency only: use true for a two-phase recovery if AWS rejects adding
 # Lambda vpc_config in the same apply as the private database stack.

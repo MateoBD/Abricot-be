@@ -215,7 +215,7 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.private[0].name
   vpc_security_group_ids = [aws_security_group.rds[0].id]
   publicly_accessible    = false
-  multi_az               = false
+  multi_az               = true
   deletion_protection    = false
   skip_final_snapshot    = true
 
@@ -259,7 +259,7 @@ resource "aws_db_proxy" "users" {
   engine_family          = "POSTGRESQL"
   idle_client_timeout    = 1800
   require_tls            = true
-  role_arn               = var.rds_proxy_role_arn
+  role_arn               = local.lab_role_arn
   vpc_security_group_ids = [aws_security_group.rds_proxy[0].id]
   vpc_subnet_ids         = local.private_db_subnet_ids
 

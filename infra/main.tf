@@ -72,6 +72,7 @@ data "archive_file" "lambda" {
 
   type        = "zip"
   source_dir  = each.value.source_dir
+  excludes    = each.value.excludes
   output_path = "${path.module}/${each.key}.zip"
 }
 
@@ -81,10 +82,9 @@ resource "aws_lambda_function" "this" {
   function_name    = "${local.name_prefix}-${replace(each.key, "_", "-")}"
   filename         = data.archive_file.lambda[each.key].output_path
   handler          = each.value.handler
-  role             = var.lambda_role_arn
+  role             = local.lab_role_arn
   runtime          = local.lambda_runtime
   source_code_hash = data.archive_file.lambda[each.key].output_base64sha256
-  layers           = each.value.layers
   timeout          = each.value.timeout
 
   dynamic "environment" {
@@ -104,7 +104,7 @@ resource "aws_lambda_function" "this" {
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
-  for_each = local.lambda_functions
+  for_each = local.api_lambda_functions
 
   api_id                 = aws_apigatewayv2_api.http.id
   integration_type       = "AWS_PROXY"
@@ -163,7 +163,7 @@ resource "aws_apigatewayv2_route" "users_put" {
 }
 
 resource "aws_lambda_permission" "api_gateway" {
-  for_each = local.lambda_functions
+  for_each = local.api_lambda_functions
 
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.this[each.key].function_name

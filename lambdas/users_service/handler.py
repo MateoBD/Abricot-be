@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import ssl
+from contextlib import contextmanager
 from typing import Any
 from urllib import parse, request
 from urllib.error import HTTPError, URLError
@@ -177,6 +179,7 @@ def _db_missing_env() -> list[str]:
     return [name for name in _db_required_env() if not os.environ.get(name)]
 
 
+@contextmanager
 def _db_connect():
     missing = _db_missing_env()
     if missing:
@@ -186,21 +189,50 @@ def _db_connect():
         raise RuntimeError("invalid_db_target")
 
     try:
-        import psycopg2
-        from psycopg2.extras import RealDictCursor
+        import pg8000.dbapi
     except ImportError as exc:
-        raise RuntimeError("missing_psycopg2_dependency") from exc
+        raise RuntimeError("missing_pg8000_dependency") from exc
 
-    return psycopg2.connect(
+    conn = pg8000.dbapi.connect(
         host=os.environ["POSTGRES_HOST"],
         port=int(os.environ.get("POSTGRES_PORT", "5432")),
-        dbname=os.environ["POSTGRES_DB"],
+        database=os.environ["POSTGRES_DB"],
         user=os.environ["POSTGRES_USER"],
         password=os.environ["POSTGRES_PASSWORD"],
-        sslmode=os.environ.get("POSTGRES_SSLMODE", "require"),
-        connect_timeout=5,
-        cursor_factory=RealDictCursor,
+        timeout=5,
+        ssl_context=_pg_ssl_context(),
     )
+    try:
+        yield conn
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+@contextmanager
+def _db_cursor(conn):
+    cursor = conn.cursor()
+    try:
+        yield cursor
+    finally:
+        cursor.close()
+
+
+def _pg_ssl_context():
+    sslmode = os.environ.get("POSTGRES_SSLMODE", "require").lower()
+    if sslmode == "disable":
+        return None
+    return ssl._create_unverified_context()
+
+
+def _fetchone_dict(cursor) -> dict[str, Any] | None:
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    columns = [column[0] for column in cursor.description]
+    return dict(zip(columns, row))
 
 
 def _user_payload(row: dict[str, Any]) -> dict:
@@ -219,7 +251,7 @@ def _user_payload(row: dict[str, Any]) -> dict:
 
 
 def _get_user_by_cognito_sub(conn, cognito_sub: str) -> dict[str, Any] | None:
-    with conn.cursor() as cursor:
+    with _db_cursor(conn) as cursor:
         cursor.execute(
             """
             SELECT id, email, name, surname, role, cognito_sub, created_at
@@ -228,11 +260,11 @@ def _get_user_by_cognito_sub(conn, cognito_sub: str) -> dict[str, Any] | None:
             """,
             (cognito_sub,),
         )
-        return cursor.fetchone()
+        return _fetchone_dict(cursor)
 
 
 def _get_user_by_email(conn, email: str) -> dict[str, Any] | None:
-    with conn.cursor() as cursor:
+    with _db_cursor(conn) as cursor:
         cursor.execute(
             """
             SELECT id, email, name, surname, role, cognito_sub, created_at
@@ -241,11 +273,11 @@ def _get_user_by_email(conn, email: str) -> dict[str, Any] | None:
             """,
             (email,),
         )
-        return cursor.fetchone()
+        return _fetchone_dict(cursor)
 
 
 def _get_user_by_id(conn, user_id: str) -> dict[str, Any] | None:
-    with conn.cursor() as cursor:
+    with _db_cursor(conn) as cursor:
         cursor.execute(
             """
             SELECT id, email, name, surname, role, cognito_sub, created_at
@@ -254,11 +286,11 @@ def _get_user_by_id(conn, user_id: str) -> dict[str, Any] | None:
             """,
             (user_id,),
         )
-        return cursor.fetchone()
+        return _fetchone_dict(cursor)
 
 
 def _link_user_to_cognito_sub(conn, user_id: str, cognito_sub: str) -> dict[str, Any]:
-    with conn.cursor() as cursor:
+    with _db_cursor(conn) as cursor:
         cursor.execute(
             """
             UPDATE users
@@ -268,7 +300,7 @@ def _link_user_to_cognito_sub(conn, user_id: str, cognito_sub: str) -> dict[str,
             """,
             (cognito_sub, user_id),
         )
-        row = cursor.fetchone()
+        row = _fetchone_dict(cursor)
     conn.commit()
     return row
 
@@ -281,7 +313,7 @@ def _create_cognito_user(
     name: str,
     surname: str,
 ) -> dict[str, Any]:
-    with conn.cursor() as cursor:
+    with _db_cursor(conn) as cursor:
         cursor.execute(
             """
             INSERT INTO users (id, email, cognito_sub, password_hash, name, surname, role, created_at)
@@ -297,7 +329,7 @@ def _create_cognito_user(
                 surname,
             ),
         )
-        row = cursor.fetchone()
+        row = _fetchone_dict(cursor)
     conn.commit()
     return row
 
@@ -317,7 +349,7 @@ def _update_user_profile(conn, user_id: str, data: dict[str, Any]) -> dict[str, 
 
     assignments = ", ".join(f"{column} = %s" for column in allowed)
     values = [*allowed.values(), user_id]
-    with conn.cursor() as cursor:
+    with _db_cursor(conn) as cursor:
         cursor.execute(
             f"""
             UPDATE users
@@ -325,9 +357,9 @@ def _update_user_profile(conn, user_id: str, data: dict[str, Any]) -> dict[str, 
             WHERE id = %s
             RETURNING id, email, name, surname, role, cognito_sub, created_at
             """,
-            values,
+            tuple(values),
         )
-        row = cursor.fetchone()
+        row = _fetchone_dict(cursor)
     conn.commit()
     return row
 
