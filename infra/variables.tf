@@ -39,7 +39,7 @@ variable "postgres_password" {
   sensitive   = true
 
   validation {
-    condition     = length(trimspace(nonsensitive(var.postgres_password))) >= 12 && nonsensitive(var.postgres_password) != "CHANGE_ME_STRONG_PASSWORD"
+    condition     = length(trimspace(var.postgres_password)) >= 12 && var.postgres_password != "CHANGE_ME_STRONG_PASSWORD"
     error_message = "postgres_password must be at least 12 characters and cannot be CHANGE_ME_STRONG_PASSWORD."
   }
 }

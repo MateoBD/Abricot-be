@@ -238,7 +238,7 @@ resource "aws_db_instance" "postgres" {
     }
 
     precondition {
-      condition     = try(length(trimspace(nonsensitive(var.postgres_password))) > 0, false)
+      condition     = try(length(trimspace(var.postgres_password)) > 0, false)
       error_message = "postgres_password is required when enable_full_private_stack=true."
     }
   }
