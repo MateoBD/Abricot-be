@@ -215,21 +215,26 @@ Configure these GitHub repository variables:
 |----------|----------|-------------|
 | `FRONTEND_REPOSITORY` | No | Frontend repository to checkout. Defaults to `NaPrado/Abricot-few`. |
 | `CLOUDFRONT_DISTRIBUTION_ID` | No | CloudFront distribution to invalidate after frontend deploy. Leave unset when using direct S3 hosting. |
+| `TERRAFORM_STATE_BUCKET` | No | Existing S3 bucket to use for Terraform state. Defaults to `abricot-tp3-<account-id>-terraform-state`. |
+| `TERRAFORM_LOCK_TABLE` | No | Existing DynamoDB lock table. Leave unset to run without Terraform state locking. |
 
 AWS prerequisites expected by the workflows:
 
 - Active AWS Academy lab credentials with Terraform, Lambda, S3, DynamoDB,
   API Gateway, Cognito, VPC, RDS, and CloudWatch deployment permissions
 
-The deployment and destroy workflows expect these Terraform remote state
-resources to already exist:
+The deployment and destroy workflows expect an existing S3 bucket for Terraform
+remote state:
 
 - S3 Terraform backend bucket: `abricot-tp3-<account-id>-terraform-state`
-- DynamoDB Terraform lock table: `abricot-tp3-terraform-lock`
+
+You can override that bucket with the GitHub repository variable
+`TERRAFORM_STATE_BUCKET`. The DynamoDB lock table is optional; set
+`TERRAFORM_LOCK_TABLE` only if the table already exists.
 
 Terraform cannot create its own S3 backend during `terraform init`. If AWS
 Academy shows an explicit `AccessDenied` for `s3:CreateBucket`, use a
-pre-created bucket/table from the lab environment or run the deploy with AWS
+pre-created bucket from the lab environment or run the deploy with AWS
 credentials that are allowed to create them. The validation workflow uses
 `terraform init -backend=false`, so PR validation does not need the state bucket.
 

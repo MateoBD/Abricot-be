@@ -58,10 +58,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure Terraform backend names
+        env:
+          TERRAFORM_STATE_BUCKET_VAR: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TERRAFORM_LOCK_TABLE_VAR: ${{ vars.TERRAFORM_LOCK_TABLE }}
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "TERRAFORM_STATE_BUCKET=abricot-tp3-${account_id}-terraform-state" >> "$GITHUB_ENV"
-          echo "TERRAFORM_LOCK_TABLE=abricot-tp3-terraform-lock" >> "$GITHUB_ENV"
+          echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET_VAR:-abricot-tp3-${account_id}-terraform-state}" >> "$GITHUB_ENV"
+          echo "TERRAFORM_LOCK_TABLE=${TERRAFORM_LOCK_TABLE_VAR:-}" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -87,10 +90,10 @@ jobs:
             exit 1
           fi
 
-          if ! aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null 2>&1; then
+          if [ -n "$TERRAFORM_LOCK_TABLE" ] && ! aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null 2>&1; then
             {
               echo "Terraform lock table $TERRAFORM_LOCK_TABLE does not exist or is not accessible."
-              echo "Create this DynamoDB table outside Terraform, or run with AWS credentials that can create DynamoDB tables."
+              echo "Create this DynamoDB table outside Terraform, unset TERRAFORM_LOCK_TABLE, or run with AWS credentials that can create DynamoDB tables."
             } >&2
             exit 1
           fi
@@ -98,9 +101,11 @@ jobs:
       - name: Terraform init
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
-          terraform init \
-            -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
-            -backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE"
+          init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
+          if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
+            init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
+          fi
+          terraform init "${init_args[@]}"
 
       - name: Terraform apply
         working-directory: ${{ env.BACKEND_PATH }}/infra

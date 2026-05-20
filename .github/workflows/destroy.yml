@@ -44,10 +44,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure Terraform backend names
+        env:
+          TERRAFORM_STATE_BUCKET_VAR: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TERRAFORM_LOCK_TABLE_VAR: ${{ vars.TERRAFORM_LOCK_TABLE }}
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "TERRAFORM_STATE_BUCKET=abricot-tp3-${account_id}-terraform-state" >> "$GITHUB_ENV"
-          echo "TERRAFORM_LOCK_TABLE=abricot-tp3-terraform-lock" >> "$GITHUB_ENV"
+          echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET_VAR:-abricot-tp3-${account_id}-terraform-state}" >> "$GITHUB_ENV"
+          echo "TERRAFORM_LOCK_TABLE=${TERRAFORM_LOCK_TABLE_VAR:-}" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -65,14 +68,18 @@ jobs:
       - name: Verify Terraform backend exists
         run: |
           aws s3api head-bucket --bucket "$TERRAFORM_STATE_BUCKET"
-          aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null
+          if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
+            aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null
+          fi
 
       - name: Terraform init
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
-          terraform init \
-            -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
-            -backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE"
+          init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
+          if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
+            init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
+          fi
+          terraform init "${init_args[@]}"
 
       - name: Empty versioned S3 buckets
         working-directory: ${{ env.BACKEND_PATH }}/infra
