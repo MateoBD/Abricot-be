@@ -247,7 +247,8 @@ resource "aws_db_instance" "postgres" {
 resource "aws_secretsmanager_secret" "db" {
   count = local.full_private_stack_enabled ? 1 : 0
 
-  name = "${local.name_prefix}/postgres"
+  name                    = "${local.name_prefix}/postgres"
+  recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "db" {

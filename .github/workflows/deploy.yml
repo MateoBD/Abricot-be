@@ -143,6 +143,31 @@ jobs:
             terraform init -reconfigure "${init_args[@]}"
           fi
 
+      - name: Delete stale scheduled database secret
+        run: |
+          secret_name="abricot-tp3/postgres"
+          deleted_date="$(aws secretsmanager describe-secret \
+            --secret-id "$secret_name" \
+            --query 'DeletedDate' \
+            --output text 2>/dev/null || true)"
+
+          if [ -n "$deleted_date" ] && [ "$deleted_date" != "None" ]; then
+            echo "Secret $secret_name is scheduled for deletion; force deleting it so Terraform can recreate it."
+            aws secretsmanager delete-secret \
+              --secret-id "$secret_name" \
+              --force-delete-without-recovery >/dev/null
+
+            for _ in $(seq 1 30); do
+              if ! aws secretsmanager describe-secret --secret-id "$secret_name" >/dev/null 2>&1; then
+                exit 0
+              fi
+              sleep 2
+            done
+
+            echo "Timed out waiting for $secret_name to be deleted." >&2
+            exit 1
+          fi
+
       - name: Terraform apply
         working-directory: ${{ env.BACKEND_PATH }}/infra
         env:
@@ -196,7 +221,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save Terraform local state
-        if: env.TERRAFORM_BACKEND_MODE == 'local'
+        if: always() && env.TERRAFORM_BACKEND_MODE == 'local'
         uses: actions/cache/save@v4
         with:
           path: |
