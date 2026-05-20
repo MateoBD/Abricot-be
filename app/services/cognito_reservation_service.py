@@ -17,6 +17,46 @@ def _parse_uuid(value: str | UUID | None, field: str) -> UUID:
         raise ValidationError("Invalid identifier format.", {field: "Invalid UUID"}) from error
 
 
+_BODY_ALIASES = {
+    "partySize": ("partySize", "party_size"),
+    "date": ("date", "reservationDate", "reservation_date"),
+    "timeSlot": ("timeSlot", "time", "reservationTime", "reservation_time"),
+    "notes": ("notes", "specialRequests", "special_requests"),
+    "guestName": ("guestName", "customerName", "guest_name", "customer_name"),
+    "guestEmail": ("guestEmail", "customerEmail", "guest_email", "customer_email"),
+    "guestPhone": ("guestPhone", "customerPhone", "guest_phone", "customer_phone"),
+    "userId": ("userId", "user_id"),
+}
+
+
+def _first_present(body: dict, names: tuple[str, ...]):
+    for name in names:
+        if name in body and body.get(name) not in (None, ""):
+            return body.get(name)
+    return None
+
+
+def _normalized_body(body: dict | None) -> dict:
+    normalized = dict(body or {})
+    for target, aliases in _BODY_ALIASES.items():
+        value = _first_present(normalized, aliases)
+        if value is not None:
+            normalized[target] = value
+    return normalized
+
+
+def _parse_party_size(value) -> int:
+    if isinstance(value, bool):
+        raise ValidationError("partySize must be an integer.", {"partySize": "Invalid type"})
+    try:
+        party_size = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValidationError("partySize must be an integer.", {"partySize": "Invalid type"}) from error
+    if party_size < 1:
+        raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
+    return party_size
+
+
 class CognitoReservationService:
     @staticmethod
     def create(
@@ -26,11 +66,13 @@ class CognitoReservationService:
         body: dict,
         is_cognito_admin: bool = False,
     ) -> dict:
+        body = _normalized_body(body)
         restaurant_uuid = _parse_uuid(restaurant_id, "restaurantId")
         principal = CognitoAuthorizationService.principal_user(cognito_sub)
         source = str(body.get("source") or "ONLINE").upper()
 
         if source in ("PHONE", "EVENT"):
+            CognitoAuthorizationService.reject_privilege_fields(body, allow_user_id=True)
             CognitoAuthorizationService.require_restaurant_admin(
                 principal=principal,
                 restaurant_id=restaurant_uuid,
@@ -40,7 +82,7 @@ class CognitoReservationService:
             return ReservationService.create_for_admin(
                 restaurant_id=restaurant_uuid,
                 admin_user_id=principal.id,
-                party_size=body.get("partySize"),
+                party_size=_parse_party_size(body.get("partySize")),
                 on_date=ReservationService.parse_required_date(body.get("date")),
                 time_slot=ReservationService.parse_required_time(body.get("timeSlot")),
                 source=ReservationService.parse_required_admin_source(source),
@@ -57,10 +99,11 @@ class CognitoReservationService:
                 {"source": "Must be one of: ONLINE, PHONE, EVENT"},
             )
 
+        CognitoAuthorizationService.reject_privilege_fields(body)
         return ReservationService.create(
             restaurant_id=restaurant_uuid,
             user_id=principal.id,
-            party_size=body.get("partySize"),
+            party_size=_parse_party_size(body.get("partySize")),
             on_date=ReservationService.parse_required_date(body.get("date")),
             time_slot=ReservationService.parse_required_time(body.get("timeSlot")),
             notes=body.get("notes"),
@@ -68,9 +111,10 @@ class CognitoReservationService:
 
     @staticmethod
     def create_public(*, restaurant_id: str | UUID, body: dict) -> dict:
+        body = _normalized_body(body)
         return ReservationService.create_guest_online(
             restaurant_id=_parse_uuid(restaurant_id, "restaurantId"),
-            party_size=body.get("partySize"),
+            party_size=_parse_party_size(body.get("partySize")),
             on_date=ReservationService.parse_required_date(body.get("date")),
             time_slot=ReservationService.parse_required_time(body.get("timeSlot")),
             guest_name=body.get("guestName"),

@@ -1,18 +1,22 @@
 import logging
 
+from app.exceptions.errors import AppError
 from app.services.cognito_reservation_service import CognitoReservationService
 from common.api import (
+    app_error_response,
     authorizer_claims,
     claim_sub,
+    database_error_response,
     is_cognito_super_admin,
     json_body,
+    json_response,
     method,
     path_parameters,
     query_params,
     route_not_found,
     route_path,
-    with_backend,
 )
+from common.flask_db import backend_app_context
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -60,6 +64,73 @@ def _user_id(event: dict) -> str | None:
     return None
 
 
+def _body_keys(body: dict | None) -> list[str] | None:
+    if not isinstance(body, dict):
+        return None
+    return sorted(str(key) for key in body.keys())
+
+
+def _internal_error_response() -> dict:
+    return json_response(
+        500,
+        {
+            "message": "Reservations service failed.",
+            "code": "INTERNAL_ERROR",
+            "errors": {},
+        },
+    )
+
+
+def _log_unexpected(
+    event: dict,
+    body: dict | None,
+    restaurant_id: str | None,
+    route: str,
+    error: Exception,
+) -> None:
+    claims = authorizer_claims(event)
+    logger.exception(
+        (
+            "Reservations service failed: route=%s method=%s path=%s route_key=%s "
+            "path_params=%s body_keys=%s restaurant_id=%s cognito_sub_present=%s "
+            "error_type=%s"
+        ),
+        route,
+        method(event),
+        route_path(event),
+        event.get("routeKey"),
+        path_parameters(event),
+        _body_keys(body),
+        restaurant_id,
+        bool(claim_sub(claims)),
+        type(error).__name__,
+    )
+
+
+def _with_reservations_backend(
+    event: dict,
+    *,
+    route: str,
+    operation,
+    body: dict | None = None,
+    restaurant_id: str | None = None,
+) -> dict:
+    try:
+        with backend_app_context():
+            status_code, payload = operation()
+            return json_response(status_code, payload)
+    except AppError as exc:
+        return app_error_response(exc)
+    except RuntimeError as exc:
+        if str(exc).startswith(("missing_db_env", "invalid_db_target")):
+            return database_error_response("reservations_service", exc, logger)
+        _log_unexpected(event, body, restaurant_id, route, exc)
+        return _internal_error_response()
+    except Exception as exc:
+        _log_unexpected(event, body, restaurant_id, route, exc)
+        return _internal_error_response()
+
+
 def handler(event, context):
     event = event or {}
     http_method = method(event)
@@ -73,18 +144,20 @@ def handler(event, context):
         and http_method == "POST"
         and path == f"/restaurants/{restaurant_id}/reservations"
     ):
-        return with_backend(
-            "reservations_service",
-            "reservations_create",
+        body = json_body(event)
+        return _with_reservations_backend(
+            event,
+            route="reservations_create",
             lambda: (
                 201,
                 CognitoReservationService.create(
                     restaurant_id=restaurant_id,
-                    body=json_body(event),
+                    body=body,
                     **auth,
                 ),
             ),
-            logger,
+            body=body,
+            restaurant_id=restaurant_id,
         )
 
     if (
@@ -92,17 +165,19 @@ def handler(event, context):
         and http_method == "POST"
         and path == f"/restaurants/{restaurant_id}/public-reservations"
     ):
-        return with_backend(
-            "reservations_service",
-            "reservations_create_public",
+        body = json_body(event)
+        return _with_reservations_backend(
+            event,
+            route="reservations_create_public",
             lambda: (
                 201,
                 CognitoReservationService.create_public(
                     restaurant_id=restaurant_id,
-                    body=json_body(event),
+                    body=body,
                 ),
             ),
-            logger,
+            body=body,
+            restaurant_id=restaurant_id,
         )
 
     if (
@@ -110,9 +185,9 @@ def handler(event, context):
         and http_method == "GET"
         and path == f"/restaurants/{restaurant_id}/reservations"
     ):
-        return with_backend(
-            "reservations_service",
-            "reservations_restaurant_list",
+        return _with_reservations_backend(
+            event,
+            route="reservations_restaurant_list",
             lambda: (
                 200,
                 CognitoReservationService.list_for_restaurant(
@@ -121,14 +196,14 @@ def handler(event, context):
                     **auth,
                 ),
             ),
-            logger,
+            restaurant_id=restaurant_id,
         )
 
     reservation_id = _reservation_id(event)
     if reservation_id and http_method == "GET" and path == f"/reservations/{reservation_id}":
-        return with_backend(
-            "reservations_service",
-            "reservations_get",
+        return _with_reservations_backend(
+            event,
+            route="reservations_get",
             lambda: (
                 200,
                 CognitoReservationService.get_by_id(
@@ -136,29 +211,29 @@ def handler(event, context):
                     cognito_sub=auth["cognito_sub"],
                 ),
             ),
-            logger,
         )
 
     if reservation_id and http_method == "PATCH" and path == f"/reservations/{reservation_id}":
-        return with_backend(
-            "reservations_service",
-            "reservations_patch",
+        body = json_body(event)
+        return _with_reservations_backend(
+            event,
+            route="reservations_patch",
             lambda: (
                 200,
                 CognitoReservationService.transition_status(
                     reservation_id=reservation_id,
                     cognito_sub=auth["cognito_sub"],
-                    body=json_body(event),
+                    body=body,
                 ),
             ),
-            logger,
+            body=body,
         )
 
     user_id = _user_id(event)
     if user_id and http_method == "GET" and path == f"/users/{user_id}/reservations":
-        return with_backend(
-            "reservations_service",
-            "reservations_user_list",
+        return _with_reservations_backend(
+            event,
+            route="reservations_user_list",
             lambda: (
                 200,
                 CognitoReservationService.list_for_user(
@@ -167,7 +242,6 @@ def handler(event, context):
                     **auth,
                 ),
             ),
-            logger,
         )
 
     return route_not_found()
