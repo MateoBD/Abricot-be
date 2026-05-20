@@ -95,6 +95,14 @@ jobs:
                 --query 'DeleteMarkers[0:1000].{Key:Key,VersionId:VersionId}' \
                 --output json)"
 
+              if [ "$versions" = "null" ]; then
+                versions="[]"
+              fi
+
+              if [ "$delete_markers" = "null" ]; then
+                delete_markers="[]"
+              fi
+
               delete_payload="$(jq -c -n \
                 --argjson versions "$versions" \
                 --argjson delete_markers "$delete_markers" \
@@ -111,16 +119,8 @@ jobs:
             done
           }
 
-          frontend_bucket="$(terraform output -raw frontend_bucket_name 2>/dev/null || true)"
-          lambda_artifacts_bucket="$(terraform output -raw lambda_artifacts_bucket_name 2>/dev/null || true)"
-
-          if [ -z "$frontend_bucket" ] || [ "$frontend_bucket" = "null" ]; then
-            frontend_bucket="abricot-tp3-${account_id}-frontend"
-          fi
-
-          if [ -z "$lambda_artifacts_bucket" ] || [ "$lambda_artifacts_bucket" = "null" ]; then
-            lambda_artifacts_bucket="abricot-tp3-${account_id}-lambda-artifacts"
-          fi
+          frontend_bucket="abricot-tp3-${account_id}-frontend"
+          lambda_artifacts_bucket="abricot-tp3-${account_id}-lambda-artifacts"
 
           empty_versioned_bucket "$frontend_bucket"
           empty_versioned_bucket "$lambda_artifacts_bucket"
