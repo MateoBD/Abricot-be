@@ -44,7 +44,7 @@ resource "aws_route" "public_internet" {
 }
 
 resource "aws_route_table_association" "public" {
-  count = local.full_private_stack_enabled ? length(aws_subnet.public) : 0
+  count = local.full_private_stack_enabled ? length(local.public_subnet_cidrs) : 0
 
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public[0].id
@@ -92,13 +92,13 @@ resource "aws_nat_gateway" "this" {
 }
 
 resource "aws_route_table" "private_app" {
-  count = local.full_private_stack_enabled ? length(aws_subnet.private_app) : 0
+  count = local.full_private_stack_enabled ? length(local.private_app_subnet_cidrs) : 0
 
   vpc_id = local.private_vpc_id
 }
 
 resource "aws_route" "private_app_nat" {
-  count = local.full_private_stack_enabled ? length(aws_route_table.private_app) : 0
+  count = local.full_private_stack_enabled ? length(local.private_app_subnet_cidrs) : 0
 
   route_table_id         = aws_route_table.private_app[count.index].id
   destination_cidr_block = "0.0.0.0/0"
@@ -106,7 +106,7 @@ resource "aws_route" "private_app_nat" {
 }
 
 resource "aws_route_table_association" "private_app" {
-  count = local.full_private_stack_enabled ? length(aws_subnet.private_app) : 0
+  count = local.full_private_stack_enabled ? length(local.private_app_subnet_cidrs) : 0
 
   subnet_id      = aws_subnet.private_app[count.index].id
   route_table_id = aws_route_table.private_app[count.index].id
@@ -119,7 +119,7 @@ resource "aws_route_table" "private_db" {
 }
 
 resource "aws_route_table_association" "private_db" {
-  count = local.full_private_stack_enabled ? length(aws_subnet.private_db) : 0
+  count = local.full_private_stack_enabled ? length(local.private_db_subnet_cidrs) : 0
 
   subnet_id      = aws_subnet.private_db[count.index].id
   route_table_id = aws_route_table.private_db[0].id

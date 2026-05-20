@@ -141,6 +141,30 @@ route_table_id_for_subnet() {
     --query 'RouteTables[0].RouteTableId'
 }
 
+nat_gateway_id_for_route_table() {
+  local route_table_id="$1"
+
+  if ! is_real_id "${route_table_id}"; then
+    return 0
+  fi
+
+  aws_text ec2 describe-route-tables \
+    --route-table-ids "${route_table_id}" \
+    --query "RouteTables[0].Routes[?DestinationCidrBlock=='0.0.0.0/0'].NatGatewayId | [0]"
+}
+
+nat_gateway_allocation_id() {
+  local nat_gateway_id="$1"
+
+  if ! is_real_id "${nat_gateway_id}"; then
+    return 0
+  fi
+
+  aws_text ec2 describe-nat-gateways \
+    --nat-gateway-ids "${nat_gateway_id}" \
+    --query 'NatGateways[0].NatGatewayAddresses[0].AllocationId'
+}
+
 route_destination_exists() {
   local route_table_id="$1"
   local destination="$2"
@@ -305,12 +329,21 @@ if is_real_id "${existing_vpc_id}"; then
   import_or_forget_vpc_scoped 'aws_subnet.private_db[0]' "${private_db_subnet_0}" "${existing_vpc_id}"
   import_or_forget_vpc_scoped 'aws_subnet.private_db[1]' "${private_db_subnet_1}" "${existing_vpc_id}"
 
-  nat_gateway_id="$(aws_text ec2 describe-nat-gateways \
-    --filter "Name=vpc-id,Values=${existing_vpc_id}" "Name=subnet-id,Values=${public_subnet_0}" "Name=state,Values=available,pending" \
-    --query 'NatGateways[0].NatGatewayId')"
-  nat_eip_allocation_id="$(aws_text ec2 describe-nat-gateways \
-    --filter "Name=vpc-id,Values=${existing_vpc_id}" "Name=subnet-id,Values=${public_subnet_0}" "Name=state,Values=available,pending" \
-    --query 'NatGateways[0].NatGatewayAddresses[0].AllocationId')"
+  public_route_table_id="$(route_table_id_for_subnet "${public_subnet_0}")"
+  private_app_route_table_0_id="$(route_table_id_for_subnet "${private_app_subnet_0}")"
+  private_app_route_table_1_id="$(route_table_id_for_subnet "${private_app_subnet_1}")"
+  private_db_route_table_id="$(route_table_id_for_subnet "${private_db_subnet_0}")"
+
+  nat_gateway_id="$(nat_gateway_id_for_route_table "${private_app_route_table_0_id}")"
+  if ! is_real_id "${nat_gateway_id}"; then
+    nat_gateway_id="$(nat_gateway_id_for_route_table "${private_app_route_table_1_id}")"
+  fi
+  if ! is_real_id "${nat_gateway_id}"; then
+    nat_gateway_id="$(aws_text ec2 describe-nat-gateways \
+      --filter "Name=vpc-id,Values=${existing_vpc_id}" "Name=subnet-id,Values=${public_subnet_0}" "Name=state,Values=available,pending" \
+      --query 'NatGateways[0].NatGatewayId')"
+  fi
+  nat_eip_allocation_id="$(nat_gateway_allocation_id "${nat_gateway_id}")"
 
   import_if_missing 'aws_eip.nat[0]' "${nat_eip_allocation_id}"
   if is_real_id "${nat_gateway_id}"; then
@@ -318,11 +351,6 @@ if is_real_id "${existing_vpc_id}"; then
   else
     remove_state_if_attr_mismatch 'aws_nat_gateway.this[0]' "subnet_id" "${public_subnet_0}"
   fi
-
-  public_route_table_id="$(route_table_id_for_subnet "${public_subnet_0}")"
-  private_app_route_table_0_id="$(route_table_id_for_subnet "${private_app_subnet_0}")"
-  private_app_route_table_1_id="$(route_table_id_for_subnet "${private_app_subnet_1}")"
-  private_db_route_table_id="$(route_table_id_for_subnet "${private_db_subnet_0}")"
 
   import_or_forget_vpc_scoped 'aws_route_table.public[0]' "${public_route_table_id}" "${existing_vpc_id}"
   import_or_forget_vpc_scoped 'aws_route_table.private_app[0]' "${private_app_route_table_0_id}" "${existing_vpc_id}"
@@ -465,6 +493,7 @@ import_if_missing 'aws_secretsmanager_secret.db[0]' "${secret_arn}"
 if aws rds describe-db-proxies --db-proxy-name "${db_proxy}" >/dev/null 2>&1; then
   import_if_absent 'aws_db_proxy.users[0]' "${db_proxy}"
   import_if_absent 'aws_db_proxy_default_target_group.users[0]' "${db_proxy}/default"
+  import_if_absent 'aws_db_proxy_target.users[0]' "${db_proxy}/default/RDS_INSTANCE/${db_instance}"
 fi
 
 echo "Existing-resource import recovery finished"
