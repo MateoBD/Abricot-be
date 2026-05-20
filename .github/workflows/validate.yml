@@ -19,8 +19,6 @@ env:
   AWS_REGION: us-east-1
   BACKEND_PATH: Abricot-be
   FRONTEND_PATH: Abricot-few
-  TERRAFORM_STATE_BUCKET: abricot-terraform-state
-  TERRAFORM_LOCK_TABLE: abricot-terraform-lock
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
 
@@ -145,6 +143,12 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Configure Terraform backend names
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "TERRAFORM_STATE_BUCKET=abricot-tp3-${account_id}-terraform-state" >> "$GITHUB_ENV"
+          echo "TERRAFORM_LOCK_TABLE=abricot-tp3-terraform-lock" >> "$GITHUB_ENV"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -183,7 +187,10 @@ jobs:
 
       - name: Terraform init
         working-directory: ${{ env.BACKEND_PATH }}/infra
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
+            -backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE"
 
       - name: Terraform plan
         id: plan

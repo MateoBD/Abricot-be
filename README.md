@@ -224,8 +224,8 @@ AWS prerequisites expected by the workflows:
 The workflows bootstrap the Terraform remote state resources automatically if
 they do not exist yet:
 
-- S3 Terraform backend bucket: `abricot-terraform-state`
-- DynamoDB Terraform lock table: `abricot-terraform-lock`
+- S3 Terraform backend bucket: `abricot-tp3-<account-id>-terraform-state`
+- DynamoDB Terraform lock table: `abricot-tp3-terraform-lock`
 
 Terraform creates the frontend hosting bucket and Lambda artifact bucket, then
 the deployment workflow reads their names from `terraform output`.
@@ -238,9 +238,8 @@ Manual workflow buttons live in GitHub -> Actions:
   after `confirm_destroy` is set to `DESTROY`.
 
 Destroy removes Terraform-managed resources, including the frontend and Lambda
-artifact buckets. The bootstrap state bucket `abricot-terraform-state` and lock
-table `abricot-terraform-lock` are intentionally left in AWS because they are
-created before Terraform starts.
+artifact buckets. The bootstrap state bucket and lock table are intentionally
+left in AWS because they are created before Terraform starts.
 
 ### AWS Academy Credentials
 
