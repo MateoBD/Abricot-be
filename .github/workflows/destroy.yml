@@ -1,0 +1,154 @@
+name: Destroy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: Type DESTROY to confirm deleting Terraform-managed AWS resources.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  BACKEND_PATH: Abricot-be
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    if: inputs.confirm_destroy == 'DESTROY'
+    defaults:
+      run:
+        working-directory: ${{ env.BACKEND_PATH }}
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.BACKEND_PATH }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure Terraform backend names
+        env:
+          TERRAFORM_STATE_BUCKET_VAR: ${{ vars.TERRAFORM_STATE_BUCKET }}
+          TERRAFORM_LOCK_TABLE_VAR: ${{ vars.TERRAFORM_LOCK_TABLE }}
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET_VAR:-abricot-tp3-${account_id}-terraform-state}" >> "$GITHUB_ENV"
+          echo "TERRAFORM_LOCK_TABLE=${TERRAFORM_LOCK_TABLE_VAR:-}" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Build Lambda folders for Terraform archive data sources
+        run: bash ./scripts/package_lambdas.sh
+
+      - name: Verify Terraform backend exists
+        run: |
+          aws s3api head-bucket --bucket "$TERRAFORM_STATE_BUCKET"
+          if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
+            aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null
+          fi
+
+      - name: Terraform init
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: |
+          init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
+          if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
+            init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
+          fi
+          terraform init "${init_args[@]}"
+
+      - name: Empty versioned S3 buckets
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+
+          empty_versioned_bucket() {
+            local bucket="$1"
+
+            if [ -z "$bucket" ] || [ "$bucket" = "null" ]; then
+              return 0
+            fi
+
+            if ! aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+              echo "Bucket $bucket does not exist; skipping."
+              return 0
+            fi
+
+            echo "Emptying all object versions from $bucket"
+            while true; do
+              versions="$(aws s3api list-object-versions \
+                --bucket "$bucket" \
+                --query 'Versions[0:1000].{Key:Key,VersionId:VersionId}' \
+                --output json)"
+              delete_markers="$(aws s3api list-object-versions \
+                --bucket "$bucket" \
+                --query 'DeleteMarkers[0:1000].{Key:Key,VersionId:VersionId}' \
+                --output json)"
+
+              if [ "$versions" = "null" ]; then
+                versions="[]"
+              fi
+
+              if [ "$delete_markers" = "null" ]; then
+                delete_markers="[]"
+              fi
+
+              delete_payload="$(jq -c -n \
+                --argjson versions "$versions" \
+                --argjson delete_markers "$delete_markers" \
+                '{Objects: ($versions + $delete_markers), Quiet: true}')"
+
+              object_count="$(jq '.Objects | length' <<< "$delete_payload")"
+              if [ "$object_count" -eq 0 ]; then
+                break
+              fi
+
+              aws s3api delete-objects \
+                --bucket "$bucket" \
+                --delete "$delete_payload" >/dev/null
+            done
+          }
+
+          frontend_bucket="abricot-tp3-${account_id}-frontend"
+          lambda_artifacts_bucket="abricot-tp3-${account_id}-lambda-artifacts"
+
+          empty_versioned_bucket "$frontend_bucket"
+          empty_versioned_bucket "$lambda_artifacts_bucket"
+
+      - name: Terraform destroy
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        env:
+          TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
+        run: terraform destroy -auto-approve
+
+      - name: Destroy summary
+        run: |
+          {
+            echo "## Destroy"
+            echo "Terraform-managed Abricot AWS resources were destroyed."
+            echo "Bootstrap resources remain: $TERRAFORM_STATE_BUCKET and $TERRAFORM_LOCK_TABLE."
+          } >> "$GITHUB_STEP_SUMMARY"

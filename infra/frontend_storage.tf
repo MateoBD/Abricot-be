@@ -1,5 +1,6 @@
 resource "aws_s3_bucket" "frontend" {
-  bucket = local.frontend_bucket_name
+  bucket        = local.frontend_bucket_name
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_versioning" "frontend" {
@@ -59,7 +60,8 @@ resource "aws_s3_bucket_policy" "frontend_public_read" {
 }
 
 resource "aws_s3_bucket" "lambda_artifacts" {
-  bucket = local.lambda_artifacts_bucket_name
+  bucket        = local.lambda_artifacts_bucket_name
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_versioning" "lambda_artifacts" {

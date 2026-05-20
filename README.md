@@ -196,6 +196,8 @@ frontend from the separate `Abricot-few` repository. They run on pushes to
 `main` or `dev`, pull requests targeting `main` or `dev`, and manual dispatch.
 Pushes run `Validate` first; `Deploy Production` runs automatically only after
 `Validate` completes successfully, or manually through `workflow_dispatch`.
+`Destroy Production` is manual-only and requires typing `DESTROY` in its
+confirmation input.
 
 Configure these GitHub repository secrets before the first run:
 
@@ -213,20 +215,42 @@ Configure these GitHub repository variables:
 |----------|----------|-------------|
 | `FRONTEND_REPOSITORY` | No | Frontend repository to checkout. Defaults to `NaPrado/Abricot-few`. |
 | `CLOUDFRONT_DISTRIBUTION_ID` | No | CloudFront distribution to invalidate after frontend deploy. Leave unset when using direct S3 hosting. |
+| `TERRAFORM_STATE_BUCKET` | No | Existing S3 bucket to use for Terraform state. Defaults to `abricot-tp3-<account-id>-terraform-state`. |
+| `TERRAFORM_LOCK_TABLE` | No | Existing DynamoDB lock table. Leave unset to run without Terraform state locking. |
 
 AWS prerequisites expected by the workflows:
 
 - Active AWS Academy lab credentials with Terraform, Lambda, S3, DynamoDB,
   API Gateway, Cognito, VPC, RDS, and CloudWatch deployment permissions
 
-The workflows bootstrap the Terraform remote state resources automatically if
-they do not exist yet:
+The deployment and destroy workflows expect an existing S3 bucket for Terraform
+remote state:
 
-- S3 Terraform backend bucket: `abricot-terraform-state`
-- DynamoDB Terraform lock table: `abricot-terraform-lock`
+- S3 Terraform backend bucket: `abricot-tp3-<account-id>-terraform-state`
+
+You can override that bucket with the GitHub repository variable
+`TERRAFORM_STATE_BUCKET`. The DynamoDB lock table is optional; set
+`TERRAFORM_LOCK_TABLE` only if the table already exists.
+
+Terraform cannot create its own S3 backend during `terraform init`. If AWS
+Academy shows an explicit `AccessDenied` for `s3:CreateBucket`, use a
+pre-created bucket from the lab environment or run the deploy with AWS
+credentials that are allowed to create them. The validation workflow uses
+`terraform init -backend=false`, so PR validation does not need the state bucket.
 
 Terraform creates the frontend hosting bucket and Lambda artifact bucket, then
 the deployment workflow reads their names from `terraform output`.
+
+Manual workflow buttons live in GitHub -> Actions:
+
+- `Deploy Production` -> Run workflow: applies Terraform and redeploys Lambdas
+  and frontend.
+- `Destroy Production` -> Run workflow: destroys Terraform-managed resources
+  after `confirm_destroy` is set to `DESTROY`.
+
+Destroy removes Terraform-managed resources, including the frontend and Lambda
+artifact buckets. The remote state bucket and lock table are intentionally left
+in AWS because they live outside the Terraform project.
 
 ### AWS Academy Credentials
 

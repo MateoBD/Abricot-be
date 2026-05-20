@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from app.exceptions.errors import UnauthorizedError, ValidationError
 from app.models.user import UserModel
 from app.repositories.user_repository import UserRepository
@@ -5,7 +7,6 @@ from app.services.availability_service import AvailabilityService
 from app.services.business_hours_service import BusinessHoursService
 from app.services.cognito_authorization_service import (
     CognitoAuthorizationService,
-    public_user_payload,
 )
 from app.services.menu_category_service import MenuCategoryService
 from app.services.menu_item_service import MenuItemService
