@@ -221,11 +221,17 @@ AWS prerequisites expected by the workflows:
 - Active AWS Academy lab credentials with Terraform, Lambda, S3, DynamoDB,
   API Gateway, Cognito, VPC, RDS, and CloudWatch deployment permissions
 
-The workflows bootstrap the Terraform remote state resources automatically if
-they do not exist yet:
+The deployment and destroy workflows expect these Terraform remote state
+resources to already exist:
 
 - S3 Terraform backend bucket: `abricot-tp3-<account-id>-terraform-state`
 - DynamoDB Terraform lock table: `abricot-tp3-terraform-lock`
+
+Terraform cannot create its own S3 backend during `terraform init`. If AWS
+Academy shows an explicit `AccessDenied` for `s3:CreateBucket`, use a
+pre-created bucket/table from the lab environment or run the deploy with AWS
+credentials that are allowed to create them. The validation workflow uses
+`terraform init -backend=false`, so PR validation does not need the state bucket.
 
 Terraform creates the frontend hosting bucket and Lambda artifact bucket, then
 the deployment workflow reads their names from `terraform output`.
@@ -238,8 +244,8 @@ Manual workflow buttons live in GitHub -> Actions:
   after `confirm_destroy` is set to `DESTROY`.
 
 Destroy removes Terraform-managed resources, including the frontend and Lambda
-artifact buckets. The bootstrap state bucket and lock table are intentionally
-left in AWS because they are created before Terraform starts.
+artifact buckets. The remote state bucket and lock table are intentionally left
+in AWS because they live outside the Terraform project.
 
 ### AWS Academy Credentials
 
