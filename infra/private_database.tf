@@ -211,6 +211,10 @@ resource "aws_db_subnet_group" "private" {
 
   name       = "${local.name_prefix}-private-db"
   subnet_ids = local.private_db_subnet_ids
+
+  lifecycle {
+    ignore_changes = [subnet_ids]
+  }
 }
 
 resource "aws_db_instance" "postgres" {

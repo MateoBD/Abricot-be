@@ -193,6 +193,19 @@ jobs:
             terraform import -input=false "$address" "$import_id" || true
           }
 
+          import_replace() {
+            local address="$1"
+            local import_id="$2"
+
+            if [ -z "$import_id" ] || [ "$import_id" = "None" ] || [ "$import_id" = "null" ]; then
+              return 0
+            fi
+
+            terraform state rm "$address" >/dev/null 2>&1 || true
+            echo "Importing $address from $import_id"
+            terraform import -input=false "$address" "$import_id" || true
+          }
+
           frontend_bucket="${name_prefix}-${account_id}-frontend"
           lambda_artifacts_bucket="${name_prefix}-${account_id}-lambda-artifacts"
           cognito_domain="${name_prefix}-${account_id}"
@@ -246,6 +259,17 @@ jobs:
             import_if_missing 'aws_security_group.lambda[0]' "$(security_group_id_for_name "${name_prefix}-lambda-sg")"
             import_if_missing 'aws_security_group.rds_proxy[0]' "$(security_group_id_for_name "${name_prefix}-rds-proxy-sg")"
             import_if_missing 'aws_security_group.rds[0]' "$(security_group_id_for_name "${name_prefix}-rds-sg")"
+          fi
+
+          db_subnet_ids="$(aws rds describe-db-subnet-groups \
+            --db-subnet-group-name "$db_subnet_group" \
+            --query 'DBSubnetGroups[0].Subnets[].SubnetIdentifier' \
+            --output text 2>/dev/null || true)"
+
+          if [ -n "$db_subnet_ids" ] && [ "$db_subnet_ids" != "None" ]; then
+            read -r db_subnet_0 db_subnet_1 _ <<< "$db_subnet_ids"
+            import_replace 'aws_subnet.private_db[0]' "$db_subnet_0"
+            import_replace 'aws_subnet.private_db[1]' "$db_subnet_1"
           fi
 
           if aws s3api head-bucket --bucket "$frontend_bucket" >/dev/null 2>&1; then
