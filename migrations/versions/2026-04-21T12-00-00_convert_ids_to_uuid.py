@@ -196,7 +196,7 @@ def _reseed_lookups_postgresql(_conn: Any) -> None:
         ("OTRA", "Otra"),
     ]
     cuisine_insert = [
-        {"id": uuid7(), "slug": s, "label": l} for s, l in ct_rows
+        {"id": uuid7(), "slug": slug, "label": label} for slug, label in ct_rows
     ]
 
     op.bulk_insert(

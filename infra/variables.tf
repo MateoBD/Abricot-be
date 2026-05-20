@@ -11,9 +11,9 @@ variable "aws_region" {
 }
 
 variable "frontend_callback_url" {
-  description = "Frontend SPA callback URL that receives Cognito tokens in the hash fragment."
+  description = "Optional frontend SPA callback URL. Leave empty to use the Terraform-managed S3 website endpoint."
   type        = string
-  default     = "http://localhost:5173/auth/callback"
+  default     = ""
 }
 
 variable "postgres_db" {

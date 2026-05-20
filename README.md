@@ -188,6 +188,39 @@ To disable a hook, comment it out in `.pre-commit-config.yaml`.
 
 ---
 
+## GitHub Actions Deployment Settings
+
+The CI/CD workflows in `.github/workflows/` use GitHub OIDC to assume an AWS
+role, run Terraform, publish Lambda artifacts, and deploy the Vue frontend from
+the separate `Abricot-few` repository.
+
+Configure these GitHub repository secrets before the first run:
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `AWS_ROLE_ARN` | Yes | IAM role ARN trusted by GitHub OIDC, for example `github-actions-abricot-deploy`. |
+| `TF_VAR_POSTGRES_PASSWORD` | Yes | Production PostgreSQL password passed to Terraform as `var.postgres_password`. |
+| `FRONTEND_REPO_TOKEN` | No | Token for checking out the frontend repo if the default `GITHUB_TOKEN` cannot access it. |
+
+Configure these GitHub repository variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FRONTEND_REPOSITORY` | No | Frontend repository to checkout. Defaults to `NaPrado/Abricot-few`. |
+| `CLOUDFRONT_DISTRIBUTION_ID` | No | CloudFront distribution to invalidate after frontend deploy. Leave unset when using direct S3 hosting. |
+
+AWS prerequisites expected by the workflows:
+
+- S3 Terraform backend bucket: `abricot-terraform-state`
+- DynamoDB Terraform lock table: `abricot-terraform-lock`
+- IAM OIDC role with Terraform, Lambda, S3, DynamoDB, API Gateway, Cognito,
+  VPC, RDS, and CloudWatch deployment permissions
+
+Terraform creates the frontend hosting bucket and Lambda artifact bucket, then
+the deployment workflow reads their names from `terraform output`.
+
+---
+
 ## Common Commands
 
 | Command                     | Description                   |

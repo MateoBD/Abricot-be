@@ -1,9 +1,9 @@
 project_name = "abricot-tp3"
 aws_region   = "us-east-1"
 
-# Local dev callback. For S3 deploy, replace with:
-# frontend_callback_url = "http://<bucket-name>.s3-website-us-east-1.amazonaws.com/auth/callback"
-frontend_callback_url = "http://localhost:5173/auth/callback"
+# Optional. Leave empty to use the Terraform-managed S3 website callback URL.
+# For local smoke tests, override with "http://localhost:5173/auth/callback".
+frontend_callback_url = ""
 
 postgres_db       = "abricot"
 postgres_user     = "abricot_app"

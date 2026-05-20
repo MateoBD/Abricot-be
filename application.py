@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 # Load .env before importing app.config — ProductionConfig reads ALLOWED_ORIGINS at import time.
 load_dotenv()
 
-from app import create_app
+from app import create_app  # noqa: E402
 
 # loop = asyncio.get_event_loop()
 

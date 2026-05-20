@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from app.exceptions.errors import UnauthorizedError, ValidationError
 from app.models.user import UserModel
 from app.repositories.user_repository import UserRepository

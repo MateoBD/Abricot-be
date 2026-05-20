@@ -7,7 +7,6 @@ Alternative to Celery: uses threading + queue for async email dispatch.
 import logging
 import threading
 import time
-from datetime import datetime, timedelta
 from queue import Queue, Empty
 from typing import Callable
 from uuid import UUID
@@ -151,4 +150,3 @@ class AsyncNotificationWorker:
     def get_stats(self) -> dict:
         """Get worker statistics."""
         return {**self._stats, "queue_size": self._queue.qsize()}
-

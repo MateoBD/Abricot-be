@@ -4,8 +4,11 @@ locals {
   name_prefix  = lower(var.project_name)
   lab_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
 
-  frontend_callback_url = trimsuffix(var.frontend_callback_url, "/")
-  frontend_base_url     = trimsuffix(trimsuffix(local.frontend_callback_url, "/auth/callback"), "/")
+  frontend_bucket_name         = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-frontend"
+  lambda_artifacts_bucket_name = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-lambda-artifacts"
+  frontend_website_url         = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
+  frontend_callback_url        = trimspace(var.frontend_callback_url) != "" ? trimsuffix(var.frontend_callback_url, "/") : "${local.frontend_website_url}/auth/callback"
+  frontend_base_url            = trimsuffix(trimsuffix(local.frontend_callback_url, "/auth/callback"), "/")
 
   api_gateway_url          = trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")
   api_gateway_callback_url = "${local.api_gateway_url}/callback"
