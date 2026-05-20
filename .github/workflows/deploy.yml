@@ -187,7 +187,7 @@ jobs:
 
             if terraform state show "$address" >/dev/null 2>&1; then
               local current_id
-              current_id="$(terraform state show -no-color "$address" | awk -F'= ' '/^id[[:space:]]+=/ { gsub(/"/, "", $2); print $2; exit }')"
+              current_id="$(terraform state show -no-color "$address" | awk -F'= ' '/^[[:space:]]*id[[:space:]]+=/ { gsub(/"/, "", $2); print $2; exit }')"
               if [ "$current_id" = "$import_id" ]; then
                 return 0
               fi
