@@ -141,6 +141,29 @@ jobs:
             fi
 
             if terraform state show "$address" >/dev/null 2>&1; then
+              local current_id
+              current_id="$(terraform state show -no-color "$address" | awk -F'= ' '/^id[[:space:]]+=/ { gsub(/"/, "", $2); print $2; exit }')"
+              if [ "$current_id" = "$import_id" ]; then
+                return 0
+              fi
+
+              echo "Replacing stale state for $address: $current_id -> $import_id"
+              terraform state rm "$address"
+            fi
+
+            echo "Importing $address from $import_id"
+            terraform import -input=false "$address" "$import_id" || true
+          }
+
+          import_if_absent() {
+            local address="$1"
+            local import_id="$2"
+
+            if [ -z "$import_id" ] || [ "$import_id" = "None" ] || [ "$import_id" = "null" ]; then
+              return 0
+            fi
+
+            if terraform state show "$address" >/dev/null 2>&1; then
               return 0
             fi
 
@@ -234,8 +257,8 @@ jobs:
           import_if_missing 'aws_secretsmanager_secret.db[0]' "$secret_arn"
 
           if aws rds describe-db-proxies --db-proxy-name "$db_proxy" >/dev/null 2>&1; then
-            import_if_missing 'aws_db_proxy.users[0]' "$db_proxy"
-            import_if_missing 'aws_db_proxy_default_target_group.users[0]' "${db_proxy}/default"
+            import_if_absent 'aws_db_proxy.users[0]' "$db_proxy"
+            import_if_absent 'aws_db_proxy_default_target_group.users[0]' "${db_proxy}/default"
           fi
 
       - name: Empty versioned S3 buckets

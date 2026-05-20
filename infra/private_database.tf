@@ -7,7 +7,6 @@ resource "aws_vpc" "private" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = all
   }
 }
 
@@ -27,7 +26,6 @@ resource "aws_subnet" "public" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = all
   }
 }
 
@@ -62,7 +60,6 @@ resource "aws_subnet" "private_app" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = all
   }
 }
 
@@ -76,7 +73,6 @@ resource "aws_subnet" "private_db" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = all
   }
 }
 
