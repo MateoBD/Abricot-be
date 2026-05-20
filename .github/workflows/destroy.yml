@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: production-deploy
@@ -43,14 +44,20 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Configure Terraform backend names
+      - name: Configure Terraform backend
         env:
           TERRAFORM_STATE_BUCKET_VAR: ${{ vars.TERRAFORM_STATE_BUCKET }}
           TERRAFORM_LOCK_TABLE_VAR: ${{ vars.TERRAFORM_LOCK_TABLE }}
         run: |
-          account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "TERRAFORM_STATE_BUCKET=${TERRAFORM_STATE_BUCKET_VAR:-abricot-tp3-${account_id}-terraform-state}" >> "$GITHUB_ENV"
-          echo "TERRAFORM_LOCK_TABLE=${TERRAFORM_LOCK_TABLE_VAR:-}" >> "$GITHUB_ENV"
+          if [ -n "$TERRAFORM_STATE_BUCKET_VAR" ]; then
+            echo "TERRAFORM_BACKEND_MODE=remote" >> "$GITHUB_ENV"
+            echo "TERRAFORM_STATE_BUCKET=$TERRAFORM_STATE_BUCKET_VAR" >> "$GITHUB_ENV"
+            echo "TERRAFORM_LOCK_TABLE=${TERRAFORM_LOCK_TABLE_VAR:-}" >> "$GITHUB_ENV"
+          else
+            echo "TERRAFORM_BACKEND_MODE=local" >> "$GITHUB_ENV"
+            echo "TERRAFORM_STATE_BUCKET=" >> "$GITHUB_ENV"
+            echo "TERRAFORM_LOCK_TABLE=" >> "$GITHUB_ENV"
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -65,7 +72,19 @@ jobs:
       - name: Build Lambda folders for Terraform archive data sources
         run: bash ./scripts/package_lambdas.sh
 
+      - name: Restore Terraform local state
+        if: env.TERRAFORM_BACKEND_MODE == 'local'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate
+            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate.backup
+          key: terraform-state-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            terraform-state-${{ github.ref_name }}-
+
       - name: Verify Terraform backend exists
+        if: env.TERRAFORM_BACKEND_MODE == 'remote'
         run: |
           aws s3api head-bucket --bucket "$TERRAFORM_STATE_BUCKET"
           if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
@@ -75,11 +94,15 @@ jobs:
       - name: Terraform init
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
-          init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
-          if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
-            init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
+          if [ "$TERRAFORM_BACKEND_MODE" = "local" ]; then
+            terraform init -backend=false
+          else
+            init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
+            if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
+              init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
+            fi
+            terraform init "${init_args[@]}"
           fi
-          terraform init "${init_args[@]}"
 
       - name: Empty versioned S3 buckets
         working-directory: ${{ env.BACKEND_PATH }}/infra
@@ -150,5 +173,14 @@ jobs:
           {
             echo "## Destroy"
             echo "Terraform-managed Abricot AWS resources were destroyed."
-            echo "Bootstrap resources remain: $TERRAFORM_STATE_BUCKET and $TERRAFORM_LOCK_TABLE."
+            echo "Terraform backend mode: $TERRAFORM_BACKEND_MODE."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save Terraform local state
+        if: env.TERRAFORM_BACKEND_MODE == 'local'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate
+            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate.backup
+          key: terraform-state-${{ github.ref_name }}-${{ github.run_id }}
