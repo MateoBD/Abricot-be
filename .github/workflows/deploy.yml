@@ -320,6 +320,8 @@ jobs:
             import_if_absent 'aws_db_proxy_default_target_group.users[0]' "${db_proxy}/default"
           fi
 
+          bash ../scripts/import_existing_terraform_resources.sh
+
       - name: Terraform apply
         working-directory: ${{ env.BACKEND_PATH }}/infra
         env:
