@@ -70,6 +70,8 @@ jobs:
       - name: Empty versioned S3 buckets
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+
           empty_versioned_bucket() {
             local bucket="$1"
 
@@ -84,18 +86,19 @@ jobs:
 
             echo "Emptying all object versions from $bucket"
             while true; do
-              versions_payload="$(aws s3api list-object-versions \
+              versions="$(aws s3api list-object-versions \
                 --bucket "$bucket" \
-                --max-items 1000 \
+                --query 'Versions[0:1000].{Key:Key,VersionId:VersionId}' \
+                --output json)"
+              delete_markers="$(aws s3api list-object-versions \
+                --bucket "$bucket" \
+                --query 'DeleteMarkers[0:1000].{Key:Key,VersionId:VersionId}' \
                 --output json)"
 
-              delete_payload="$(jq -c '
-                [
-                  (.Versions // [])[] | {Key: .Key, VersionId: .VersionId}
-                ] + [
-                  (.DeleteMarkers // [])[] | {Key: .Key, VersionId: .VersionId}
-                ] | {Objects: ., Quiet: true}
-              ' <<< "$versions_payload")"
+              delete_payload="$(jq -c -n \
+                --argjson versions "$versions" \
+                --argjson delete_markers "$delete_markers" \
+                '{Objects: ($versions + $delete_markers), Quiet: true}')"
 
               object_count="$(jq '.Objects | length' <<< "$delete_payload")"
               if [ "$object_count" -eq 0 ]; then
@@ -110,6 +113,14 @@ jobs:
 
           frontend_bucket="$(terraform output -raw frontend_bucket_name 2>/dev/null || true)"
           lambda_artifacts_bucket="$(terraform output -raw lambda_artifacts_bucket_name 2>/dev/null || true)"
+
+          if [ -z "$frontend_bucket" ] || [ "$frontend_bucket" = "null" ]; then
+            frontend_bucket="abricot-tp3-${account_id}-frontend"
+          fi
+
+          if [ -z "$lambda_artifacts_bucket" ] || [ "$lambda_artifacts_bucket" = "null" ]; then
+            lambda_artifacts_bucket="abricot-tp3-${account_id}-lambda-artifacts"
+          fi
 
           empty_versioned_bucket "$frontend_bucket"
           empty_versioned_bucket "$lambda_artifacts_bucket"
