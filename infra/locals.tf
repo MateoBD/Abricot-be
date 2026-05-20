@@ -59,13 +59,17 @@ locals {
     MIGRATIONS_DIR        = "migrations"
   })
 
-  catalog_routes_enabled = local.lambda_private_attachment_enabled
+  catalog_routes_enabled     = local.lambda_private_attachment_enabled
+  orders_routes_enabled      = local.lambda_private_attachment_enabled
+  restaurants_routes_enabled = local.lambda_private_attachment_enabled
 
   lambda_environment = {
-    health          = {}
-    users_service   = merge(local.users_service_base_environment, local.users_service_db_environment)
-    catalog_service = local.catalog_routes_enabled ? local.users_service_db_environment : {}
-    db_migrate      = local.db_migration_environment
+    health              = {}
+    users_service       = merge(local.users_service_base_environment, local.users_service_db_environment)
+    catalog_service     = local.catalog_routes_enabled ? local.users_service_db_environment : {}
+    orders_service      = local.orders_routes_enabled ? local.users_service_db_environment : {}
+    restaurants_service = local.restaurants_routes_enabled ? local.users_service_db_environment : {}
+    db_migrate          = local.db_migration_environment
   }
 
   api_lambda_functions = {
@@ -92,6 +96,24 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/catalog_service"
       excludes           = []
       timeout            = 15
+      vpc_enabled        = local.lambda_private_attachment_enabled
+      subnet_ids         = local.private_app_subnet_ids
+      security_group_ids = local.lambda_security_group_ids
+    }
+    orders_service = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/orders_service"
+      excludes           = []
+      timeout            = 15
+      vpc_enabled        = local.lambda_private_attachment_enabled
+      subnet_ids         = local.private_app_subnet_ids
+      security_group_ids = local.lambda_security_group_ids
+    }
+    restaurants_service = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/restaurants_service"
+      excludes           = []
+      timeout            = 30
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids

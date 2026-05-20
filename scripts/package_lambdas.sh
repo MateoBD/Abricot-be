@@ -56,6 +56,8 @@ mkdir -p \
   "${BUILD_DIR}/health" \
   "${BUILD_DIR}/users_service" \
   "${BUILD_DIR}/catalog_service" \
+  "${BUILD_DIR}/orders_service" \
+  "${BUILD_DIR}/restaurants_service" \
   "${BUILD_DIR}/db_migrate"
 
 echo "Copying health-lambda source"
@@ -89,6 +91,36 @@ if [[ -f "${ROOT_DIR}/lambdas/catalog_service/requirements.txt" ]]; then
     -t "${BUILD_DIR}/catalog_service"
 else
   echo "No catalog-service requirements.txt found; skipping dependency install"
+fi
+
+echo "Copying orders-service-lambda source"
+copy_tree "${ROOT_DIR}/lambdas/orders_service" "${BUILD_DIR}/orders_service"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/orders_service/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/orders_service/app"
+
+if [[ -f "${ROOT_DIR}/lambdas/orders_service/requirements.txt" ]]; then
+  echo "Installing orders-service dependencies into build/lambdas/orders_service"
+  "${PYTHON_BIN}" -m pip install \
+    --no-cache-dir \
+    -r "${ROOT_DIR}/lambdas/orders_service/requirements.txt" \
+    -t "${BUILD_DIR}/orders_service"
+else
+  echo "No orders-service requirements.txt found; skipping dependency install"
+fi
+
+echo "Copying restaurants-service-lambda source"
+copy_tree "${ROOT_DIR}/lambdas/restaurants_service" "${BUILD_DIR}/restaurants_service"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/restaurants_service/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/restaurants_service/app"
+
+if [[ -f "${ROOT_DIR}/lambdas/restaurants_service/requirements.txt" ]]; then
+  echo "Installing restaurants-service dependencies into build/lambdas/restaurants_service"
+  "${PYTHON_BIN}" -m pip install \
+    --no-cache-dir \
+    -r "${ROOT_DIR}/lambdas/restaurants_service/requirements.txt" \
+    -t "${BUILD_DIR}/restaurants_service"
+else
+  echo "No restaurants-service requirements.txt found; skipping dependency install"
 fi
 
 echo "Copying db-migrate-lambda source"

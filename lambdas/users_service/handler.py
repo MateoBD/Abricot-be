@@ -6,6 +6,7 @@ from urllib import parse, request
 from urllib.error import HTTPError, URLError
 
 from app.exceptions.errors import AppError
+from app.repositories.user_repository import UserRepository
 from app.services.cognito_user_service import CognitoUserService
 from common.flask_db import backend_app_context
 
@@ -237,17 +238,63 @@ def _handle_auth_test(event: dict) -> dict:
 
 def _handle_post_users(event: dict) -> dict:
     claims = _authorizer_claims(event)
+    body = _json_body(event)
 
     def operation() -> tuple[int, dict]:
+        CognitoUserService.reject_privilege_fields(body)
+        cognito_sub = _claim_sub(claims)
+        existing = (
+            UserRepository.get_by_cognito_sub(cognito_sub) if cognito_sub else None
+        )
+        account_type = CognitoUserService.parse_account_type(
+            body,
+            required=existing is None,
+        )
         result = CognitoUserService.provision_user(
-            cognito_sub=_claim_sub(claims),
+            cognito_sub=cognito_sub,
             email=_claim_email(claims),
             given_name=claims.get("given_name"),
             family_name=claims.get("family_name"),
+            account_type=account_type,
         )
         return (201 if result.created else 200), result.user
 
     return _with_backend("users_post", operation)
+
+
+def _is_user_restaurants_list(event: dict) -> bool:
+    params = _path_parameters(event)
+    if params.get("userId") and "restaurants" in _route_path(event):
+        return True
+    parts = _route_path(event).strip("/").split("/")
+    return len(parts) == 3 and parts[0] == "users" and parts[2] == "restaurants"
+
+
+def _user_restaurants_user_id(event: dict) -> str | None:
+    params = _path_parameters(event)
+    if params.get("userId"):
+        return str(params["userId"])
+    parts = _route_path(event).strip("/").split("/")
+    if len(parts) == 3 and parts[0] == "users" and parts[2] == "restaurants":
+        return parts[1] or None
+    return None
+
+
+def _handle_get_user_restaurants(event: dict) -> dict:
+    user_id = _user_restaurants_user_id(event)
+    if not user_id:
+        return _json_response(400, {"message": "Missing user id."})
+
+    claims = _authorizer_claims(event)
+
+    def operation() -> tuple[int, dict]:
+        return 200, CognitoUserService.list_restaurants_for_principal(
+            user_id=user_id,
+            cognito_sub=_claim_sub(claims),
+            is_cognito_admin=_is_admin(claims),
+        )
+
+    return _with_backend("users_restaurants_list", operation)
 
 
 def _path_user_id(event: dict) -> str | None:
@@ -308,8 +355,11 @@ def handler(event, context):
     if method == "GET" and path.endswith("/auth-test"):
         return _handle_auth_test(event)
 
-    if method == "POST" and path.endswith("/users"):
+    if method == "POST" and path.rstrip("/") == "/users":
         return _handle_post_users(event)
+
+    if method == "GET" and _is_user_restaurants_list(event):
+        return _handle_get_user_restaurants(event)
 
     if method == "GET" and "/users/" in path:
         return _handle_get_user(event)

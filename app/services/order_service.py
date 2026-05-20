@@ -245,9 +245,17 @@ class OrderService:
         return _order_payload(order, include_items=True)
 
     @staticmethod
-    def cancel(order_id: UUID, requesting_user_id: UUID) -> dict:
+    def cancel(
+        order_id: UUID,
+        requesting_user_id: UUID,
+        *,
+        restaurant_id: UUID | None = None,
+        is_super_admin: bool = False,
+    ) -> dict:
         order = OrderRepository.get_by_id(order_id)
         if not order:
+            raise NotFoundError(f"Order with id={order_id} not found.")
+        if restaurant_id is not None and order.restaurant_id != restaurant_id:
             raise NotFoundError(f"Order with id={order_id} not found.")
         if order.status != OrderStatus.PENDING:
             raise ConflictError(
@@ -255,11 +263,11 @@ class OrderService:
             )
         if order.user_id != requesting_user_id:
             from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
-            if not RestaurantAdminRepository.is_admin(
+            if not is_super_admin and not RestaurantAdminRepository.is_admin(
                 user_id=requesting_user_id, restaurant_id=order.restaurant_id
             ):
                 raise ForbiddenError("You do not have permission to cancel this order.")
 
         OrderRepository.update_status(order, OrderStatus.CANCELLED)
         logger.info("Order cancelled: order_id=%s by_user=%s", order_id, requesting_user_id)
-        return _order_payload(order)
+        return _order_payload(order, include_items=restaurant_id is not None)

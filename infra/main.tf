@@ -43,7 +43,7 @@ resource "aws_apigatewayv2_api" "http" {
 
   cors_configuration {
     allow_headers = ["Authorization", "Content-Type"]
-    allow_methods = ["GET", "POST", "PUT", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PUT", "PATCH", "OPTIONS"]
     allow_origins = distinct([local.frontend_base_url, "http://localhost:5173"])
     max_age       = 300
   }
@@ -162,6 +162,26 @@ resource "aws_apigatewayv2_route" "users_put" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+resource "aws_apigatewayv2_route" "users_restaurants_list" {
+  count = local.users_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /users/{userId}/restaurants"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["users_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_post" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
 resource "aws_apigatewayv2_route" "catalog_lookups" {
   count = local.catalog_routes_enabled ? 1 : 0
 
@@ -192,6 +212,56 @@ resource "aws_apigatewayv2_route" "catalog_restaurant_menus" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "GET /restaurants/{restaurantId}/menus"
   target    = "integrations/${aws_apigatewayv2_integration.lambda["catalog_service"].id}"
+}
+
+resource "aws_apigatewayv2_route" "orders_create" {
+  count = local.orders_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/orders"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["orders_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "orders_user_list" {
+  count = local.orders_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /users/{userId}/orders"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["orders_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "orders_restaurant_list" {
+  count = local.orders_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/orders"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["orders_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "orders_restaurant_detail" {
+  count = local.orders_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/orders/{orderId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["orders_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "orders_restaurant_patch" {
+  count = local.orders_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PATCH /restaurants/{restaurantId}/orders/{orderId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["orders_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
 resource "aws_lambda_permission" "api_gateway" {

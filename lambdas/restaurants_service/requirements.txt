@@ -6,4 +6,5 @@ Flask-Migrate==4.0.7
 Flask-SQLAlchemy==3.1.1
 pg8000==1.31.2
 uuid6>=2024.1.12
+boto3==1.38.0
 python-dotenv

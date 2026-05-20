@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from uuid import UUID
 
 from app.exceptions.errors import (
@@ -11,6 +12,16 @@ from app.exceptions.errors import (
 from app.models.enums import UserRole
 from app.models.user import UserModel
 from app.repositories.user_repository import UserRepository
+from app.services.user_service import UserService
+
+_PRIVILEGE_BODY_KEYS = frozenset(
+    {"role", "isAdmin", "userId", "adminUserId", "creatorUserId"}
+)
+
+
+class AccountType(str, Enum):
+    CUSTOMER = "customer"
+    RESTAURANT_OWNER = "restaurant_owner"
 
 
 @dataclass(frozen=True)
@@ -52,12 +63,45 @@ def _default_surname(family_name: str | None) -> str:
 
 class CognitoUserService:
     @staticmethod
+    def reject_privilege_fields(data: dict) -> None:
+        rejected = sorted(key for key in data if key in _PRIVILEGE_BODY_KEYS)
+        if rejected:
+            raise ValidationError(
+                "Privilege fields are not allowed in this request.",
+                {key: "Not allowed" for key in rejected},
+            )
+
+    @staticmethod
+    def parse_account_type(data: dict, *, required: bool) -> AccountType | None:
+        raw = data.get("accountType")
+        if raw is None:
+            raw = data.get("onboardingType")
+        if raw is None or raw == "":
+            if required:
+                raise ValidationError(
+                    "accountType is required for new users.",
+                    {"accountType": "Required"},
+                )
+            return None
+        if not isinstance(raw, str):
+            raise ValidationError("Invalid accountType.", {"accountType": "Invalid"})
+        normalized = raw.strip().lower()
+        try:
+            return AccountType(normalized)
+        except ValueError as error:
+            raise ValidationError(
+                "accountType must be customer or restaurant_owner.",
+                {"accountType": "Invalid"},
+            ) from error
+
+    @staticmethod
     def provision_user(
         *,
         cognito_sub: str | None,
         email: str | None,
         given_name: str | None = None,
         family_name: str | None = None,
+        account_type: AccountType | None = None,
     ) -> CognitoProvisionResult:
         cognito_sub = (cognito_sub or "").strip()
         if not cognito_sub:
@@ -65,6 +109,11 @@ class CognitoUserService:
                 "Missing Cognito sub claim.",
                 public_message="Missing Cognito sub claim.",
             )
+
+        existing = UserRepository.get_by_cognito_sub(cognito_sub)
+        if existing:
+            refreshed = UserRepository.get_by_id(existing.id) or existing
+            return CognitoProvisionResult(_user_payload(refreshed), created=False)
 
         email = (email or "").strip().lower()
         if not email:
@@ -76,9 +125,11 @@ class CognitoUserService:
                 {"email": "Required"},
             )
 
-        existing = UserRepository.get_by_cognito_sub(cognito_sub)
-        if existing:
-            return CognitoProvisionResult(_user_payload(existing), created=False)
+        if account_type is None:
+            raise ValidationError(
+                "accountType is required for new users.",
+                {"accountType": "Required"},
+            )
 
         user = UserRepository.get_by_email_case_insensitive(email)
         if user:
@@ -86,7 +137,8 @@ class CognitoUserService:
             if linked_sub and linked_sub != cognito_sub:
                 raise ConflictError("Email is already linked to another Cognito user.")
             linked = UserRepository.link_cognito_sub(user, cognito_sub=cognito_sub)
-            return CognitoProvisionResult(_user_payload(linked), created=False)
+            refreshed = UserRepository.get_by_id(linked.id) or linked
+            return CognitoProvisionResult(_user_payload(refreshed), created=False)
 
         created = UserRepository.create(
             email=email,
@@ -96,7 +148,26 @@ class CognitoUserService:
             role=UserRole.CUSTOMER,
             cognito_sub=cognito_sub,
         )
-        return CognitoProvisionResult(_user_payload(created), created=True)
+        payload = _user_payload(created)
+        if account_type == AccountType.RESTAURANT_OWNER:
+            payload = {**payload, "nextStep": "restaurant_onboarding"}
+        return CognitoProvisionResult(payload, created=True)
+
+    @staticmethod
+    def list_restaurants_for_principal(
+        *,
+        user_id: str | UUID,
+        cognito_sub: str | None,
+        is_cognito_admin: bool = False,
+    ) -> dict:
+        target_id = _parse_uuid(user_id, "userId")
+        principal = CognitoUserService._principal_user(cognito_sub)
+        CognitoUserService._require_same_user_or_admin(
+            principal=principal,
+            target_id=target_id,
+            is_cognito_admin=is_cognito_admin,
+        )
+        return UserService.get_my_restaurants(target_id)
 
     @staticmethod
     def get_profile_for_principal(

@@ -117,6 +117,10 @@ resource "aws_security_group" "lambda" {
   vpc_id      = local.private_vpc_id
   ingress     = []
   egress      = []
+
+  lifecycle {
+    ignore_changes = [ingress, egress]
+  }
 }
 
 resource "aws_security_group" "rds_proxy" {
@@ -127,6 +131,10 @@ resource "aws_security_group" "rds_proxy" {
   vpc_id      = local.private_vpc_id
   ingress     = []
   egress      = []
+
+  lifecycle {
+    ignore_changes = [ingress, egress]
+  }
 }
 
 resource "aws_security_group" "rds" {
@@ -137,6 +145,10 @@ resource "aws_security_group" "rds" {
   vpc_id      = local.private_vpc_id
   ingress     = []
   egress      = []
+
+  lifecycle {
+    ignore_changes = [ingress, egress]
+  }
 }
 
 resource "aws_security_group_rule" "lambda_to_rds_proxy" {
