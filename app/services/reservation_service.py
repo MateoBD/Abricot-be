@@ -42,6 +42,23 @@ def _time_in_business_range(time_slot: time, opens_at: time, closes_at: time) ->
     return time_slot >= opens_at or time_slot < closes_at
 
 
+def _matching_business_range(
+    time_slot: time,
+    time_ranges: list[tuple[time, time]],
+) -> tuple[time, time] | None:
+    for opens_at, closes_at in time_ranges:
+        if _time_in_business_range(time_slot, opens_at, closes_at):
+            return opens_at, closes_at
+    return None
+
+
+def _format_business_ranges(time_ranges: list[tuple[time, time]]) -> str:
+    return ", ".join(
+        f"{opens_at.isoformat()} - {closes_at.isoformat()}"
+        for opens_at, closes_at in time_ranges
+    )
+
+
 class ReservationService:
     @staticmethod
     def _is_restaurant_admin_or_super_admin(user_id: UUID, restaurant_id: UUID) -> bool:
@@ -224,16 +241,16 @@ class ReservationService:
             )
 
         # Validate that time_slot is within operating hours
-        time_range = BusinessHoursService.get_time_range(restaurant_id, on_date)
-        if time_range is None:
+        time_ranges = BusinessHoursService.get_time_ranges(restaurant_id, on_date)
+        if not time_ranges:
             raise ValidationError(
                 f"No operating hours defined for {on_date.isoformat()}.",
                 {"date": "No operating hours"},
             )
-        opens_at, closes_at = time_range
-        if not _time_in_business_range(time_slot, opens_at, closes_at):
+        matching_range = _matching_business_range(time_slot, time_ranges)
+        if matching_range is None:
             raise ValidationError(
-                f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
+                f"Time slot {time_slot.isoformat()} is outside operating hours ({_format_business_ranges(time_ranges)}).",
                 {"timeSlot": "Outside operating hours"},
             )
 
@@ -320,16 +337,16 @@ class ReservationService:
                 {"date": "Restaurant is closed"},
             )
 
-        time_range = BusinessHoursService.get_time_range(restaurant_id, on_date)
-        if time_range is None:
+        time_ranges = BusinessHoursService.get_time_ranges(restaurant_id, on_date)
+        if not time_ranges:
             raise ValidationError(
                 f"No operating hours defined for {on_date.isoformat()}.",
                 {"date": "No operating hours"},
             )
-        opens_at, closes_at = time_range
-        if not _time_in_business_range(time_slot, opens_at, closes_at):
+        matching_range = _matching_business_range(time_slot, time_ranges)
+        if matching_range is None:
             raise ValidationError(
-                f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
+                f"Time slot {time_slot.isoformat()} is outside operating hours ({_format_business_ranges(time_ranges)}).",
                 {"timeSlot": "Outside operating hours"},
             )
 
@@ -439,16 +456,16 @@ class ReservationService:
             )
 
         # Validate that time_slot is within operating hours
-        time_range = BusinessHoursService.get_time_range(restaurant_id, on_date)
-        if time_range is None:
+        time_ranges = BusinessHoursService.get_time_ranges(restaurant_id, on_date)
+        if not time_ranges:
             raise ValidationError(
                 f"No operating hours defined for {on_date.isoformat()}.",
                 {"date": "No operating hours"},
             )
-        opens_at, closes_at = time_range
-        if not _time_in_business_range(time_slot, opens_at, closes_at):
+        matching_range = _matching_business_range(time_slot, time_ranges)
+        if matching_range is None:
             raise ValidationError(
-                f"Time slot {time_slot.isoformat()} is outside operating hours ({opens_at.isoformat()} - {closes_at.isoformat()}).",
+                f"Time slot {time_slot.isoformat()} is outside operating hours ({_format_business_ranges(time_ranges)}).",
                 {"timeSlot": "Outside operating hours"},
             )
 

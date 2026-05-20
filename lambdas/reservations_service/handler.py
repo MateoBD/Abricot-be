@@ -148,7 +148,7 @@ def handler(event, context):
         return _with_reservations_backend(
             event,
             route="reservations_create",
-            lambda: (
+            operation=lambda: (
                 201,
                 CognitoReservationService.create(
                     restaurant_id=restaurant_id,
@@ -169,7 +169,7 @@ def handler(event, context):
         return _with_reservations_backend(
             event,
             route="reservations_create_public",
-            lambda: (
+            operation=lambda: (
                 201,
                 CognitoReservationService.create_public(
                     restaurant_id=restaurant_id,
@@ -188,7 +188,7 @@ def handler(event, context):
         return _with_reservations_backend(
             event,
             route="reservations_restaurant_list",
-            lambda: (
+            operation=lambda: (
                 200,
                 CognitoReservationService.list_for_restaurant(
                     restaurant_id=restaurant_id,
@@ -204,7 +204,7 @@ def handler(event, context):
         return _with_reservations_backend(
             event,
             route="reservations_get",
-            lambda: (
+            operation=lambda: (
                 200,
                 CognitoReservationService.get_by_id(
                     reservation_id=reservation_id,
@@ -218,7 +218,7 @@ def handler(event, context):
         return _with_reservations_backend(
             event,
             route="reservations_patch",
-            lambda: (
+            operation=lambda: (
                 200,
                 CognitoReservationService.transition_status(
                     reservation_id=reservation_id,
@@ -234,7 +234,7 @@ def handler(event, context):
         return _with_reservations_backend(
             event,
             route="reservations_user_list",
-            lambda: (
+            operation=lambda: (
                 200,
                 CognitoReservationService.list_for_user(
                     user_id=user_id,

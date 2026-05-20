@@ -7,3 +7,4 @@ Flask-SQLAlchemy==3.1.1
 pg8000==1.31.2
 uuid6>=2024.1.12
 python-dotenv
+boto3==1.38.0

@@ -139,3 +139,38 @@ output "lambda_function_names" {
     for name, function in aws_lambda_function.this : name => function.function_name
   }
 }
+
+output "domain_events_topic_arn" {
+  description = "SNS topic ARN used by orders-service for internal domain event fanout."
+  value       = aws_sns_topic.domain_events.arn
+}
+
+output "email_topic_arn" {
+  description = "SNS topic ARN used by email-worker for native SNS email delivery."
+  value       = aws_sns_topic.email_topic.arn
+}
+
+output "email_events_queue_url" {
+  description = "SQS queue URL subscribed to domain events for email processing."
+  value       = aws_sqs_queue.email_events.url
+}
+
+output "analytics_events_queue_url" {
+  description = "SQS queue URL subscribed to domain events for analytics processing."
+  value       = aws_sqs_queue.analytics_events.url
+}
+
+output "email_worker_lambda_name" {
+  description = "Lambda function name for the SQS email worker."
+  value       = aws_lambda_function.this["email_worker"].function_name
+}
+
+output "analytics_worker_lambda_name" {
+  description = "Lambda function name for the SQS analytics worker."
+  value       = aws_lambda_function.this["analytics_worker"].function_name
+}
+
+output "notification_email_subscription_note" {
+  description = "SNS email delivery confirmation note."
+  value       = trimspace(var.notification_email) != "" ? "SNS sent a confirmation email to ${var.notification_email}. The recipient must confirm it before emails are delivered." : "notification_email is empty, so Terraform did not create an SNS email subscription."
+}

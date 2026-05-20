@@ -688,3 +688,125 @@ resource "aws_lambda_permission" "api_gateway" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
+
+resource "aws_sns_topic" "domain_events" {
+  name = "${local.name_prefix}-domain-events"
+}
+
+resource "aws_sns_topic" "email_topic" {
+  name = "${local.name_prefix}-email-notifications"
+}
+
+resource "aws_sns_topic_subscription" "email_notification" {
+  count = trimspace(var.notification_email) != "" ? 1 : 0
+
+  topic_arn = aws_sns_topic.email_topic.arn
+  protocol  = "email"
+  endpoint  = var.notification_email
+}
+
+resource "aws_sqs_queue" "email_events_dlq" {
+  name                      = "${local.name_prefix}-email-events-dlq"
+  message_retention_seconds = 1209600
+}
+
+resource "aws_sqs_queue" "email_events" {
+  name                       = "${local.name_prefix}-email-events"
+  message_retention_seconds  = 345600
+  visibility_timeout_seconds = 45
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.email_events_dlq.arn
+    maxReceiveCount     = 3
+  })
+}
+
+resource "aws_sqs_queue" "analytics_events_dlq" {
+  name                      = "${local.name_prefix}-analytics-events-dlq"
+  message_retention_seconds = 1209600
+}
+
+resource "aws_sqs_queue" "analytics_events" {
+  name                       = "${local.name_prefix}-analytics-events"
+  message_retention_seconds  = 345600
+  visibility_timeout_seconds = 45
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.analytics_events_dlq.arn
+    maxReceiveCount     = 3
+  })
+}
+
+resource "aws_sqs_queue_policy" "email_events" {
+  queue_url = aws_sqs_queue.email_events.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowDomainEventsTopic"
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.email_events.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.domain_events.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_sqs_queue_policy" "analytics_events" {
+  queue_url = aws_sqs_queue.analytics_events.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowDomainEventsTopic"
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.analytics_events.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.domain_events.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_sns_topic_subscription" "email_events_sqs" {
+  topic_arn = aws_sns_topic.domain_events.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.email_events.arn
+
+  depends_on = [aws_sqs_queue_policy.email_events]
+}
+
+resource "aws_sns_topic_subscription" "analytics_events_sqs" {
+  topic_arn = aws_sns_topic.domain_events.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.analytics_events.arn
+
+  depends_on = [aws_sqs_queue_policy.analytics_events]
+}
+
+resource "aws_lambda_event_source_mapping" "email_worker" {
+  event_source_arn        = aws_sqs_queue.email_events.arn
+  function_name           = aws_lambda_function.this["email_worker"].arn
+  batch_size              = 10
+  function_response_types = ["ReportBatchItemFailures"]
+}
+
+resource "aws_lambda_event_source_mapping" "analytics_worker" {
+  event_source_arn        = aws_sqs_queue.analytics_events.arn
+  function_name           = aws_lambda_function.this["analytics_worker"].arn
+  batch_size              = 10
+  function_response_types = ["ReportBatchItemFailures"]
+}
