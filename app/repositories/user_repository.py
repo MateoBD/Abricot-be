@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy import func
+
 from app.extensions import db
 from app.models.enums import UserRole
 from app.models.user import UserModel
@@ -14,6 +16,7 @@ class UserRepository:
         surname: str,
         *,
         role: UserRole = UserRole.CUSTOMER,
+        cognito_sub: str | None = None,
     ) -> UserModel:
         user = UserModel(
             email=email,
@@ -21,6 +24,7 @@ class UserRepository:
             name=name,
             surname=surname,
             role=role,
+            cognito_sub=cognito_sub,
         )
         db.session.add(user)
         db.session.commit()
@@ -30,6 +34,12 @@ class UserRepository:
     def get_by_email(email: str) -> UserModel | None:
         return db.session.execute(
             db.select(UserModel).where(UserModel.email == email)
+        ).scalar_one_or_none()
+
+    @staticmethod
+    def get_by_email_case_insensitive(email: str) -> UserModel | None:
+        return db.session.execute(
+            db.select(UserModel).where(func.lower(UserModel.email) == email.lower())
         ).scalar_one_or_none()
 
     @staticmethod

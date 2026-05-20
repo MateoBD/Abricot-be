@@ -63,6 +63,8 @@ copy_tree "${ROOT_DIR}/lambdas/health" "${BUILD_DIR}/health"
 
 echo "Copying users-service-lambda source"
 copy_tree "${ROOT_DIR}/lambdas/users_service" "${BUILD_DIR}/users_service"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/users_service/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/users_service/app"
 
 if [[ -f "${ROOT_DIR}/lambdas/users_service/requirements.txt" ]]; then
   echo "Installing users-service dependencies into build/lambdas/users_service"

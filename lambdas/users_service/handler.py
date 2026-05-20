@@ -1,12 +1,13 @@
 import json
 import logging
 import os
-import ssl
-from contextlib import contextmanager
-from typing import Any
+from typing import Any, Callable
 from urllib import parse, request
 from urllib.error import HTTPError, URLError
-from uuid import uuid4
+
+from app.exceptions.errors import AppError
+from app.services.cognito_user_service import CognitoUserService
+from common.flask_db import backend_app_context
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -82,9 +83,10 @@ def _json_body(event: dict) -> dict:
     if not raw_body:
         return {}
     try:
-        return json.loads(raw_body)
+        body = json.loads(raw_body)
     except json.JSONDecodeError:
         return {}
+    return body if isinstance(body, dict) else {}
 
 
 def _handle_callback(event: dict) -> dict:
@@ -160,231 +162,6 @@ def _claim_email(claims: dict[str, Any]) -> str | None:
     return email or None
 
 
-def _is_admin(claims: dict[str, Any]) -> bool:
-    groups = _groups_from_claims(claims) or []
-    return "SUPER_ADMIN" in groups
-
-
-def _db_required_env() -> list[str]:
-    return [
-        "DB_TARGET",
-        "POSTGRES_HOST",
-        "POSTGRES_DB",
-        "POSTGRES_USER",
-        "POSTGRES_PASSWORD",
-    ]
-
-
-def _db_missing_env() -> list[str]:
-    return [name for name in _db_required_env() if not os.environ.get(name)]
-
-
-@contextmanager
-def _db_connect():
-    missing = _db_missing_env()
-    if missing:
-        raise RuntimeError(f"missing_db_env:{','.join(missing)}")
-
-    if os.environ.get("DB_TARGET") != "RDS_PROXY":
-        raise RuntimeError("invalid_db_target")
-
-    try:
-        import pg8000.dbapi
-    except ImportError as exc:
-        raise RuntimeError("missing_pg8000_dependency") from exc
-
-    conn = pg8000.dbapi.connect(
-        host=os.environ["POSTGRES_HOST"],
-        port=int(os.environ.get("POSTGRES_PORT", "5432")),
-        database=os.environ["POSTGRES_DB"],
-        user=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
-        timeout=5,
-        ssl_context=_pg_ssl_context(),
-    )
-    try:
-        yield conn
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-@contextmanager
-def _db_cursor(conn):
-    cursor = conn.cursor()
-    try:
-        yield cursor
-    finally:
-        cursor.close()
-
-
-def _pg_ssl_context():
-    sslmode = os.environ.get("POSTGRES_SSLMODE", "require").lower()
-    if sslmode == "disable":
-        return None
-    return ssl._create_unverified_context()
-
-
-def _fetchone_dict(cursor) -> dict[str, Any] | None:
-    row = cursor.fetchone()
-    if row is None:
-        return None
-    columns = [column[0] for column in cursor.description]
-    return dict(zip(columns, row))
-
-
-def _user_payload(row: dict[str, Any]) -> dict:
-    created_at = row.get("created_at")
-    if hasattr(created_at, "isoformat"):
-        created_at = created_at.isoformat()
-
-    return {
-        "id": str(row["id"]),
-        "email": row["email"],
-        "name": row["name"],
-        "surname": row["surname"],
-        "role": row["role"],
-        "createdAt": created_at,
-    }
-
-
-def _get_user_by_cognito_sub(conn, cognito_sub: str) -> dict[str, Any] | None:
-    with _db_cursor(conn) as cursor:
-        cursor.execute(
-            """
-            SELECT id, email, name, surname, role, cognito_sub, created_at
-            FROM users
-            WHERE cognito_sub = %s
-            """,
-            (cognito_sub,),
-        )
-        return _fetchone_dict(cursor)
-
-
-def _get_user_by_email(conn, email: str) -> dict[str, Any] | None:
-    with _db_cursor(conn) as cursor:
-        cursor.execute(
-            """
-            SELECT id, email, name, surname, role, cognito_sub, created_at
-            FROM users
-            WHERE lower(email) = lower(%s)
-            """,
-            (email,),
-        )
-        return _fetchone_dict(cursor)
-
-
-def _get_user_by_id(conn, user_id: str) -> dict[str, Any] | None:
-    with _db_cursor(conn) as cursor:
-        cursor.execute(
-            """
-            SELECT id, email, name, surname, role, cognito_sub, created_at
-            FROM users
-            WHERE id = %s
-            """,
-            (user_id,),
-        )
-        return _fetchone_dict(cursor)
-
-
-def _link_user_to_cognito_sub(conn, user_id: str, cognito_sub: str) -> dict[str, Any]:
-    with _db_cursor(conn) as cursor:
-        cursor.execute(
-            """
-            UPDATE users
-            SET cognito_sub = %s
-            WHERE id = %s
-            RETURNING id, email, name, surname, role, cognito_sub, created_at
-            """,
-            (cognito_sub, user_id),
-        )
-        row = _fetchone_dict(cursor)
-    conn.commit()
-    return row
-
-
-def _create_cognito_user(
-    conn,
-    *,
-    cognito_sub: str,
-    email: str,
-    name: str,
-    surname: str,
-) -> dict[str, Any]:
-    with _db_cursor(conn) as cursor:
-        cursor.execute(
-            """
-            INSERT INTO users (id, email, cognito_sub, password_hash, name, surname, role, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, 'CUSTOMER', now())
-            RETURNING id, email, name, surname, role, cognito_sub, created_at
-            """,
-            (
-                str(uuid4()),
-                email,
-                cognito_sub,
-                f"COGNITO_ONLY:{cognito_sub}",
-                name,
-                surname,
-            ),
-        )
-        row = _fetchone_dict(cursor)
-    conn.commit()
-    return row
-
-
-def _update_user_profile(conn, user_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
-    allowed: dict[str, str] = {}
-    for api_name, column in (("name", "name"), ("surname", "surname")):
-        value = data.get(api_name)
-        if value is None:
-            continue
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(api_name)
-        allowed[column] = value.strip()
-
-    if not allowed:
-        return _get_user_by_id(conn, user_id)
-
-    assignments = ", ".join(f"{column} = %s" for column in allowed)
-    values = [*allowed.values(), user_id]
-    with _db_cursor(conn) as cursor:
-        cursor.execute(
-            f"""
-            UPDATE users
-            SET {assignments}
-            WHERE id = %s
-            RETURNING id, email, name, surname, role, cognito_sub, created_at
-            """,
-            tuple(values),
-        )
-        row = _fetchone_dict(cursor)
-    conn.commit()
-    return row
-
-
-def _principal_user(conn, claims: dict[str, Any]) -> dict[str, Any] | None:
-    cognito_sub = _claim_sub(claims)
-    if not cognito_sub:
-        return None
-    return _get_user_by_cognito_sub(conn, cognito_sub)
-
-
-def _require_same_user_or_admin(
-    principal: dict[str, Any] | None,
-    claims: dict[str, Any],
-    user_id: str,
-) -> bool:
-    if not principal:
-        return False
-    return (
-        str(principal["id"]) == user_id
-        or principal.get("role") == "SUPER_ADMIN"
-        or _is_admin(claims)
-    )
-
-
 def _groups_from_claims(claims: dict[str, Any]) -> list[str] | None:
     groups = claims.get("cognito:groups") or claims.get("groups")
     if groups is None:
@@ -394,6 +171,46 @@ def _groups_from_claims(claims: dict[str, Any]) -> list[str] | None:
     if isinstance(groups, str):
         return [group for group in groups.split(",") if group]
     return [str(groups)]
+
+
+def _is_admin(claims: dict[str, Any]) -> bool:
+    groups = _groups_from_claims(claims) or []
+    return "SUPER_ADMIN" in groups
+
+
+def _app_error_response(error: AppError) -> dict:
+    payload = {"message": error.public_message or error.message}
+    if error.payload:
+        payload["errors"] = error.payload
+    return _json_response(error.status_code, payload)
+
+
+def _database_error_response(error: RuntimeError) -> dict:
+    logger.warning(
+        "users_service_db_configuration_error type=%s",
+        str(error).split(":", 1)[0],
+    )
+    return _json_response(500, {"message": "Users service database is not configured."})
+
+
+def _unexpected_error_response(route: str, error: Exception) -> dict:
+    logger.warning("%s_failed type=%s", route, type(error).__name__)
+    return _json_response(500, {"message": "Users service failed."})
+
+
+def _with_backend(route: str, operation: Callable[[], tuple[int, dict]]) -> dict:
+    try:
+        with backend_app_context():
+            status_code, payload = operation()
+            return _json_response(status_code, payload)
+    except AppError as exc:
+        return _app_error_response(exc)
+    except RuntimeError as exc:
+        if str(exc).startswith(("missing_db_env", "invalid_db_target")):
+            return _database_error_response(exc)
+        return _unexpected_error_response(route, exc)
+    except Exception as exc:
+        return _unexpected_error_response(route, exc)
 
 
 def _handle_auth_test(event: dict) -> dict:
@@ -411,63 +228,26 @@ def _handle_auth_test(event: dict) -> dict:
         200,
         {
             "ok": True,
-            "claims": {key: value for key, value in sanitized.items() if value is not None},
+            "claims": {
+                key: value for key, value in sanitized.items() if value is not None
+            },
         },
     )
 
 
 def _handle_post_users(event: dict) -> dict:
     claims = _authorizer_claims(event)
-    cognito_sub = _claim_sub(claims)
-    if not cognito_sub:
-        return _json_response(401, {"message": "Missing Cognito sub claim."})
 
-    email = _claim_email(claims)
-    if not email:
-        return _json_response(
-            400,
-            {
-                "message": "Email claim is required for first Cognito provisioning. Use the ID token for POST /users.",
-            },
+    def operation() -> tuple[int, dict]:
+        result = CognitoUserService.provision_user(
+            cognito_sub=_claim_sub(claims),
+            email=_claim_email(claims),
+            given_name=claims.get("given_name"),
+            family_name=claims.get("family_name"),
         )
+        return (201 if result.created else 200), result.user
 
-    name = str(claims.get("given_name") or email.split("@", 1)[0]).strip() or "Cognito"
-    surname = str(claims.get("family_name") or "User").strip() or "User"
-
-    try:
-        with _db_connect() as conn:
-            user = _get_user_by_cognito_sub(conn, cognito_sub)
-            if user:
-                return _json_response(200, _user_payload(user))
-
-            user = _get_user_by_email(conn, email)
-            if user:
-                linked_sub = user.get("cognito_sub")
-                if linked_sub and linked_sub != cognito_sub:
-                    return _json_response(409, {"message": "Email is already linked to another Cognito user."})
-                return _json_response(
-                    200,
-                    _user_payload(_link_user_to_cognito_sub(conn, str(user["id"]), cognito_sub)),
-                )
-
-            return _json_response(
-                201,
-                _user_payload(
-                    _create_cognito_user(
-                        conn,
-                        cognito_sub=cognito_sub,
-                        email=email,
-                        name=name,
-                        surname=surname,
-                    )
-                ),
-            )
-    except RuntimeError as exc:
-        logger.warning("users_post_runtime_error type=%s", str(exc).split(":", 1)[0])
-        return _json_response(500, {"message": "Users service database is not configured."})
-    except Exception as exc:
-        logger.warning("users_post_failed type=%s", type(exc).__name__)
-        return _json_response(500, {"message": "Users service failed."})
+    return _with_backend("users_post", operation)
 
 
 def _path_user_id(event: dict) -> str | None:
@@ -488,22 +268,15 @@ def _handle_get_user(event: dict) -> dict:
         return _json_response(400, {"message": "Missing user id."})
 
     claims = _authorizer_claims(event)
-    try:
-        with _db_connect() as conn:
-            principal = _principal_user(conn, claims)
-            if not _require_same_user_or_admin(principal, claims, user_id):
-                return _json_response(403, {"message": "Forbidden."})
 
-            user = _get_user_by_id(conn, user_id)
-            if not user:
-                return _json_response(404, {"message": "User not found."})
-            return _json_response(200, _user_payload(user))
-    except RuntimeError as exc:
-        logger.warning("users_get_runtime_error type=%s", str(exc).split(":", 1)[0])
-        return _json_response(500, {"message": "Users service database is not configured."})
-    except Exception as exc:
-        logger.warning("users_get_failed type=%s", type(exc).__name__)
-        return _json_response(500, {"message": "Users service failed."})
+    def operation() -> tuple[int, dict]:
+        return 200, CognitoUserService.get_profile_for_principal(
+            user_id=user_id,
+            cognito_sub=_claim_sub(claims),
+            is_cognito_admin=_is_admin(claims),
+        )
+
+    return _with_backend("users_get", operation)
 
 
 def _handle_put_user(event: dict) -> dict:
@@ -512,29 +285,20 @@ def _handle_put_user(event: dict) -> dict:
         return _json_response(400, {"message": "Missing user id."})
 
     claims = _authorizer_claims(event)
-    try:
-        with _db_connect() as conn:
-            principal = _principal_user(conn, claims)
-            if not _require_same_user_or_admin(principal, claims, user_id):
-                return _json_response(403, {"message": "Forbidden."})
 
-            try:
-                user = _update_user_profile(conn, user_id, _json_body(event))
-            except ValueError as exc:
-                return _json_response(400, {"message": f"Invalid {exc.args[0]}."})
+    def operation() -> tuple[int, dict]:
+        return 200, CognitoUserService.update_profile_for_principal(
+            user_id=user_id,
+            cognito_sub=_claim_sub(claims),
+            data=_json_body(event),
+            is_cognito_admin=_is_admin(claims),
+        )
 
-            if not user:
-                return _json_response(404, {"message": "User not found."})
-            return _json_response(200, _user_payload(user))
-    except RuntimeError as exc:
-        logger.warning("users_put_runtime_error type=%s", str(exc).split(":", 1)[0])
-        return _json_response(500, {"message": "Users service database is not configured."})
-    except Exception as exc:
-        logger.warning("users_put_failed type=%s", type(exc).__name__)
-        return _json_response(500, {"message": "Users service failed."})
+    return _with_backend("users_put", operation)
 
 
 def handler(event, context):
+    event = event or {}
     path = _route_path(event)
     method = _method(event)
 
