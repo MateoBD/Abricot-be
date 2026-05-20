@@ -192,7 +192,8 @@ To disable a hook, comment it out in `.pre-commit-config.yaml`.
 
 The CI/CD workflows in `.github/workflows/` use GitHub OIDC to assume an AWS
 role, run Terraform, publish Lambda artifacts, and deploy the Vue frontend from
-the separate `Abricot-few` repository.
+the separate `Abricot-few` repository. They run on pushes to `main` or `dev`,
+pull requests targeting `main` or `dev`, and manual dispatch.
 
 Configure these GitHub repository secrets before the first run:
 
