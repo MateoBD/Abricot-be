@@ -16,6 +16,12 @@ variable "frontend_callback_url" {
   default     = ""
 }
 
+variable "notification_email" {
+  description = "Optional email address subscribed to SNS email notifications. Recipient must confirm SNS subscription email."
+  type        = string
+  default     = ""
+}
+
 variable "postgres_db" {
   description = "PostgreSQL database name."
   type        = string

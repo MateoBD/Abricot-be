@@ -5,6 +5,10 @@ aws_region   = "us-east-1"
 # For local smoke tests, override with "http://localhost:5173/auth/callback".
 frontend_callback_url = ""
 
+# Optional. Leave empty to skip SNS native email subscription creation.
+# If set, AWS sends a confirmation email that must be accepted manually.
+notification_email = ""
+
 postgres_db       = "abricot"
 postgres_user     = "abricot_app"
 postgres_password = "CHANGE_ME_STRONG_PASSWORD"

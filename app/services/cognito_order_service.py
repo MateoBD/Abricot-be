@@ -12,6 +12,7 @@ from app.models.user import UserModel
 from app.repositories.order_repository import OrderRepository
 from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.user_repository import UserRepository
+from app.services.order_event_publisher import publish_order_created
 from app.services.order_service import OrderService
 from app.services.user_service import UserService
 
@@ -36,12 +37,14 @@ class CognitoOrderService:
         body: dict,
     ) -> dict:
         principal = CognitoOrderService._principal_user(cognito_sub)
-        return OrderService.create(
+        order = OrderService.create(
             restaurant_id=_parse_uuid(restaurant_id, "restaurantId"),
             user_id=principal.id,
             items=body.get("items") or [],
             notes=body.get("notes"),
         )
+        publish_order_created(order)
+        return order
 
     @staticmethod
     def list_user_orders(

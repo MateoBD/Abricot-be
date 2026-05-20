@@ -20,7 +20,16 @@ Terraform root for the Abricot TP3 AWS architecture.
   - `health-lambda`
   - `users-service-lambda`
   - `catalog-service-lambda` for public catalog reads via RDS Proxy
+  - `orders-service-lambda` for protected order APIs and `order.created` publishing
+  - `email-worker-lambda` for SQS-driven SNS native email notifications
+  - `analytics-worker-lambda` for SQS-driven order analytics event consumption
   - `db-migrate-lambda` for internal Flask-Migrate/Alembic upgrades
+- SNS/SQS eventing for orders:
+  - `abricot-tp3-domain-events` SNS topic for internal domain fanout
+  - `email-events` SQS queue and DLQ
+  - `analytics-events` SQS queue and DLQ
+  - `email-notifications` SNS topic for native SNS email delivery
+  - optional SNS email subscription when `notification_email` is set
 - A dedicated VPC with:
   - 2 public subnets for NAT
   - 2 private app subnets for Lambda
@@ -49,6 +58,13 @@ current account ID through `data.aws_caller_identity.current.account_id`.
 9. `users-service-lambda` reaches PostgreSQL only through RDS Proxy.
 10. Database migrations run on demand through `db-migrate-lambda`, also inside
     private app subnets and also through RDS Proxy.
+11. `orders-service-lambda` creates orders synchronously in RDS and, only after
+    the DB commit succeeds, publishes an `order.created` event to SNS.
+12. SNS fans the event out to independent SQS queues for email and analytics
+    workers.
+13. `email-worker-lambda` publishes user-facing notifications to the SNS email
+    topic. SNS email subscribers must confirm the subscription email before
+    delivery starts.
 
 ## Diagram
 
@@ -64,6 +80,14 @@ flowchart LR
   DbMigrate["db-migrate-lambda private app subnets lambda-sg"] --> Proxy
   Proxy --> RdsPrimary["RDS PostgreSQL primary private DB subnet AZ A rds-sg"]
   Proxy --> RdsStandby["RDS PostgreSQL standby private DB subnet AZ B rds-sg"]
+  UsersOrder["orders-service-lambda private app subnets lambda-sg"] --> Proxy
+  UsersOrder --> DomainEvents["SNS domain-events"]
+  DomainEvents --> EmailQueue["SQS email-events + DLQ"]
+  DomainEvents --> AnalyticsQueue["SQS analytics-events + DLQ"]
+  EmailQueue --> EmailWorker["email-worker-lambda outside VPC"]
+  EmailWorker --> EmailTopic["SNS email-notifications topic"]
+  EmailTopic --> EmailSub["optional email subscription confirmation required"]
+  AnalyticsQueue --> AnalyticsWorker["analytics-worker-lambda outside VPC logs event"]
 ```
 
 The diagram shows RDS primary/standby because Terraform sets `multi_az = true`.
@@ -122,6 +146,7 @@ project_name = "abricot-tp3"
 aws_region   = "us-east-1"
 
 frontend_callback_url = ""
+notification_email = ""
 
 postgres_db       = "abricot"
 postgres_user     = "abricot_app"
@@ -158,6 +183,9 @@ Edit `terraform.tfvars`:
   different region.
 - Optional: leave `frontend_callback_url` empty to use the Terraform-managed S3
   website callback URL, or override it with localhost for local smoke tests.
+- Optional: set `notification_email` to subscribe one email endpoint to the SNS
+  email topic. AWS sends a confirmation email; no email is delivered until the
+  recipient confirms it.
 
 If updating an older local `terraform.tfvars`, remove `lambda_role_arn` and
 `rds_proxy_role_arn`; Terraform now derives LabRole automatically. Also remove
@@ -174,11 +202,56 @@ terraform plan
 terraform apply
 ```
 
-`./scripts/package_lambdas.sh` creates `build/lambdas/health`,
-`build/lambdas/users_service`, `build/lambdas/catalog_service`, and
-`build/lambdas/db_migrate`. Terraform zips
-those build folders with `archive_file`. The `build/` folder is generated and
-gitignored.
+`./scripts/package_lambdas.sh` creates the generated folders under
+`build/lambdas/*` for API Lambdas, internal worker Lambdas, and
+`db_migrate`. Terraform zips those build folders with `archive_file`. The
+`build/` folder is generated and gitignored.
+
+## Orders SNS/SQS Flow
+
+Order creation remains synchronous from the frontend perspective:
+
+1. Frontend calls `POST /restaurants/{restaurantId}/orders`.
+2. `orders-service-lambda` validates Cognito and writes the order to RDS through
+   RDS Proxy.
+3. After the DB commit succeeds, it publishes this event to
+   `abricot-tp3-domain-events`:
+
+```json
+{
+  "eventType": "order.created",
+  "eventVersion": "1.0",
+  "occurredAt": "<ISO timestamp>",
+  "source": "orders-service",
+  "data": {
+    "orderId": "...",
+    "restaurantId": "...",
+    "userId": "...",
+    "status": "...",
+    "total": 123.45,
+    "currency": "ARS"
+  }
+}
+```
+
+If SNS publishing fails after the order is committed, the order response still
+succeeds and the failure is logged with stacktrace. The event is not published
+when the DB insert/commit fails.
+
+The domain event topic fans out to two queues:
+
+- `email-events`, consumed by `email-worker-lambda`.
+- `analytics-events`, consumed by `analytics-worker-lambda`.
+
+Each queue has its own DLQ. The email worker is outside the VPC and has no DB
+environment variables. It publishes notification messages to the SNS
+`email-notifications` topic, which can deliver by native SNS `email`
+subscription. This does not use SMTP, SES, or an external provider.
+
+The analytics worker currently logs `order.created` as processed. It does not
+write to RDS because there is no safe dedicated analytics persistence table for
+order events in the current schema, and PASO 5 must not create a migration just
+for analytics.
 
 ## Database Migrations
 

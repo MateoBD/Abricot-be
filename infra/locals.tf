@@ -74,11 +74,13 @@ locals {
     health               = {}
     users_service        = merge(local.users_service_base_environment, local.users_service_db_environment)
     catalog_service      = local.catalog_routes_enabled ? local.users_service_db_environment : {}
-    orders_service       = local.orders_routes_enabled ? local.users_service_db_environment : {}
+    orders_service       = local.orders_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
     restaurants_service  = local.restaurants_routes_enabled ? local.users_service_db_environment : {}
     reservations_service = local.reservations_routes_enabled ? local.users_service_db_environment : {}
     promotions_service   = local.promotions_routes_enabled ? local.users_service_db_environment : {}
     analytics_service    = local.analytics_routes_enabled ? local.users_service_db_environment : {}
+    email_worker         = { EMAIL_TOPIC_ARN = aws_sns_topic.email_topic.arn }
+    analytics_worker     = {}
     db_migrate           = local.db_migration_environment
   }
 
@@ -169,5 +171,26 @@ locals {
     }
   } : {}
 
-  lambda_functions = merge(local.api_lambda_functions, local.private_lambda_functions)
+  event_worker_lambda_functions = {
+    email_worker = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/email_worker"
+      excludes           = []
+      timeout            = 10
+      vpc_enabled        = false
+      subnet_ids         = []
+      security_group_ids = []
+    }
+    analytics_worker = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/analytics_worker"
+      excludes           = []
+      timeout            = 10
+      vpc_enabled        = false
+      subnet_ids         = []
+      security_group_ids = []
+    }
+  }
+
+  lambda_functions = merge(local.api_lambda_functions, local.private_lambda_functions, local.event_worker_lambda_functions)
 }
