@@ -4,8 +4,11 @@ locals {
   name_prefix  = lower(var.project_name)
   lab_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/LabRole"
 
-  frontend_callback_url = trimsuffix(var.frontend_callback_url, "/")
-  frontend_base_url     = trimsuffix(trimsuffix(local.frontend_callback_url, "/auth/callback"), "/")
+  frontend_bucket_name         = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-frontend"
+  lambda_artifacts_bucket_name = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-lambda-artifacts"
+  frontend_website_url         = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
+  frontend_callback_url        = trimspace(var.frontend_callback_url) != "" ? trimsuffix(var.frontend_callback_url, "/") : "${local.frontend_website_url}/auth/callback"
+  frontend_base_url            = trimsuffix(trimsuffix(local.frontend_callback_url, "/auth/callback"), "/")
 
   api_gateway_url          = trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")
   api_gateway_callback_url = "${local.api_gateway_url}/callback"
@@ -13,7 +16,8 @@ locals {
   cognito_domain_prefix = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}"
   cognito_domain        = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
   cognito_scopes        = ["openid", "email", "profile"]
-  callback_urls         = distinct([local.api_gateway_callback_url, local.frontend_callback_url])
+  callback_urls         = [local.api_gateway_callback_url]
+  logout_urls           = [local.api_gateway_url]
 
   lambda_runtime = "python3.12"
 

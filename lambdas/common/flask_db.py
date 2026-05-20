@@ -47,7 +47,7 @@ def _pg_ssl_context():
     sslmode = os.environ.get("POSTGRES_SSLMODE", "require").lower()
     if sslmode == "disable":
         return None
-    return ssl._create_unverified_context()
+    return ssl._create_unverified_context()  # noqa: S323
 
 
 def _engine_options() -> dict[str, Any]:

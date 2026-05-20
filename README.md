@@ -188,6 +188,64 @@ To disable a hook, comment it out in `.pre-commit-config.yaml`.
 
 ---
 
+## GitHub Actions Deployment Settings
+
+The CI/CD workflows in `.github/workflows/` use temporary AWS Academy
+credentials, run Terraform, publish Lambda artifacts, and deploy the Vue
+frontend from the separate `Abricot-few` repository. They run on pushes to
+`main` or `dev`, pull requests targeting `main` or `dev`, and manual dispatch.
+Pushes run `Validate` first; `Deploy Production` runs automatically only after
+`Validate` completes successfully, or manually through `workflow_dispatch`.
+
+Configure these GitHub repository secrets before the first run:
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `AWS_ACCESS_KEY_ID` | Yes | Temporary access key copied from AWS Academy Learner Lab -> AWS Details -> AWS CLI. |
+| `AWS_SECRET_ACCESS_KEY` | Yes | Temporary secret key copied from AWS Academy Learner Lab -> AWS Details -> AWS CLI. |
+| `AWS_SESSION_TOKEN` | Yes | Temporary session token copied from AWS Academy Learner Lab -> AWS Details -> AWS CLI. |
+| `TF_VAR_POSTGRES_PASSWORD` | Yes | Production PostgreSQL password passed to Terraform as `var.postgres_password`. |
+| `FRONTEND_REPO_TOKEN` | No | Token for checking out the frontend repo if the default `GITHUB_TOKEN` cannot access it. |
+
+Configure these GitHub repository variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FRONTEND_REPOSITORY` | No | Frontend repository to checkout. Defaults to `NaPrado/Abricot-few`. |
+| `CLOUDFRONT_DISTRIBUTION_ID` | No | CloudFront distribution to invalidate after frontend deploy. Leave unset when using direct S3 hosting. |
+
+AWS prerequisites expected by the workflows:
+
+- Active AWS Academy lab credentials with Terraform, Lambda, S3, DynamoDB,
+  API Gateway, Cognito, VPC, RDS, and CloudWatch deployment permissions
+
+The workflows bootstrap the Terraform remote state resources automatically if
+they do not exist yet:
+
+- S3 Terraform backend bucket: `abricot-terraform-state`
+- DynamoDB Terraform lock table: `abricot-terraform-lock`
+
+Terraform creates the frontend hosting bucket and Lambda artifact bucket, then
+the deployment workflow reads their names from `terraform output`.
+
+### AWS Academy Credentials
+
+AWS Academy usually blocks creating GitHub OIDC providers from the lab role. Use
+temporary lab credentials instead:
+
+1. Start the AWS Academy Learner Lab.
+2. Open AWS Details -> AWS CLI.
+3. Copy `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
+   `AWS_SESSION_TOKEN`.
+4. Save those three values as GitHub Actions repository secrets.
+5. Refresh these secrets every time the lab restarts or the credentials expire.
+
+If a workflow fails with `ExpiredToken`, `InvalidClientTokenId`, or
+`The security token included in the request is expired`, copy a fresh set of
+AWS CLI credentials from the lab and rerun the workflow.
+
+---
+
 ## Common Commands
 
 | Command                     | Description                   |

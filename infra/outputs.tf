@@ -38,6 +38,21 @@ output "frontend_callback_url" {
   value       = local.frontend_callback_url
 }
 
+output "frontend_bucket_name" {
+  description = "S3 bucket used to host the frontend SPA."
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "frontend_website_url" {
+  description = "S3 website URL for the frontend SPA."
+  value       = local.frontend_website_url
+}
+
+output "lambda_artifacts_bucket_name" {
+  description = "S3 bucket used to store Lambda ZIP artifacts."
+  value       = aws_s3_bucket.lambda_artifacts.bucket
+}
+
 output "health_url" {
   description = "Public health endpoint."
   value       = "${local.api_gateway_url}/health"
@@ -116,4 +131,11 @@ output "rds_proxy_endpoint" {
 output "db_migration_lambda_name" {
   description = "Internal Lambda used to run Flask-Migrate/Alembic migrations inside the private VPC."
   value       = local.lambda_private_attachment_enabled ? aws_lambda_function.this["db_migrate"].function_name : null
+}
+
+output "lambda_function_names" {
+  description = "Lambda function names keyed by local service key."
+  value = {
+    for name, function in aws_lambda_function.this : name => function.function_name
+  }
 }

@@ -1,0 +1,264 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows:
+      - Validate
+    types:
+      - completed
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  BACKEND_PATH: Abricot-be
+  FRONTEND_PATH: Abricot-few
+  TERRAFORM_STATE_BUCKET: abricot-terraform-state
+  TERRAFORM_LOCK_TABLE: abricot-terraform-lock
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    outputs:
+      api_gateway_url: ${{ steps.outputs.outputs.api_gateway_url }}
+      cognito_client_id: ${{ steps.outputs.outputs.cognito_user_pool_client_id }}
+      cognito_domain: ${{ steps.outputs.outputs.cognito_domain }}
+      frontend_bucket_name: ${{ steps.outputs.outputs.frontend_bucket_name }}
+      frontend_callback_url: ${{ steps.outputs.outputs.frontend_callback_url }}
+      lambda_function_names: ${{ steps.outputs.outputs.lambda_function_names }}
+      lambda_artifacts_bucket_name: ${{ steps.outputs.outputs.lambda_artifacts_bucket_name }}
+    defaults:
+      run:
+        working-directory: ${{ env.BACKEND_PATH }}
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.BACKEND_PATH }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Build Lambda folders for Terraform archive data sources
+        run: bash ./scripts/package_lambdas.sh
+
+      - name: Bootstrap Terraform backend
+        run: |
+          if ! aws s3api head-bucket --bucket "$TERRAFORM_STATE_BUCKET" 2>/dev/null; then
+            aws s3api create-bucket --bucket "$TERRAFORM_STATE_BUCKET" --region "$AWS_REGION"
+          fi
+
+          aws s3api put-bucket-versioning \
+            --bucket "$TERRAFORM_STATE_BUCKET" \
+            --versioning-configuration Status=Enabled
+
+          aws s3api put-bucket-encryption \
+            --bucket "$TERRAFORM_STATE_BUCKET" \
+            --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+          if ! aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null 2>&1; then
+            aws dynamodb create-table \
+              --table-name "$TERRAFORM_LOCK_TABLE" \
+              --attribute-definitions AttributeName=LockID,AttributeType=S \
+              --key-schema AttributeName=LockID,KeyType=HASH \
+              --billing-mode PAY_PER_REQUEST
+            aws dynamodb wait table-exists --table-name "$TERRAFORM_LOCK_TABLE"
+          fi
+
+      - name: Terraform init
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        env:
+          TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
+        run: terraform apply -auto-approve
+
+      - name: Capture Terraform outputs
+        id: outputs
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: |
+          terraform output -json > outputs.json
+          echo "api_gateway_url=$(jq -r '.api_gateway_url.value' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "cognito_user_pool_client_id=$(jq -r '.cognito_user_pool_client_id.value' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "cognito_domain=$(jq -r '.cognito_domain.value' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "frontend_bucket_name=$(jq -r '.frontend_bucket_name.value' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "frontend_callback_url=$(jq -r '.frontend_callback_url.value' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "lambda_function_names=$(jq -c '.lambda_function_names.value' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "lambda_artifacts_bucket_name=$(jq -r '.lambda_artifacts_bucket_name.value' outputs.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Deployment summary
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: |
+          {
+            echo "## Infrastructure"
+            echo "- API Gateway: $(jq -r '.api_gateway_url.value' outputs.json)"
+            echo "- Cognito domain: $(jq -r '.cognito_domain.value' outputs.json)"
+            echo "- Frontend URL: $(jq -r '.frontend_website_url.value' outputs.json)"
+            echo "- Health URL: $(jq -r '.health_url.value' outputs.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  lambda-artifacts:
+    name: Lambda Artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - terraform-apply
+    defaults:
+      run:
+        working-directory: ${{ env.BACKEND_PATH }}
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.BACKEND_PATH }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Lambda folders
+        run: bash ./scripts/package_lambdas.sh
+
+      - name: Zip Lambda artifacts
+        run: |
+          mkdir -p build/artifacts
+          for lambda_dir in build/lambdas/*; do
+            lambda_name="$(basename "$lambda_dir")"
+            (cd "$lambda_dir" && zip -qr "../../artifacts/${lambda_name}.zip" .)
+          done
+
+      - name: Upload artifacts and update Lambda code
+        env:
+          LAMBDA_ARTIFACTS_BUCKET: ${{ needs.terraform-apply.outputs.lambda_artifacts_bucket_name }}
+          LAMBDA_FUNCTION_NAMES: ${{ needs.terraform-apply.outputs.lambda_function_names }}
+        run: |
+          if [ -z "$LAMBDA_ARTIFACTS_BUCKET" ]; then
+            echo "lambda_artifacts_bucket_name Terraform output is required." >&2
+            exit 1
+          fi
+
+          for artifact in build/artifacts/*.zip; do
+            lambda_key="$(basename "$artifact" .zip)"
+            function_name="$(jq -r --arg key "$lambda_key" '.[$key] // empty' <<< "$LAMBDA_FUNCTION_NAMES")"
+
+            if [ -z "$function_name" ]; then
+              echo "Skipping $lambda_key because Terraform did not create a function for it."
+              continue
+            fi
+
+            s3_key="lambdas/${lambda_key}/${GITHUB_SHA}.zip"
+            aws s3 cp "$artifact" "s3://${LAMBDA_ARTIFACTS_BUCKET}/${s3_key}"
+            aws lambda update-function-code \
+              --function-name "$function_name" \
+              --s3-bucket "$LAMBDA_ARTIFACTS_BUCKET" \
+              --s3-key "$s3_key" >/dev/null
+            aws lambda wait function-updated --function-name "$function_name"
+          done
+
+  frontend-deploy:
+    name: Frontend Deploy
+    runs-on: ubuntu-latest
+    needs:
+      - terraform-apply
+    defaults:
+      run:
+        working-directory: ${{ env.FRONTEND_PATH }}
+    steps:
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.FRONTEND_REPOSITORY || 'NaPrado/Abricot-few' }}
+          token: ${{ secrets.FRONTEND_REPO_TOKEN || github.token }}
+          path: ${{ env.FRONTEND_PATH }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.2
+          run_install: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: ${{ env.FRONTEND_PATH }}/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        env:
+          VITE_API_BASE_URL: ${{ needs.terraform-apply.outputs.api_gateway_url }}
+          VITE_COGNITO_DOMAIN: ${{ needs.terraform-apply.outputs.cognito_domain }}
+          VITE_COGNITO_CLIENT_ID: ${{ needs.terraform-apply.outputs.cognito_client_id }}
+          VITE_COGNITO_REDIRECT_URI: ${{ needs.terraform-apply.outputs.api_gateway_url }}/callback
+          VITE_COGNITO_SCOPES: openid email profile
+          VITE_FRONTEND_CALLBACK_URL: ${{ needs.terraform-apply.outputs.frontend_callback_url }}
+        run: pnpm run build
+
+      - name: Sync frontend to S3
+        env:
+          FRONTEND_BUCKET: ${{ needs.terraform-apply.outputs.frontend_bucket_name }}
+        run: |
+          if [ -z "$FRONTEND_BUCKET" ]; then
+            echo "frontend_bucket_name Terraform output is required." >&2
+            exit 1
+          fi
+
+          aws s3 sync dist/ "s3://${FRONTEND_BUCKET}/" \
+            --delete \
+            --cache-control "public, max-age=3600"
+
+      - name: Invalidate CloudFront
+        if: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        env:
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+        run: aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"

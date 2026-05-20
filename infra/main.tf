@@ -23,7 +23,7 @@ resource "aws_cognito_user_pool_client" "spa" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = local.cognito_scopes
   callback_urls                        = local.callback_urls
-  logout_urls                          = distinct([local.frontend_base_url, local.frontend_callback_url])
+  logout_urls                          = local.logout_urls
   supported_identity_providers         = ["COGNITO"]
 
   explicit_auth_flows = [

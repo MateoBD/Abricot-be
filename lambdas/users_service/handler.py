@@ -110,7 +110,7 @@ def _handle_callback(event: dict) -> dict:
     }
 
     body = parse.urlencode(token_payload).encode("utf-8")
-    token_request = request.Request(
+    token_request = request.Request(  # noqa: S310
         f"{_cognito_domain()}/oauth2/token",
         data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -118,7 +118,7 @@ def _handle_callback(event: dict) -> dict:
     )
 
     try:
-        with request.urlopen(token_request, timeout=8) as response:
+        with request.urlopen(token_request, timeout=8) as response:  # noqa: S310
             token_response = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         logger.warning("oauth_token_exchange_http_error status=%s", exc.code)

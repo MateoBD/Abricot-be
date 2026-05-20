@@ -121,7 +121,7 @@ The normal deliverable path only needs these values in `terraform.tfvars`:
 project_name = "abricot-tp3"
 aws_region   = "us-east-1"
 
-frontend_callback_url = "http://localhost:5173/auth/callback"
+frontend_callback_url = ""
 
 postgres_db       = "abricot"
 postgres_user     = "abricot_app"
@@ -156,8 +156,8 @@ Edit `terraform.tfvars`:
 - Required: replace `postgres_password` with a strong password.
 - Optional: keep `aws_region = "us-east-1"` unless the lab explicitly uses a
   different region.
-- Optional: replace `frontend_callback_url` with the S3 website callback URL
-  for deployed frontend, or keep localhost for local smoke tests.
+- Optional: leave `frontend_callback_url` empty to use the Terraform-managed S3
+  website callback URL, or override it with localhost for local smoke tests.
 
 If updating an older local `terraform.tfvars`, remove `lambda_role_arn` and
 `rds_proxy_role_arn`; Terraform now derives LabRole automatically. Also remove

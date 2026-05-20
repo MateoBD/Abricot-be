@@ -11,9 +11,9 @@ variable "aws_region" {
 }
 
 variable "frontend_callback_url" {
-  description = "Frontend SPA callback URL that receives Cognito tokens in the hash fragment."
+  description = "Optional frontend SPA callback URL. Leave empty to use the Terraform-managed S3 website endpoint."
   type        = string
-  default     = "http://localhost:5173/auth/callback"
+  default     = ""
 }
 
 variable "postgres_db" {
@@ -39,7 +39,7 @@ variable "postgres_password" {
   sensitive   = true
 
   validation {
-    condition     = length(trimspace(nonsensitive(var.postgres_password))) >= 12 && nonsensitive(var.postgres_password) != "CHANGE_ME_STRONG_PASSWORD"
+    condition     = length(trimspace(var.postgres_password)) >= 12 && var.postgres_password != "CHANGE_ME_STRONG_PASSWORD"
     error_message = "postgres_password must be at least 12 characters and cannot be CHANGE_ME_STRONG_PASSWORD."
   }
 }

@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 
-from app.exceptions.errors import ConflictError, NotFoundError, ValidationError
+from app.exceptions.errors import NotFoundError, ValidationError
 from app.repositories.menu_category_repository import MenuCategoryRepository
 from app.repositories.menu_item_repository import MenuItemRepository
 from app.repositories.menu_repository import MenuRepository

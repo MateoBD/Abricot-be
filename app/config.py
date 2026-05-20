@@ -41,7 +41,7 @@ class TestingConfig(BaseConfig):
     AWS_REGION = "us-east-1"
     AWS_S3_BUCKET = "abricot-test-bucket"
     AWS_ACCESS_KEY_ID = "test"
-    AWS_SECRET_ACCESS_KEY = "test"
+    AWS_SECRET_ACCESS_KEY = "test"  # noqa: S105
 
 
 class ProductionConfig(BaseConfig):
