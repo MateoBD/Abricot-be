@@ -38,6 +38,7 @@ jobs:
       cognito_domain: ${{ steps.outputs.outputs.cognito_domain }}
       frontend_bucket_name: ${{ steps.outputs.outputs.frontend_bucket_name }}
       frontend_callback_url: ${{ steps.outputs.outputs.frontend_callback_url }}
+      db_migration_lambda_name: ${{ steps.outputs.outputs.db_migration_lambda_name }}
       lambda_function_names: ${{ steps.outputs.outputs.lambda_function_names }}
       lambda_artifacts_bucket_name: ${{ steps.outputs.outputs.lambda_artifacts_bucket_name }}
     defaults:
@@ -114,8 +115,30 @@ jobs:
           echo "cognito_domain=$(jq -r '.cognito_domain.value' outputs.json)" >> "$GITHUB_OUTPUT"
           echo "frontend_bucket_name=$(jq -r '.frontend_bucket_name.value' outputs.json)" >> "$GITHUB_OUTPUT"
           echo "frontend_callback_url=$(jq -r '.frontend_callback_url.value' outputs.json)" >> "$GITHUB_OUTPUT"
+          echo "db_migration_lambda_name=$(jq -r '.db_migration_lambda_name.value // empty' outputs.json)" >> "$GITHUB_OUTPUT"
           echo "lambda_function_names=$(jq -c '.lambda_function_names.value' outputs.json)" >> "$GITHUB_OUTPUT"
           echo "lambda_artifacts_bucket_name=$(jq -r '.lambda_artifacts_bucket_name.value' outputs.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Run database migrations
+        env:
+          DB_MIGRATION_LAMBDA_NAME: ${{ steps.outputs.outputs.db_migration_lambda_name }}
+        run: |
+          if [ -z "$DB_MIGRATION_LAMBDA_NAME" ]; then
+            echo "No db_migration_lambda_name output; skipping migrations."
+            exit 0
+          fi
+
+          aws lambda invoke \
+            --function-name "$DB_MIGRATION_LAMBDA_NAME" \
+            --payload '{"action":"upgrade"}' \
+            --cli-binary-format raw-in-base64-out \
+            migration-response.json
+
+          cat migration-response.json
+          if ! jq -e '.statusCode == 200' migration-response.json >/dev/null; then
+            echo "Database migration Lambda failed." >&2
+            exit 1
+          fi
 
       - name: Deployment summary
         working-directory: ${{ env.BACKEND_PATH }}/infra

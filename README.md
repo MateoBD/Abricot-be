@@ -196,6 +196,8 @@ frontend from the separate `Abricot-few` repository. They run on pushes to
 `main` or `dev`, pull requests targeting `main` or `dev`, and manual dispatch.
 Pushes run `Validate` first; `Deploy Production` runs automatically only after
 `Validate` completes successfully, or manually through `workflow_dispatch`.
+`Destroy Production` is manual-only and requires typing `DESTROY` in its
+confirmation input.
 
 Configure these GitHub repository secrets before the first run:
 
@@ -227,6 +229,18 @@ they do not exist yet:
 
 Terraform creates the frontend hosting bucket and Lambda artifact bucket, then
 the deployment workflow reads their names from `terraform output`.
+
+Manual workflow buttons live in GitHub -> Actions:
+
+- `Deploy Production` -> Run workflow: applies Terraform and redeploys Lambdas
+  and frontend.
+- `Destroy Production` -> Run workflow: destroys Terraform-managed resources
+  after `confirm_destroy` is set to `DESTROY`.
+
+Destroy removes Terraform-managed resources, including the frontend and Lambda
+artifact buckets. The bootstrap state bucket `abricot-terraform-state` and lock
+table `abricot-terraform-lock` are intentionally left in AWS because they are
+created before Terraform starts.
 
 ### AWS Academy Credentials
 
