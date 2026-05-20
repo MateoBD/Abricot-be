@@ -4,6 +4,10 @@ resource "aws_vpc" "private" {
   cidr_block           = local.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_internet_gateway" "private" {
@@ -19,6 +23,10 @@ resource "aws_subnet" "public" {
   cidr_block              = local.public_subnet_cidrs[count.index]
   availability_zone       = local.availability_zones[count.index]
   map_public_ip_on_launch = true
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_route_table" "public" {
@@ -49,6 +57,10 @@ resource "aws_subnet" "private_app" {
   cidr_block              = local.private_app_subnet_cidrs[count.index]
   availability_zone       = local.availability_zones[count.index]
   map_public_ip_on_launch = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_subnet" "private_db" {
@@ -58,6 +70,10 @@ resource "aws_subnet" "private_db" {
   cidr_block              = local.private_db_subnet_cidrs[count.index]
   availability_zone       = local.availability_zones[count.index]
   map_public_ip_on_launch = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_eip" "nat" {
@@ -236,6 +252,8 @@ resource "aws_db_instance" "postgres" {
   skip_final_snapshot    = true
 
   lifecycle {
+    prevent_destroy = true
+
     precondition {
       condition     = try(length(trimspace(var.postgres_user)) > 0, false)
       error_message = "postgres_user is required when enable_full_private_stack=true."
