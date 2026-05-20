@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Best-effort state recovery: do not fail CI when individual imports/removals fail.
+set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFRA_DIR="${ROOT_DIR}/infra"
@@ -55,7 +56,7 @@ remove_state_if_attr_mismatch() {
   current="$(state_attr "${address}" "${attr}")"
   if is_real_id "${current}" && [[ "${current}" != "${expected}" ]]; then
     echo "Removing stale state for ${address}: ${attr} ${current} != ${expected}"
-    terraform state rm "${address}" >/dev/null
+    terraform state rm "${address}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -75,7 +76,7 @@ import_if_missing() {
     fi
 
     echo "Replacing stale state for ${address}: ${current_id} -> ${import_id}"
-    terraform state rm "${address}" >/dev/null
+    terraform state rm "${address}" >/dev/null 2>&1 || true
   fi
 
   echo "Importing ${address} from ${import_id}"
@@ -236,8 +237,8 @@ api_integration_id_for_lambda() {
 
   aws apigatewayv2 get-integrations --api-id "${api_id}" --output json 2>/dev/null \
     | jq -r --arg function_arn "${function_arn}" \
-        '.Items[]? | select((.IntegrationUri // "") | contains($function_arn)) | .IntegrationId' \
-    | head -n 1
+        '[.Items[]? | select((.IntegrationUri // "") | contains($function_arn)) | .IntegrationId][0] // empty' \
+    || true
 }
 
 api_route_id_for_key() {
@@ -250,8 +251,8 @@ api_route_id_for_key() {
 
   aws apigatewayv2 get-routes --api-id "${api_id}" --output json 2>/dev/null \
     | jq -r --arg route_key "${route_key}" \
-        '.Items[]? | select(.RouteKey == $route_key) | .RouteId' \
-    | head -n 1
+        '[.Items[]? | select(.RouteKey == $route_key) | .RouteId][0] // empty' \
+    || true
 }
 
 terraform_api_routes() {
@@ -463,18 +464,18 @@ if is_real_id "${api_id}"; then
     function_arn="$(aws_text lambda get-function \
       --function-name "${function_name}" \
       --query 'Configuration.FunctionArn')"
-    integration_id="$(api_integration_id_for_lambda "${api_id}" "${function_arn}")"
+    integration_id="$(api_integration_id_for_lambda "${api_id}" "${function_arn}" || true)"
     if is_real_id "${integration_id}"; then
       import_if_absent "aws_apigatewayv2_integration.lambda[\"${key}\"]" "${api_id}/${integration_id}"
     fi
   done
 
   while IFS=$'\t' read -r address route_key; do
-    route_id="$(api_route_id_for_key "${api_id}" "${route_key}")"
+    route_id="$(api_route_id_for_key "${api_id}" "${route_key}" || true)"
     if is_real_id "${route_id}"; then
       import_if_absent "${address}" "${api_id}/${route_id}"
     fi
-  done < <(terraform_api_routes)
+  done < <(terraform_api_routes || true)
 fi
 
 if aws rds describe-db-subnet-groups --db-subnet-group-name "${db_subnet_group}" >/dev/null 2>&1; then
