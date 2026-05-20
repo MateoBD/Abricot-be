@@ -1,129 +1,671 @@
-import json
 import logging
-from typing import Any, Callable
 
 from app.services.cognito_restaurant_service import CognitoRestaurantService
-from common.flask_db import backend_app_context
+from common.api import (
+    authorizer_claims,
+    claim_sub,
+    is_cognito_super_admin,
+    json_body,
+    json_response,
+    method,
+    path_parameters,
+    query_params,
+    route_not_found,
+    route_path,
+    with_backend,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def _json_response(status_code: int, payload: dict) -> dict:
+def _auth_kwargs(event: dict) -> dict:
+    claims = authorizer_claims(event)
     return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-store",
-        },
-        "body": json.dumps(payload, default=str),
+        "cognito_sub": claim_sub(claims),
+        "is_cognito_admin": is_cognito_super_admin(claims),
     }
 
 
-def _route_path(event: dict) -> str:
+def _path_parts(event: dict) -> list[str]:
+    return route_path(event).rstrip("/").strip("/").split("/")
+
+
+def _restaurant_id(event: dict) -> str | None:
+    params = path_parameters(event)
+    if params.get("restaurantId"):
+        return params["restaurantId"]
+    parts = _path_parts(event)
+    return parts[1] if len(parts) >= 2 and parts[0] == "restaurants" else None
+
+
+def _menu_id(event: dict) -> str | None:
+    params = path_parameters(event)
+    if params.get("menuId"):
+        return params["menuId"]
+    parts = _path_parts(event)
+    if len(parts) >= 4 and parts[0] == "restaurants" and parts[2] == "menus":
+        return parts[3]
+    if len(parts) >= 5 and parts[0] == "restaurants" and parts[2] == "admin" and parts[3] == "menus":
+        return parts[4]
+    return None
+
+
+def _category_id(event: dict) -> str | None:
+    params = path_parameters(event)
+    if params.get("categoryId"):
+        return params["categoryId"]
+    parts = _path_parts(event)
+    if len(parts) >= 6 and parts[0] == "restaurants" and parts[2] == "menus" and parts[4] == "categories":
+        return parts[5]
+    return None
+
+
+def _item_id(event: dict) -> str | None:
+    params = path_parameters(event)
+    if params.get("itemId"):
+        return params["itemId"]
+    parts = _path_parts(event)
+    if len(parts) >= 8 and parts[6] == "items":
+        return parts[7]
+    return None
+
+
+def _table_id(event: dict) -> str | None:
+    params = path_parameters(event)
+    if params.get("tableId"):
+        return params["tableId"]
+    parts = _path_parts(event)
+    if len(parts) == 4 and parts[0] == "restaurants" and parts[2] == "tables":
+        return parts[3]
+    return None
+
+
+def _user_id_from_reviews(event: dict) -> str | None:
+    params = path_parameters(event)
+    if params.get("userId"):
+        return params["userId"]
+    parts = _path_parts(event)
+    if len(parts) == 4 and parts[0] == "restaurants" and parts[2] == "reviews":
+        return parts[3]
+    return None
+
+
+def _admin_user_id(event: dict) -> str | None:
+    params = path_parameters(event)
+    if params.get("userId"):
+        return params["userId"]
+    parts = _path_parts(event)
+    if len(parts) == 4 and parts[0] == "restaurants" and parts[2] == "admins":
+        return parts[3]
+    return None
+
+
+def _is_admin_menus_collection(event: dict) -> bool:
+    parts = _path_parts(event)
     return (
-        event.get("rawPath")
-        or event.get("path")
-        or event.get("requestContext", {}).get("http", {}).get("path")
-        or ""
+        len(parts) == 4
+        and parts[0] == "restaurants"
+        and parts[2] == "admin"
+        and parts[3] == "menus"
     )
 
 
-def _method(event: dict) -> str:
+def _is_admin_menu_detail(event: dict) -> bool:
+    parts = _path_parts(event)
     return (
-        event.get("requestContext", {}).get("http", {}).get("method")
-        or event.get("httpMethod")
-        or ""
-    ).upper()
-
-
-def _json_body(event: dict) -> dict:
-    raw_body = event.get("body")
-    if not raw_body:
-        return {}
-    try:
-        body = json.loads(raw_body)
-    except json.JSONDecodeError:
-        return {}
-    return body if isinstance(body, dict) else {}
-
-
-def _authorizer_claims(event: dict) -> dict[str, Any]:
-    authorizer = event.get("requestContext", {}).get("authorizer") or {}
-    if isinstance(authorizer.get("claims"), dict):
-        return authorizer["claims"]
-    jwt = authorizer.get("jwt") or {}
-    if isinstance(jwt.get("claims"), dict):
-        return jwt["claims"]
-    return {}
-
-
-def _claim_sub(claims: dict[str, Any]) -> str | None:
-    sub = claims.get("sub")
-    return str(sub).strip() if sub else None
-
-
-def _app_error_response(error) -> dict:
-    from app.exceptions.errors import AppError
-
-    if not isinstance(error, AppError):
-        raise error
-    payload = {"message": error.public_message or error.message}
-    if error.payload:
-        payload["errors"] = error.payload
-    return _json_response(error.status_code, payload)
-
-
-def _database_error_response(error: RuntimeError) -> dict:
-    logger.warning(
-        "restaurants_service_db_configuration_error type=%s",
-        str(error).split(":", 1)[0],
-    )
-    return _json_response(
-        500, {"message": "Restaurants service database is not configured."}
+        len(parts) == 5
+        and parts[0] == "restaurants"
+        and parts[2] == "admin"
+        and parts[3] == "menus"
     )
 
 
-def _unexpected_error_response(route: str, error: Exception) -> dict:
-    logger.warning("%s_failed type=%s", route, type(error).__name__)
-    return _json_response(500, {"message": "Restaurants service failed."})
+def _is_menu_categories_collection(event: dict) -> bool:
+    parts = _path_parts(event)
+    return (
+        len(parts) == 5
+        and parts[0] == "restaurants"
+        and parts[2] == "menus"
+        and parts[4] == "categories"
+    )
 
 
-def _with_backend(route: str, operation: Callable[[], tuple[int, dict]]) -> dict:
-    from app.exceptions.errors import AppError
-
-    try:
-        with backend_app_context():
-            status_code, payload = operation()
-            return _json_response(status_code, payload)
-    except AppError as exc:
-        return _app_error_response(exc)
-    except RuntimeError as exc:
-        if str(exc).startswith(("missing_db_env", "invalid_db_target")):
-            return _database_error_response(exc)
-        return _unexpected_error_response(route, exc)
-    except Exception as exc:
-        return _unexpected_error_response(route, exc)
+def _is_menu_category_detail(event: dict) -> bool:
+    parts = _path_parts(event)
+    return (
+        len(parts) == 6
+        and parts[0] == "restaurants"
+        and parts[2] == "menus"
+        and parts[4] == "categories"
+    )
 
 
-def _handle_post_restaurants(event: dict) -> dict:
-    claims = _authorizer_claims(event)
+def _is_menu_items_collection(event: dict) -> bool:
+    parts = _path_parts(event)
+    return (
+        len(parts) == 7
+        and parts[0] == "restaurants"
+        and parts[2] == "menus"
+        and parts[4] == "categories"
+        and parts[6] == "items"
+    )
 
-    def operation() -> tuple[int, dict]:
-        return 201, CognitoRestaurantService.create_restaurant(
-            cognito_sub=_claim_sub(claims),
-            body=_json_body(event),
-        )
 
-    return _with_backend("restaurants_post", operation)
+def _is_menu_item_detail(event: dict) -> bool:
+    parts = _path_parts(event)
+    return (
+        len(parts) == 8
+        and parts[0] == "restaurants"
+        and parts[2] == "menus"
+        and parts[4] == "categories"
+        and parts[6] == "items"
+    )
 
 
 def handler(event, context):
     event = event or {}
-    method = _method(event)
-    path = _route_path(event).rstrip("/")
+    http_method = method(event)
+    path = route_path(event).rstrip("/")
+    auth = _auth_kwargs(event)
+    restaurant_id = _restaurant_id(event)
 
-    if method == "POST" and path == "/restaurants":
-        return _handle_post_restaurants(event)
+    if http_method == "POST" and path == "/restaurants":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_post",
+            lambda: (
+                201,
+                CognitoRestaurantService.create_restaurant(
+                    cognito_sub=auth["cognito_sub"],
+                    body=json_body(event),
+                ),
+            ),
+            logger,
+        )
 
-    return _json_response(404, {"message": "Route not found."})
+    if restaurant_id and http_method == "PUT" and path == f"/restaurants/{restaurant_id}":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_put",
+            lambda: (
+                200,
+                CognitoRestaurantService.update_restaurant(
+                    restaurant_id=restaurant_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and http_method == "DELETE" and path == f"/restaurants/{restaurant_id}":
+        def operation():
+            CognitoRestaurantService.delete_restaurant(restaurant_id=restaurant_id, **auth)
+            return 204, None
+
+        return with_backend("restaurants_service", "restaurants_delete", operation, logger)
+
+    user_id = _user_id_from_reviews(event)
+    if (
+        restaurant_id
+        and user_id
+        and http_method == "PUT"
+        and path == f"/restaurants/{restaurant_id}/reviews/{user_id}"
+    ):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_review_put",
+            lambda: (
+                200,
+                CognitoRestaurantService.put_review(
+                    restaurant_id=restaurant_id,
+                    user_id=user_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and http_method == "GET" and path == f"/restaurants/{restaurant_id}/admins":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_admins_list",
+            lambda: (200, CognitoRestaurantService.list_admins(restaurant_id=restaurant_id, **auth)),
+            logger,
+        )
+
+    if restaurant_id and http_method == "POST" and path == f"/restaurants/{restaurant_id}/admins":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_admins_post",
+            lambda: (
+                201,
+                CognitoRestaurantService.add_admin(
+                    restaurant_id=restaurant_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    admin_user_id = _admin_user_id(event)
+    if (
+        restaurant_id
+        and admin_user_id
+        and http_method == "DELETE"
+        and path == f"/restaurants/{restaurant_id}/admins/{admin_user_id}"
+    ):
+        def operation():
+            CognitoRestaurantService.remove_admin(
+                restaurant_id=restaurant_id,
+                user_id=admin_user_id,
+                **auth,
+            )
+            return 204, None
+
+        return with_backend("restaurants_service", "restaurants_admins_delete", operation, logger)
+
+    if restaurant_id and http_method == "GET" and _is_admin_menus_collection(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_admin_menus_list",
+            lambda: (200, CognitoRestaurantService.list_admin_menus(restaurant_id=restaurant_id, **auth)),
+            logger,
+        )
+
+    if restaurant_id and http_method == "POST" and _is_admin_menus_collection(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_admin_menus_post",
+            lambda: (
+                201,
+                CognitoRestaurantService.create_admin_menu(
+                    restaurant_id=restaurant_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    menu_id = _menu_id(event)
+    if restaurant_id and menu_id and http_method == "GET" and _is_admin_menu_detail(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_admin_menu_get",
+            lambda: (
+                200,
+                CognitoRestaurantService.get_admin_menu(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and menu_id and http_method == "PUT" and _is_admin_menu_detail(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_admin_menu_put",
+            lambda: (
+                200,
+                CognitoRestaurantService.update_admin_menu(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and menu_id and http_method == "PATCH" and _is_admin_menu_detail(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_admin_menu_patch",
+            lambda: (
+                200,
+                CognitoRestaurantService.patch_admin_menu(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and menu_id and http_method == "DELETE" and _is_admin_menu_detail(event):
+        def operation():
+            CognitoRestaurantService.delete_admin_menu(
+                restaurant_id=restaurant_id,
+                menu_id=menu_id,
+                **auth,
+            )
+            return 204, None
+
+        return with_backend("restaurants_service", "restaurants_admin_menu_delete", operation, logger)
+
+    if restaurant_id and menu_id and http_method == "GET" and _is_menu_categories_collection(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_categories_list",
+            lambda: (
+                200,
+                CognitoRestaurantService.list_menu_categories(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and menu_id and http_method == "POST" and _is_menu_categories_collection(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_categories_post",
+            lambda: (
+                201,
+                CognitoRestaurantService.create_menu_category(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    category_id = _category_id(event)
+    if (
+        restaurant_id
+        and menu_id
+        and category_id
+        and http_method == "GET"
+        and _is_menu_category_detail(event)
+    ):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_category_get",
+            lambda: (
+                200,
+                CognitoRestaurantService.get_menu_category(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    category_id=category_id,
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if (
+        restaurant_id
+        and menu_id
+        and category_id
+        and http_method == "PUT"
+        and _is_menu_category_detail(event)
+    ):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_category_put",
+            lambda: (
+                200,
+                CognitoRestaurantService.update_menu_category(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    category_id=category_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if (
+        restaurant_id
+        and menu_id
+        and category_id
+        and http_method == "DELETE"
+        and _is_menu_category_detail(event)
+    ):
+        def operation():
+            CognitoRestaurantService.delete_menu_category(
+                restaurant_id=restaurant_id,
+                menu_id=menu_id,
+                category_id=category_id,
+                **auth,
+            )
+            return 204, None
+
+        return with_backend("restaurants_service", "restaurants_menu_category_delete", operation, logger)
+
+    if restaurant_id and menu_id and category_id and http_method == "GET" and _is_menu_items_collection(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_items_list",
+            lambda: (
+                200,
+                CognitoRestaurantService.list_menu_items(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    category_id=category_id,
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and menu_id and category_id and http_method == "POST" and _is_menu_items_collection(event):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_items_post",
+            lambda: (
+                201,
+                CognitoRestaurantService.create_menu_item(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    category_id=category_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    item_id = _item_id(event)
+    if (
+        restaurant_id
+        and menu_id
+        and category_id
+        and item_id
+        and http_method == "GET"
+        and _is_menu_item_detail(event)
+    ):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_item_get",
+            lambda: (
+                200,
+                CognitoRestaurantService.get_menu_item(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    category_id=category_id,
+                    item_id=item_id,
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if (
+        restaurant_id
+        and menu_id
+        and category_id
+        and item_id
+        and http_method == "PUT"
+        and _is_menu_item_detail(event)
+    ):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_menu_item_put",
+            lambda: (
+                200,
+                CognitoRestaurantService.update_menu_item(
+                    restaurant_id=restaurant_id,
+                    menu_id=menu_id,
+                    category_id=category_id,
+                    item_id=item_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if (
+        restaurant_id
+        and menu_id
+        and category_id
+        and item_id
+        and http_method == "DELETE"
+        and _is_menu_item_detail(event)
+    ):
+        def operation():
+            CognitoRestaurantService.delete_menu_item(
+                restaurant_id=restaurant_id,
+                menu_id=menu_id,
+                category_id=category_id,
+                item_id=item_id,
+                **auth,
+            )
+            return 204, None
+
+        return with_backend("restaurants_service", "restaurants_menu_item_delete", operation, logger)
+
+    if restaurant_id and http_method == "GET" and path == f"/restaurants/{restaurant_id}/tables":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_tables_list",
+            lambda: (200, CognitoRestaurantService.list_tables(restaurant_id=restaurant_id, **auth)),
+            logger,
+        )
+
+    if restaurant_id and http_method == "POST" and path == f"/restaurants/{restaurant_id}/tables":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_tables_post",
+            lambda: (
+                201,
+                CognitoRestaurantService.create_table(
+                    restaurant_id=restaurant_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    table_id = _table_id(event)
+    if restaurant_id and table_id and http_method == "GET" and path.endswith(f"/tables/{table_id}"):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_table_get",
+            lambda: (
+                200,
+                CognitoRestaurantService.get_table(
+                    restaurant_id=restaurant_id,
+                    table_id=table_id,
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and table_id and http_method == "PUT" and path.endswith(f"/tables/{table_id}"):
+        return with_backend(
+            "restaurants_service",
+            "restaurants_table_put",
+            lambda: (
+                200,
+                CognitoRestaurantService.update_table(
+                    restaurant_id=restaurant_id,
+                    table_id=table_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and table_id and http_method == "DELETE" and path.endswith(f"/tables/{table_id}"):
+        def operation():
+            CognitoRestaurantService.delete_table(
+                restaurant_id=restaurant_id,
+                table_id=table_id,
+                **auth,
+            )
+            return 204, None
+
+        return with_backend("restaurants_service", "restaurants_table_delete", operation, logger)
+
+    if restaurant_id and http_method == "GET" and path == f"/restaurants/{restaurant_id}/business-hours":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_business_hours_get",
+            lambda: (200, CognitoRestaurantService.get_business_hours(restaurant_id=restaurant_id, **auth)),
+            logger,
+        )
+
+    if restaurant_id and http_method == "PUT" and path == f"/restaurants/{restaurant_id}/business-hours":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_business_hours_put",
+            lambda: (
+                200,
+                CognitoRestaurantService.update_business_hours(
+                    restaurant_id=restaurant_id,
+                    body=json_body(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
+
+    query = query_params(event)
+    if restaurant_id and http_method == "GET" and path == f"/restaurants/{restaurant_id}/availability":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_availability",
+            lambda: (
+                200,
+                CognitoRestaurantService.get_availability(
+                    restaurant_id=restaurant_id,
+                    on_date=query.get("date"),
+                    party_size=query.get("partySize"),
+                ),
+            ),
+            logger,
+        )
+
+    if restaurant_id and http_method == "GET" and path == f"/restaurants/{restaurant_id}/public-availability":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_public_availability",
+            lambda: (
+                200,
+                CognitoRestaurantService.get_availability(
+                    restaurant_id=restaurant_id,
+                    on_date=query.get("date"),
+                    party_size=query.get("partySize"),
+                ),
+            ),
+            logger,
+        )
+
+    return route_not_found()

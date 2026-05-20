@@ -264,6 +264,422 @@ resource "aws_apigatewayv2_route" "orders_restaurant_patch" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+resource "aws_apigatewayv2_route" "restaurants_put" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /restaurants/{restaurantId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_delete" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "DELETE /restaurants/{restaurantId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_review_put" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /restaurants/{restaurantId}/reviews/{userId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admins_list" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/admins"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admins_post" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/admins"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admins_delete" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "DELETE /restaurants/{restaurantId}/admins/{userId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admin_menus_list" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/admin/menus"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admin_menus_post" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/admin/menus"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admin_menu_get" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/admin/menus/{menuId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admin_menu_put" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /restaurants/{restaurantId}/admin/menus/{menuId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admin_menu_patch" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PATCH /restaurants/{restaurantId}/admin/menus/{menuId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_admin_menu_delete" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "DELETE /restaurants/{restaurantId}/admin/menus/{menuId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_categories_list" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/menus/{menuId}/categories"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_categories_post" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/menus/{menuId}/categories"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_category_get" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_category_put" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_category_delete" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "DELETE /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_items_list" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_items_post" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_item_get" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items/{itemId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_item_put" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items/{itemId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menu_item_delete" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "DELETE /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items/{itemId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_tables_list" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/tables"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_tables_post" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/tables"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_table_get" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/tables/{tableId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_table_put" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /restaurants/{restaurantId}/tables/{tableId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_table_delete" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "DELETE /restaurants/{restaurantId}/tables/{tableId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_business_hours_get" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/business-hours"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_business_hours_put" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PUT /restaurants/{restaurantId}/business-hours"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_availability" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/availability"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_public_availability" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "GET /restaurants/{restaurantId}/public-availability"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+}
+
+resource "aws_apigatewayv2_route" "reservations_create" {
+  count = local.reservations_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/reservations"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["reservations_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "reservations_create_public" {
+  count = local.reservations_routes_enabled ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /restaurants/{restaurantId}/public-reservations"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda["reservations_service"].id}"
+}
+
+resource "aws_apigatewayv2_route" "reservations_restaurant_list" {
+  count = local.reservations_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/reservations"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["reservations_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "reservations_get" {
+  count = local.reservations_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /reservations/{reservationId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["reservations_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "reservations_patch" {
+  count = local.reservations_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "PATCH /reservations/{reservationId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["reservations_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "reservations_user_list" {
+  count = local.reservations_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /users/{userId}/reservations"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["reservations_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "promotions_list" {
+  count = local.promotions_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/promotions"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["promotions_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "promotions_create" {
+  count = local.promotions_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/promotions"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["promotions_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "promotions_get" {
+  count = local.promotions_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/promotions/{promotionId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["promotions_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "promotions_delete" {
+  count = local.promotions_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "DELETE /restaurants/{restaurantId}/promotions/{promotionId}"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["promotions_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "analytics_get" {
+  count = local.analytics_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "GET /restaurants/{restaurantId}/analytics"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["analytics_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
 resource "aws_lambda_permission" "api_gateway" {
   for_each = local.api_lambda_functions
 

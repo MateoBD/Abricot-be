@@ -1,0 +1,160 @@
+from uuid import UUID
+
+from app.exceptions.errors import ValidationError
+from app.models.enums import ReservationSource
+from app.services.cognito_authorization_service import CognitoAuthorizationService
+from app.services.reservation_service import ReservationService
+from app.services.user_service import UserService
+
+
+def _parse_uuid(value: str | UUID | None, field: str) -> UUID:
+    if value is None or value == "":
+        raise ValidationError(f"{field} is required.", {field: "Required"})
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except ValueError as error:
+        raise ValidationError("Invalid identifier format.", {field: "Invalid UUID"}) from error
+
+
+class CognitoReservationService:
+    @staticmethod
+    def create(
+        *,
+        restaurant_id: str | UUID,
+        cognito_sub: str | None,
+        body: dict,
+        is_cognito_admin: bool = False,
+    ) -> dict:
+        restaurant_uuid = _parse_uuid(restaurant_id, "restaurantId")
+        principal = CognitoAuthorizationService.principal_user(cognito_sub)
+        source = str(body.get("source") or "ONLINE").upper()
+
+        if source in ("PHONE", "EVENT"):
+            CognitoAuthorizationService.require_restaurant_admin(
+                principal=principal,
+                restaurant_id=restaurant_uuid,
+                is_cognito_admin=is_cognito_admin,
+            )
+            user_id = body.get("userId")
+            return ReservationService.create_for_admin(
+                restaurant_id=restaurant_uuid,
+                admin_user_id=principal.id,
+                party_size=body.get("partySize"),
+                on_date=ReservationService.parse_required_date(body.get("date")),
+                time_slot=ReservationService.parse_required_time(body.get("timeSlot")),
+                source=ReservationService.parse_required_admin_source(source),
+                guest_name=body.get("guestName"),
+                guest_phone=body.get("guestPhone"),
+                guest_email=body.get("guestEmail"),
+                user_id=_parse_uuid(user_id, "userId") if user_id is not None else None,
+                notes=body.get("notes"),
+            )
+
+        if source != "ONLINE":
+            raise ValidationError(
+                "Invalid source.",
+                {"source": "Must be one of: ONLINE, PHONE, EVENT"},
+            )
+
+        return ReservationService.create(
+            restaurant_id=restaurant_uuid,
+            user_id=principal.id,
+            party_size=body.get("partySize"),
+            on_date=ReservationService.parse_required_date(body.get("date")),
+            time_slot=ReservationService.parse_required_time(body.get("timeSlot")),
+            notes=body.get("notes"),
+        )
+
+    @staticmethod
+    def create_public(*, restaurant_id: str | UUID, body: dict) -> dict:
+        return ReservationService.create_guest_online(
+            restaurant_id=_parse_uuid(restaurant_id, "restaurantId"),
+            party_size=body.get("partySize"),
+            on_date=ReservationService.parse_required_date(body.get("date")),
+            time_slot=ReservationService.parse_required_time(body.get("timeSlot")),
+            guest_name=body.get("guestName"),
+            guest_phone=body.get("guestPhone"),
+            guest_email=body.get("guestEmail"),
+            notes=body.get("notes"),
+        )
+
+    @staticmethod
+    def list_for_restaurant(
+        *,
+        restaurant_id: str | UUID,
+        cognito_sub: str | None,
+        query: dict[str, str],
+        is_cognito_admin: bool = False,
+    ) -> dict:
+        restaurant_uuid = _parse_uuid(restaurant_id, "restaurantId")
+        principal = CognitoAuthorizationService.principal_user(cognito_sub)
+        CognitoAuthorizationService.require_restaurant_admin(
+            principal=principal,
+            restaurant_id=restaurant_uuid,
+            is_cognito_admin=is_cognito_admin,
+        )
+        return ReservationService.list_for_restaurant(
+            restaurant_id=restaurant_uuid,
+            on_date=query.get("date"),
+            status=query.get("status"),
+            source=query.get("source"),
+            page=_int_query(query, "page", 1),
+            per_page=_int_query(query, "perPage", 20),
+        )
+
+    @staticmethod
+    def list_for_user(
+        *,
+        user_id: str | UUID,
+        cognito_sub: str | None,
+        query: dict[str, str],
+        is_cognito_admin: bool = False,
+    ) -> dict:
+        target_user_id = _parse_uuid(user_id, "userId")
+        principal = CognitoAuthorizationService.principal_user(cognito_sub)
+        CognitoAuthorizationService.require_same_user_or_super_admin(
+            principal=principal,
+            target_user_id=target_user_id,
+            is_cognito_admin=is_cognito_admin,
+        )
+        return UserService.get_my_reservations(
+            target_user_id,
+            page=_int_query(query, "page", 1),
+            per_page=_int_query(query, "perPage", 20),
+        )
+
+    @staticmethod
+    def get_by_id(
+        *,
+        reservation_id: str | UUID,
+        cognito_sub: str | None,
+    ) -> dict:
+        principal = CognitoAuthorizationService.principal_user(cognito_sub)
+        return ReservationService.get_by_id(
+            reservation_id=_parse_uuid(reservation_id, "reservationId"),
+            requesting_user_id=principal.id,
+        )
+
+    @staticmethod
+    def transition_status(
+        *,
+        reservation_id: str | UUID,
+        cognito_sub: str | None,
+        body: dict,
+    ) -> dict:
+        principal = CognitoAuthorizationService.principal_user(cognito_sub)
+        return ReservationService.transition_status(
+            reservation_id=_parse_uuid(reservation_id, "reservationId"),
+            requesting_user_id=principal.id,
+            status=body.get("status"),
+            reason=body.get("reason"),
+        )
+
+
+def _int_query(query: dict[str, str], name: str, default: int) -> int:
+    try:
+        return int(query.get(name, str(default)))
+    except ValueError:
+        return default

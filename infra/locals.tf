@@ -59,17 +59,23 @@ locals {
     MIGRATIONS_DIR        = "migrations"
   })
 
-  catalog_routes_enabled     = local.lambda_private_attachment_enabled
-  orders_routes_enabled      = local.lambda_private_attachment_enabled
-  restaurants_routes_enabled = local.lambda_private_attachment_enabled
+  catalog_routes_enabled      = local.lambda_private_attachment_enabled
+  orders_routes_enabled       = local.lambda_private_attachment_enabled
+  restaurants_routes_enabled  = local.lambda_private_attachment_enabled
+  reservations_routes_enabled = local.lambda_private_attachment_enabled
+  promotions_routes_enabled   = local.lambda_private_attachment_enabled
+  analytics_routes_enabled    = local.lambda_private_attachment_enabled
 
   lambda_environment = {
-    health              = {}
-    users_service       = merge(local.users_service_base_environment, local.users_service_db_environment)
-    catalog_service     = local.catalog_routes_enabled ? local.users_service_db_environment : {}
-    orders_service      = local.orders_routes_enabled ? local.users_service_db_environment : {}
-    restaurants_service = local.restaurants_routes_enabled ? local.users_service_db_environment : {}
-    db_migrate          = local.db_migration_environment
+    health               = {}
+    users_service        = merge(local.users_service_base_environment, local.users_service_db_environment)
+    catalog_service      = local.catalog_routes_enabled ? local.users_service_db_environment : {}
+    orders_service       = local.orders_routes_enabled ? local.users_service_db_environment : {}
+    restaurants_service  = local.restaurants_routes_enabled ? local.users_service_db_environment : {}
+    reservations_service = local.reservations_routes_enabled ? local.users_service_db_environment : {}
+    promotions_service   = local.promotions_routes_enabled ? local.users_service_db_environment : {}
+    analytics_service    = local.analytics_routes_enabled ? local.users_service_db_environment : {}
+    db_migrate           = local.db_migration_environment
   }
 
   api_lambda_functions = {
@@ -114,6 +120,33 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/restaurants_service"
       excludes           = []
       timeout            = 30
+      vpc_enabled        = local.lambda_private_attachment_enabled
+      subnet_ids         = local.private_app_subnet_ids
+      security_group_ids = local.lambda_security_group_ids
+    }
+    reservations_service = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/reservations_service"
+      excludes           = []
+      timeout            = 15
+      vpc_enabled        = local.lambda_private_attachment_enabled
+      subnet_ids         = local.private_app_subnet_ids
+      security_group_ids = local.lambda_security_group_ids
+    }
+    promotions_service = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/promotions_service"
+      excludes           = []
+      timeout            = 15
+      vpc_enabled        = local.lambda_private_attachment_enabled
+      subnet_ids         = local.private_app_subnet_ids
+      security_group_ids = local.lambda_security_group_ids
+    }
+    analytics_service = {
+      handler            = "handler.handler"
+      source_dir         = "${path.module}/../build/lambdas/analytics_service"
+      excludes           = []
+      timeout            = 15
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids

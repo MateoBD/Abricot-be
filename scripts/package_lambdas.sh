@@ -58,6 +58,9 @@ mkdir -p \
   "${BUILD_DIR}/catalog_service" \
   "${BUILD_DIR}/orders_service" \
   "${BUILD_DIR}/restaurants_service" \
+  "${BUILD_DIR}/reservations_service" \
+  "${BUILD_DIR}/promotions_service" \
+  "${BUILD_DIR}/analytics_service" \
   "${BUILD_DIR}/db_migrate"
 
 echo "Copying health-lambda source"
@@ -121,6 +124,51 @@ if [[ -f "${ROOT_DIR}/lambdas/restaurants_service/requirements.txt" ]]; then
     -t "${BUILD_DIR}/restaurants_service"
 else
   echo "No restaurants-service requirements.txt found; skipping dependency install"
+fi
+
+echo "Copying reservations-service-lambda source"
+copy_tree "${ROOT_DIR}/lambdas/reservations_service" "${BUILD_DIR}/reservations_service"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/reservations_service/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/reservations_service/app"
+
+if [[ -f "${ROOT_DIR}/lambdas/reservations_service/requirements.txt" ]]; then
+  echo "Installing reservations-service dependencies into build/lambdas/reservations_service"
+  "${PYTHON_BIN}" -m pip install \
+    --no-cache-dir \
+    -r "${ROOT_DIR}/lambdas/reservations_service/requirements.txt" \
+    -t "${BUILD_DIR}/reservations_service"
+else
+  echo "No reservations-service requirements.txt found; skipping dependency install"
+fi
+
+echo "Copying promotions-service-lambda source"
+copy_tree "${ROOT_DIR}/lambdas/promotions_service" "${BUILD_DIR}/promotions_service"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/promotions_service/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/promotions_service/app"
+
+if [[ -f "${ROOT_DIR}/lambdas/promotions_service/requirements.txt" ]]; then
+  echo "Installing promotions-service dependencies into build/lambdas/promotions_service"
+  "${PYTHON_BIN}" -m pip install \
+    --no-cache-dir \
+    -r "${ROOT_DIR}/lambdas/promotions_service/requirements.txt" \
+    -t "${BUILD_DIR}/promotions_service"
+else
+  echo "No promotions-service requirements.txt found; skipping dependency install"
+fi
+
+echo "Copying analytics-service-lambda source"
+copy_tree "${ROOT_DIR}/lambdas/analytics_service" "${BUILD_DIR}/analytics_service"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/analytics_service/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/analytics_service/app"
+
+if [[ -f "${ROOT_DIR}/lambdas/analytics_service/requirements.txt" ]]; then
+  echo "Installing analytics-service dependencies into build/lambdas/analytics_service"
+  "${PYTHON_BIN}" -m pip install \
+    --no-cache-dir \
+    -r "${ROOT_DIR}/lambdas/analytics_service/requirements.txt" \
+    -t "${BUILD_DIR}/analytics_service"
+else
+  echo "No analytics-service requirements.txt found; skipping dependency install"
 fi
 
 echo "Copying db-migrate-lambda source"
