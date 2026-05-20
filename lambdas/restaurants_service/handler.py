@@ -6,7 +6,6 @@ from common.api import (
     claim_sub,
     is_cognito_super_admin,
     json_body,
-    json_response,
     method,
     path_parameters,
     query_params,

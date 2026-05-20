@@ -1,7 +1,6 @@
 from uuid import UUID
 
 from app.exceptions.errors import ValidationError
-from app.models.enums import ReservationSource
 from app.services.cognito_authorization_service import CognitoAuthorizationService
 from app.services.reservation_service import ReservationService
 from app.services.user_service import UserService
