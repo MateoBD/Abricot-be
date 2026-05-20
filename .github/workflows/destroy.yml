@@ -219,9 +219,21 @@ jobs:
             import_if_missing 'aws_subnet.private_app[1]' "$(subnet_id_for_cidr '10.42.11.0/24')"
             import_if_missing 'aws_subnet.private_db[0]' "$(subnet_id_for_cidr '10.42.20.0/24')"
             import_if_missing 'aws_subnet.private_db[1]' "$(subnet_id_for_cidr '10.42.21.0/24')"
-            import_if_missing 'aws_security_group.lambda[0]' "$(security_group_id_for_name "${name_prefix}-lambda-sg")"
-            import_if_missing 'aws_security_group.rds_proxy[0]' "$(security_group_id_for_name "${name_prefix}-rds-proxy-sg")"
-            import_if_missing 'aws_security_group.rds[0]' "$(security_group_id_for_name "${name_prefix}-rds-sg")"
+            lambda_sg_id="$(security_group_id_for_name "${name_prefix}-lambda-sg")"
+            rds_proxy_sg_id="$(security_group_id_for_name "${name_prefix}-rds-proxy-sg")"
+            rds_sg_id="$(security_group_id_for_name "${name_prefix}-rds-sg")"
+
+            import_if_missing 'aws_security_group.lambda[0]' "$lambda_sg_id"
+            import_if_missing 'aws_security_group.rds_proxy[0]' "$rds_proxy_sg_id"
+            import_if_missing 'aws_security_group.rds[0]' "$rds_sg_id"
+
+            if [ -n "$lambda_sg_id" ] && [ "$lambda_sg_id" != "None" ] && [ -n "$rds_proxy_sg_id" ] && [ "$rds_proxy_sg_id" != "None" ] && [ -n "$rds_sg_id" ] && [ "$rds_sg_id" != "None" ]; then
+              import_if_absent 'aws_security_group_rule.lambda_to_rds_proxy[0]' "${lambda_sg_id}_egress_tcp_5432_5432_${rds_proxy_sg_id}"
+              import_if_absent 'aws_security_group_rule.lambda_https_egress[0]' "${lambda_sg_id}_egress_tcp_443_443_0.0.0.0/0"
+              import_if_absent 'aws_security_group_rule.rds_proxy_from_lambda[0]' "${rds_proxy_sg_id}_ingress_tcp_5432_5432_${lambda_sg_id}"
+              import_if_absent 'aws_security_group_rule.rds_proxy_to_rds[0]' "${rds_proxy_sg_id}_egress_tcp_5432_5432_${rds_sg_id}"
+              import_if_absent 'aws_security_group_rule.rds_from_proxy[0]' "${rds_sg_id}_ingress_tcp_5432_5432_${rds_proxy_sg_id}"
+            fi
           fi
 
           if aws s3api head-bucket --bucket "$frontend_bucket" >/dev/null 2>&1; then
