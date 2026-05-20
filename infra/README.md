@@ -12,9 +12,14 @@ Terraform root for the Abricot TP3 AWS architecture.
   - protected `POST /users`
   - protected `GET /users/{userId}`
   - protected `PUT /users/{userId}`
+  - public `GET /lookups` (when private DB stack is enabled)
+  - public `GET /restaurants`
+  - public `GET /restaurants/{restaurantId}`
+  - public `GET /restaurants/{restaurantId}/menus`
 - Python Lambdas:
   - `health-lambda`
   - `users-service-lambda`
+  - `catalog-service-lambda` for public catalog reads via RDS Proxy
   - `db-migrate-lambda` for internal Flask-Migrate/Alembic upgrades
 - A dedicated VPC with:
   - 2 public subnets for NAT
@@ -170,7 +175,8 @@ terraform apply
 ```
 
 `./scripts/package_lambdas.sh` creates `build/lambdas/health`,
-`build/lambdas/users_service`, and `build/lambdas/db_migrate`. Terraform zips
+`build/lambdas/users_service`, `build/lambdas/catalog_service`, and
+`build/lambdas/db_migrate`. Terraform zips
 those build folders with `archive_file`. The `build/` folder is generated and
 gitignored.
 

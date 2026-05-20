@@ -73,6 +73,21 @@ output "users_routes_enabled" {
   value       = local.users_routes_enabled
 }
 
+output "catalog_routes_enabled" {
+  description = "Whether public catalog API Gateway routes are enabled."
+  value       = local.catalog_routes_enabled
+}
+
+output "catalog_lookups_url" {
+  description = "Public cuisine/price lookup endpoint."
+  value       = local.catalog_routes_enabled ? "${local.api_gateway_url}/lookups?type=cuisine-type" : null
+}
+
+output "catalog_restaurants_url" {
+  description = "Public paginated restaurants list endpoint."
+  value       = local.catalog_routes_enabled ? "${local.api_gateway_url}/restaurants?page=1&perPage=12" : null
+}
+
 output "private_app_subnet_ids" {
   description = "Private app subnet IDs for DB-backed Lambdas when PASO 2.2B is enabled."
   value       = local.private_app_subnet_ids

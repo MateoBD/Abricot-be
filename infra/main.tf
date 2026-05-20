@@ -162,6 +162,38 @@ resource "aws_apigatewayv2_route" "users_put" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }
 
+resource "aws_apigatewayv2_route" "catalog_lookups" {
+  count = local.catalog_routes_enabled ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "GET /lookups"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda["catalog_service"].id}"
+}
+
+resource "aws_apigatewayv2_route" "catalog_restaurants_list" {
+  count = local.catalog_routes_enabled ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "GET /restaurants"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda["catalog_service"].id}"
+}
+
+resource "aws_apigatewayv2_route" "catalog_restaurant_detail" {
+  count = local.catalog_routes_enabled ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "GET /restaurants/{restaurantId}"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda["catalog_service"].id}"
+}
+
+resource "aws_apigatewayv2_route" "catalog_restaurant_menus" {
+  count = local.catalog_routes_enabled ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "GET /restaurants/{restaurantId}/menus"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda["catalog_service"].id}"
+}
+
 resource "aws_lambda_permission" "api_gateway" {
   for_each = local.api_lambda_functions
 

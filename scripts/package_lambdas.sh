@@ -55,6 +55,7 @@ rm -rf "${BUILD_DIR}"
 mkdir -p \
   "${BUILD_DIR}/health" \
   "${BUILD_DIR}/users_service" \
+  "${BUILD_DIR}/catalog_service" \
   "${BUILD_DIR}/db_migrate"
 
 echo "Copying health-lambda source"
@@ -71,6 +72,21 @@ if [[ -f "${ROOT_DIR}/lambdas/users_service/requirements.txt" ]]; then
     -t "${BUILD_DIR}/users_service"
 else
   echo "No users-service requirements.txt found; skipping dependency install"
+fi
+
+echo "Copying catalog-service-lambda source"
+copy_tree "${ROOT_DIR}/lambdas/catalog_service" "${BUILD_DIR}/catalog_service"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/catalog_service/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/catalog_service/app"
+
+if [[ -f "${ROOT_DIR}/lambdas/catalog_service/requirements.txt" ]]; then
+  echo "Installing catalog-service dependencies into build/lambdas/catalog_service"
+  "${PYTHON_BIN}" -m pip install \
+    --no-cache-dir \
+    -r "${ROOT_DIR}/lambdas/catalog_service/requirements.txt" \
+    -t "${BUILD_DIR}/catalog_service"
+else
+  echo "No catalog-service requirements.txt found; skipping dependency install"
 fi
 
 echo "Copying db-migrate-lambda source"
