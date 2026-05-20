@@ -99,6 +99,7 @@ jobs:
 
       - name: Verify Terraform backend exists
         if: env.TERRAFORM_BACKEND_MODE == 'remote'
+        working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
           if ! aws s3api head-bucket --bucket "$TERRAFORM_STATE_BUCKET" 2>/dev/null; then
             {
@@ -117,17 +118,29 @@ jobs:
             exit 1
           fi
 
+          cat > backend.remote.tf <<'EOF'
+          terraform {
+            backend "s3" {
+              key     = "abricot-be/terraform.tfstate"
+              region  = "us-east-1"
+              encrypt = true
+            }
+          }
+          EOF
+
       - name: Terraform init
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
+          rm -rf .terraform
           if [ "$TERRAFORM_BACKEND_MODE" = "local" ]; then
+            rm -f backend.remote.tf
             terraform init -backend=false
           else
             init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
             if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
               init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
             fi
-            terraform init "${init_args[@]}"
+            terraform init -reconfigure "${init_args[@]}"
           fi
 
       - name: Terraform apply
