@@ -67,6 +67,53 @@ jobs:
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: terraform init
 
+      - name: Empty versioned S3 buckets
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: |
+          empty_versioned_bucket() {
+            local bucket="$1"
+
+            if [ -z "$bucket" ] || [ "$bucket" = "null" ]; then
+              return 0
+            fi
+
+            if ! aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
+              echo "Bucket $bucket does not exist; skipping."
+              return 0
+            fi
+
+            echo "Emptying all object versions from $bucket"
+            while true; do
+              versions_payload="$(aws s3api list-object-versions \
+                --bucket "$bucket" \
+                --max-items 1000 \
+                --output json)"
+
+              delete_payload="$(jq -c '
+                [
+                  (.Versions // [])[] | {Key: .Key, VersionId: .VersionId}
+                ] + [
+                  (.DeleteMarkers // [])[] | {Key: .Key, VersionId: .VersionId}
+                ] | {Objects: ., Quiet: true}
+              ' <<< "$versions_payload")"
+
+              object_count="$(jq '.Objects | length' <<< "$delete_payload")"
+              if [ "$object_count" -eq 0 ]; then
+                break
+              fi
+
+              aws s3api delete-objects \
+                --bucket "$bucket" \
+                --delete "$delete_payload" >/dev/null
+            done
+          }
+
+          frontend_bucket="$(terraform output -raw frontend_bucket_name 2>/dev/null || true)"
+          lambda_artifacts_bucket="$(terraform output -raw lambda_artifacts_bucket_name 2>/dev/null || true)"
+
+          empty_versioned_bucket "$frontend_bucket"
+          empty_versioned_bucket "$lambda_artifacts_bucket"
+
       - name: Terraform destroy
         working-directory: ${{ env.BACKEND_PATH }}/infra
         env:
