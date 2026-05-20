@@ -16,7 +16,8 @@ locals {
   cognito_domain_prefix = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}"
   cognito_domain        = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
   cognito_scopes        = ["openid", "email", "profile"]
-  callback_urls         = distinct([local.api_gateway_callback_url, local.frontend_callback_url])
+  callback_urls         = [local.api_gateway_callback_url]
+  logout_urls           = [local.api_gateway_url]
 
   lambda_runtime = "python3.12"
 
