@@ -23,6 +23,7 @@ env:
   AWS_REGION: us-east-1
   BACKEND_PATH: Abricot-be
   FRONTEND_PATH: Abricot-few
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
 
@@ -175,11 +176,27 @@ jobs:
           TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
         run: bash ./scripts/import_existing_terraform_resources.sh
 
-      - name: Terraform apply
+      - name: Terraform plan
         working-directory: ${{ env.BACKEND_PATH }}/infra
         env:
           TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
-        run: terraform apply -auto-approve
+        run: terraform plan -no-color -out=tfplan
+
+      - name: Block destructive Terraform plan
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: |
+          terraform show -json tfplan > tfplan.json
+          delete_count="$(jq '[.resource_changes[]? | select((.change.actions // []) | index("delete"))] | length' tfplan.json)"
+
+          if [ "$delete_count" -gt 0 ]; then
+            echo "Terraform plan contains $delete_count resource change(s) with delete actions. Refusing automatic apply." >&2
+            jq -r '.resource_changes[]? | select((.change.actions // []) | index("delete")) | "- \(.address): \(.change.actions | join(","))"' tfplan.json >&2
+            exit 1
+          fi
+
+      - name: Terraform apply
+        working-directory: ${{ env.BACKEND_PATH }}/infra
+        run: terraform apply -auto-approve tfplan
 
       - name: Capture Terraform outputs
         id: outputs

@@ -187,6 +187,8 @@ import_route_if_present() {
   local route_table_id="$2"
   local destination="$3"
 
+  remove_state_if_attr_mismatch "${address}" "route_table_id" "${route_table_id}"
+
   if route_destination_exists "${route_table_id}" "${destination}"; then
     import_if_absent "${address}" "${route_table_id}_${destination}"
   else
@@ -427,6 +429,8 @@ lambda_keys=(
   reservations_service
   promotions_service
   analytics_service
+  email_worker
+  analytics_worker
   db_migrate
 )
 
@@ -441,10 +445,12 @@ api_id="$(api_id_for_name)"
 import_if_missing 'aws_apigatewayv2_api.http' "${api_id}"
 
 if is_real_id "${api_id}"; then
+  remove_state_if_attr_mismatch 'aws_apigatewayv2_stage.default' "api_id" "${api_id}"
   import_if_absent 'aws_apigatewayv2_stage.default' "${api_id}/\$default"
 
   api_authorizer_id="$(api_authorizer_id_for_name "${api_id}")"
   if is_real_id "${api_authorizer_id}"; then
+    remove_state_if_attr_mismatch 'aws_apigatewayv2_authorizer.cognito' "api_id" "${api_id}"
     import_if_absent 'aws_apigatewayv2_authorizer.cognito' "${api_id}/${api_authorizer_id}"
   fi
 
@@ -465,13 +471,18 @@ if is_real_id "${api_id}"; then
       --function-name "${function_name}" \
       --query 'Configuration.FunctionArn')"
     integration_id="$(api_integration_id_for_lambda "${api_id}" "${function_arn}" || true)"
+    remove_state_if_attr_mismatch "aws_apigatewayv2_integration.lambda[\"${key}\"]" "api_id" "${api_id}"
     if is_real_id "${integration_id}"; then
       import_if_absent "aws_apigatewayv2_integration.lambda[\"${key}\"]" "${api_id}/${integration_id}"
     fi
+
+    expected_api_source_arn="arn:aws:execute-api:${AWS_REGION:-us-east-1}:${account_id}:${api_id}/*/*"
+    remove_state_if_attr_mismatch "aws_lambda_permission.api_gateway[\"${key}\"]" "source_arn" "${expected_api_source_arn}"
   done
 
   while IFS=$'\t' read -r address route_key; do
     route_id="$(api_route_id_for_key "${api_id}" "${route_key}" || true)"
+    remove_state_if_attr_mismatch "${address}" "api_id" "${api_id}"
     if is_real_id "${route_id}"; then
       import_if_absent "${address}" "${api_id}/${route_id}"
     fi

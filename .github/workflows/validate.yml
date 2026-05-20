@@ -19,6 +19,7 @@ env:
   AWS_REGION: us-east-1
   BACKEND_PATH: Abricot-be
   FRONTEND_PATH: Abricot-few
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
 

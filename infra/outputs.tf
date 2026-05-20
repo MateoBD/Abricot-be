@@ -162,12 +162,12 @@ output "analytics_events_queue_url" {
 
 output "email_worker_lambda_name" {
   description = "Lambda function name for the SQS email worker."
-  value       = aws_lambda_function.this["email_worker"].function_name
+  value       = lookup({ for name, function in aws_lambda_function.this : name => function.function_name }, "email_worker", null)
 }
 
 output "analytics_worker_lambda_name" {
   description = "Lambda function name for the SQS analytics worker."
-  value       = aws_lambda_function.this["analytics_worker"].function_name
+  value       = lookup({ for name, function in aws_lambda_function.this : name => function.function_name }, "analytics_worker", null)
 }
 
 output "notification_email_subscription_note" {
