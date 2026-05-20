@@ -477,16 +477,18 @@ class CognitoRestaurantService:
     ) -> dict:
         restaurant_uuid = _parse_uuid(restaurant_id, "restaurantId")
         parsed_date = ReservationServiceShim.parse_required_date(on_date)
-        slots = AvailabilityService.get_available_slots(
+        try:
+            parsed_party_size = int(party_size)
+        except (TypeError, ValueError) as error:
+            raise ValidationError(
+                "partySize must be a positive integer.",
+                {"partySize": "Invalid integer"},
+            ) from error
+        return AvailabilityService.get_availability_payload(
             restaurant_uuid,
             parsed_date,
-            int(party_size),
+            parsed_party_size,
         )
-        return {
-            "date": parsed_date.isoformat(),
-            "partySize": int(party_size),
-            "slots": slots,
-        }
 
     @staticmethod
     def _require_admin(

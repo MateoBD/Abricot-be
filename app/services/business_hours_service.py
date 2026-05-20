@@ -9,6 +9,7 @@ from app.utils.list_envelope import list_envelope
 
 logger = logging.getLogger(__name__)
 
+# dayOfWeek: 0 = Monday (Lunes) … 6 = Sunday (Domingo). Matches Python date.weekday().
 _DAY_NAMES = {
     0: "Lunes",
     1: "Martes",
@@ -18,6 +19,21 @@ _DAY_NAMES = {
     5: "Sábado",
     6: "Domingo",
 }
+
+
+def _normalize_day_input(row: dict) -> dict:
+    """Accept owner UI shape: isClosed/isOpen plus one interval per day."""
+    normalized = dict(row)
+    if "isOpen" in row:
+        normalized["isClosed"] = not bool(row.get("isOpen"))
+
+    raw_ranges = row.get("ranges")
+    if not raw_ranges:
+        open_time = row.get("openTime") or row.get("opensAt")
+        close_time = row.get("closeTime") or row.get("closesAt")
+        if open_time and close_time:
+            normalized["ranges"] = [{"opensAt": open_time, "closesAt": close_time}]
+    return normalized
 
 
 def _parse_time(value: str | None, field: str) -> time | None:
@@ -89,11 +105,16 @@ def _group_to_days(
     result = []
     for day in range(7):
         day_ranges = by_day[day]
+        is_closed = len(day_ranges) == 0
+        first_range = day_ranges[0] if day_ranges else None
         result.append(
             {
                 "dayOfWeek": day,
                 "dayName": _DAY_NAMES[day],
-                "isClosed": len(day_ranges) == 0,
+                "isClosed": is_closed,
+                "isOpen": not is_closed,
+                "openTime": first_range.opens_at.isoformat() if first_range else None,
+                "closeTime": first_range.closes_at.isoformat() if first_range else None,
                 "ranges": [
                     {
                         "opensAt": r.opens_at.isoformat(),
@@ -122,22 +143,28 @@ class BusinessHoursService:
         from app.extensions import db
 
         for row in hours_data:
-            day = row.get("dayOfWeek")
+            normalized_row = _normalize_day_input(row)
+            day = normalized_row.get("dayOfWeek")
             if day is None or not isinstance(day, int) or day < 0 or day > 6:
                 raise ValidationError(
                     "dayOfWeek must be an integer between 0 (Lunes) and 6 (Domingo).",
                     {"dayOfWeek": "Must be 0–6"},
                 )
 
-            is_closed = bool(row.get("isClosed", False))
+            is_closed = bool(normalized_row.get("isClosed", False))
 
             if is_closed:
                 BusinessHoursRepository.replace_day(restaurant_id, day, [])
             else:
-                raw_ranges = row.get("ranges") or []
+                raw_ranges = normalized_row.get("ranges") or []
+                if len(raw_ranges) > 1:
+                    raise ValidationError(
+                        f"Day {day}: only one opening interval per day is supported.",
+                        {"ranges": "At most one range"},
+                    )
                 if not raw_ranges:
                     raise ValidationError(
-                        f"Day {day}: at least one range is required when isClosed is false.",
+                        f"Day {day}: openTime and closeTime are required when the day is open.",
                         {"ranges": "Required when open"},
                     )
                 validated = _validate_ranges(day, raw_ranges)

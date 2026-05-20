@@ -15,15 +15,35 @@ logger = logging.getLogger(__name__)
 
 _SLOT_STEP_MINUTES = 30
 
+# dayOfWeek convention (aligned with Python date.weekday() and owner UI):
+# 0 = Monday (Lunes) … 6 = Sunday (Domingo). Not JavaScript getDay() (0 = Sunday).
+
+
+def _window_minutes(opens_at: time, closes_at: time) -> int:
+    base_date = date.today()
+    start = datetime.combine(base_date, opens_at)
+    end = datetime.combine(base_date, closes_at)
+    if closes_at <= opens_at:
+        end += timedelta(days=1)
+    return max(0, int((end - start).total_seconds() // 60))
+
 
 def _slots_for_range(opens_at: time, closes_at: time, slot_duration: int) -> list[time]:
+    """Generate start times every 30 minutes while a reservation of slot_duration fits."""
+    window_minutes = _window_minutes(opens_at, closes_at)
+    if window_minutes < _SLOT_STEP_MINUTES:
+        return []
+
+    # A 90-minute default slot must not erase all slots on short lunch windows.
+    effective_duration = min(max(slot_duration, _SLOT_STEP_MINUTES), window_minutes)
+
     slots: list[time] = []
     base_date = date.today()
     current = datetime.combine(base_date, opens_at)
     closes_at_datetime = datetime.combine(base_date, closes_at)
     if closes_at <= opens_at:
         closes_at_datetime += timedelta(days=1)
-    end = closes_at_datetime - timedelta(minutes=slot_duration)
+    end = closes_at_datetime - timedelta(minutes=effective_duration)
     step = timedelta(minutes=_SLOT_STEP_MINUTES)
     while current <= end:
         slots.append(current.time())
@@ -100,9 +120,52 @@ class AvailabilityService:
         return best_combo
 
     @staticmethod
+    def _empty_reason(
+        restaurant_id: UUID,
+        *,
+        on_date: date,
+        party_size: int,
+        allow_table_joining: bool,
+        time_ranges: list[tuple[time, time]],
+        candidate_slots: list[time],
+        available_results: list[dict],
+    ) -> str | None:
+        if not time_ranges:
+            return "CLOSED_OR_NO_HOURS"
+
+        active_tables = TableRepository.get_active(restaurant_id)
+        if not active_tables:
+            return "NO_TABLES"
+
+        if not any(table.capacity >= party_size for table in active_tables):
+            if not allow_table_joining:
+                return "NO_TABLES_FOR_PARTY_SIZE"
+            joinable = [table for table in active_tables if table.is_joinable]
+            if sum(table.capacity for table in joinable) < party_size:
+                return "NO_TABLES_FOR_PARTY_SIZE"
+
+        if candidate_slots and not available_results:
+            return "ALL_SLOTS_OCCUPIED"
+
+        if not candidate_slots:
+            return "NO_SLOTS_IN_HOURS"
+
+        return None
+
+    @staticmethod
     def get_available_slots(
         restaurant_id: UUID, on_date: date, party_size: int
     ) -> list[dict]:
+        return AvailabilityService.get_availability_payload(
+            restaurant_id,
+            on_date,
+            party_size,
+        )["slots"]
+
+    @staticmethod
+    def get_availability_payload(
+        restaurant_id: UUID, on_date: date, party_size: int
+    ) -> dict:
         restaurant = RestaurantRepository.get_by_id(restaurant_id)
         if not restaurant:
             raise NotFoundError(f"Restaurant with id={restaurant_id} not found.")
@@ -111,18 +174,14 @@ class AvailabilityService:
             raise ValidationError("partySize must be at least 1.", {"partySize": "Must be >= 1"})
 
         time_ranges = BusinessHoursService.get_time_ranges(restaurant_id, on_date)
-        if not time_ranges:
-            return []
-
         slot_duration = restaurant.default_slot_duration_minutes
 
-        # Collect slots from every opening window; preserve ordering across ranges.
-        slots: list[time] = []
+        candidate_slots: list[time] = []
         for opens_at, closes_at in time_ranges:
-            slots.extend(_slots_for_range(opens_at, closes_at, slot_duration))
-        result: list[dict] = []
+            candidate_slots.extend(_slots_for_range(opens_at, closes_at, slot_duration))
 
-        for slot in slots:
+        result: list[dict] = []
+        for slot in candidate_slots:
             assignment = AvailabilityService.find_table_assignment(
                 restaurant_id, on_date, slot, party_size
             )
@@ -131,6 +190,7 @@ class AvailabilityService:
                     {
                         "timeSlot": slot.isoformat(),
                         "available": True,
+                        "isAvailable": True,
                         "tableAssignment": [
                             {
                                 "tableId": str(t.id),
@@ -142,7 +202,25 @@ class AvailabilityService:
                     }
                 )
 
-        return result
+        empty_reason = AvailabilityService._empty_reason(
+            restaurant_id,
+            on_date=on_date,
+            party_size=party_size,
+            allow_table_joining=restaurant.allow_table_joining,
+            time_ranges=time_ranges,
+            candidate_slots=candidate_slots,
+            available_results=result,
+        )
+
+        payload: dict = {
+            "date": on_date.isoformat(),
+            "partySize": party_size,
+            "dayOfWeek": on_date.weekday(),
+            "slots": result,
+        }
+        if empty_reason:
+            payload["emptyReason"] = empty_reason
+        return payload
 
     @staticmethod
     def assign_tables_for_reservation(
