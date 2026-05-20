@@ -194,6 +194,8 @@ The CI/CD workflows in `.github/workflows/` use temporary AWS Academy
 credentials, run Terraform, publish Lambda artifacts, and deploy the Vue
 frontend from the separate `Abricot-few` repository. They run on pushes to
 `main` or `dev`, pull requests targeting `main` or `dev`, and manual dispatch.
+Pushes run `Validate` first; `Deploy Production` runs automatically only after
+`Validate` completes successfully, or manually through `workflow_dispatch`.
 
 Configure these GitHub repository secrets before the first run:
 
@@ -214,10 +216,14 @@ Configure these GitHub repository variables:
 
 AWS prerequisites expected by the workflows:
 
-- S3 Terraform backend bucket: `abricot-terraform-state`
-- DynamoDB Terraform lock table: `abricot-terraform-lock`
 - Active AWS Academy lab credentials with Terraform, Lambda, S3, DynamoDB,
   API Gateway, Cognito, VPC, RDS, and CloudWatch deployment permissions
+
+The workflows bootstrap the Terraform remote state resources automatically if
+they do not exist yet:
+
+- S3 Terraform backend bucket: `abricot-terraform-state`
+- DynamoDB Terraform lock table: `abricot-terraform-lock`
 
 Terraform creates the frontend hosting bucket and Lambda artifact bucket, then
 the deployment workflow reads their names from `terraform output`.
