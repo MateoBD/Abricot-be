@@ -1,9 +1,10 @@
 from uuid import UUID
+from datetime import datetime
 
 from sqlalchemy import func
 
 from app.extensions import db
-from app.models.enums import UserRole
+from app.models.enums import UserRole, UserSnsSubscriptionStatus
 from app.models.user import UserModel
 
 
@@ -17,6 +18,10 @@ class UserRepository:
         *,
         role: UserRole = UserRole.CUSTOMER,
         cognito_sub: str | None = None,
+        sns_topic_arn: str | None = None,
+        sns_subscription_arn: str | None = None,
+        sns_subscription_status: UserSnsSubscriptionStatus | None = None,
+        sns_subscription_requested_at: datetime | None = None,
     ) -> UserModel:
         user = UserModel(
             email=email,
@@ -25,6 +30,10 @@ class UserRepository:
             surname=surname,
             role=role,
             cognito_sub=cognito_sub,
+            sns_topic_arn=sns_topic_arn,
+            sns_subscription_arn=sns_subscription_arn,
+            sns_subscription_status=sns_subscription_status,
+            sns_subscription_requested_at=sns_subscription_requested_at,
         )
         db.session.add(user)
         db.session.commit()
@@ -77,6 +86,22 @@ class UserRepository:
     @staticmethod
     def link_cognito_sub(user: UserModel, *, cognito_sub: str) -> UserModel:
         user.cognito_sub = cognito_sub
+        db.session.commit()
+        return user
+
+    @staticmethod
+    def update_sns_subscription(
+        user: UserModel,
+        *,
+        topic_arn: str | None = None,
+        subscription_arn: str | None = None,
+        status: UserSnsSubscriptionStatus | None = None,
+        requested_at: datetime | None = None,
+    ) -> UserModel:
+        user.sns_topic_arn = topic_arn
+        user.sns_subscription_arn = subscription_arn
+        user.sns_subscription_status = status
+        user.sns_subscription_requested_at = requested_at
         db.session.commit()
         return user
 

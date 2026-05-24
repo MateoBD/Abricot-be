@@ -9,6 +9,12 @@ class UserRole(str, Enum):
     SUPER_ADMIN = "SUPER_ADMIN"
 
 
+class UserSnsSubscriptionStatus(str, Enum):
+    PENDING_CONFIRMATION = "PENDING_CONFIRMATION"
+    CONFIRMED = "CONFIRMED"
+    FAILED = "FAILED"
+
+
 class ReservationSource(str, Enum):
     ONLINE = "ONLINE"
     PHONE = "PHONE"

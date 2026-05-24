@@ -1,9 +1,14 @@
+import logging
 from uuid import UUID
 
-from app.exceptions.errors import ValidationError
+from app.exceptions.errors import ForbiddenError, ValidationError
+from app.models.enums import UserSnsSubscriptionStatus
 from app.services.cognito_authorization_service import CognitoAuthorizationService
 from app.services.reservation_service import ReservationService
+from app.services.sns_user_notification_service import SnsUserNotificationService
 from app.services.user_service import UserService
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_uuid(value: str | UUID | None, field: str) -> UUID:
@@ -100,7 +105,15 @@ class CognitoReservationService:
             )
 
         CognitoAuthorizationService.reject_privilege_fields(body)
-        return ReservationService.create(
+        principal = SnsUserNotificationService.refresh_subscription_status(principal)
+        if principal.sns_subscription_status != UserSnsSubscriptionStatus.CONFIRMED:
+            raise ForbiddenError(
+                "User email SNS subscription is not confirmed.",
+                {"snsSubscriptionStatus": principal.sns_subscription_status.value if principal.sns_subscription_status else None},
+                public_message="Confirma la suscripcion de email antes de reservar.",
+            )
+
+        reservation = ReservationService.create(
             restaurant_id=restaurant_uuid,
             user_id=principal.id,
             party_size=_parse_party_size(body.get("partySize")),
@@ -108,6 +121,16 @@ class CognitoReservationService:
             time_slot=ReservationService.parse_required_time(body.get("timeSlot")),
             notes=body.get("notes"),
         )
+        try:
+            SnsUserNotificationService.publish_reservation_confirmation(
+                _parse_uuid(reservation.get("id"), "reservationId")
+            )
+        except Exception:
+            logger.exception(
+                "reservation_sns_confirmation_publish_failed",
+                extra={"reservation_id": reservation.get("id")},
+            )
+        return reservation
 
     @staticmethod
     def create_public(*, restaurant_id: str | UUID, body: dict) -> dict:

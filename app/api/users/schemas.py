@@ -29,6 +29,23 @@ user_profile_response_model = Model(
             description="Rol: CUSTOMER | RESTAURANT_ADMIN | SUPER_ADMIN.",
             example="CUSTOMER",
         ),
+        "snsTopicArn": fields.String(
+            description="ARN del topic SNS individual del usuario.",
+            allow_null=True,
+        ),
+        "snsSubscriptionArn": fields.String(
+            description="ARN de la suscripción SNS de email.",
+            allow_null=True,
+        ),
+        "snsSubscriptionStatus": fields.String(
+            description="Estado: PENDING_CONFIRMATION | CONFIRMED | FAILED.",
+            example="PENDING_CONFIRMATION",
+            allow_null=True,
+        ),
+        "snsSubscriptionRequestedAt": fields.String(
+            description="Fecha ISO 8601 de solicitud de suscripción SNS.",
+            allow_null=True,
+        ),
         "createdAt": fields.String(
             description="Fecha de creación en formato ISO 8601 UTC.",
             example="2026-04-07T19:00:00+00:00",
@@ -220,4 +237,3 @@ paginated_notification_preference_model = Model(
         "perPage": fields.Integer(example=20),
     },
 )
-

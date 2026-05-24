@@ -46,6 +46,7 @@ locals {
     COGNITO_CLIENT_ID        = aws_cognito_user_pool_client.spa.id
     COGNITO_DOMAIN           = local.cognito_domain
     FRONTEND_CALLBACK_URL    = local.frontend_callback_url
+    SNS_USER_TOPIC_PREFIX    = "${local.name_prefix}-user"
   }
 
   users_service_db_environment = local.lambda_private_attachment_enabled ? {
@@ -76,7 +77,7 @@ locals {
     catalog_service      = local.catalog_routes_enabled ? local.users_service_db_environment : {}
     orders_service       = local.orders_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
     restaurants_service  = local.restaurants_routes_enabled ? local.users_service_db_environment : {}
-    reservations_service = local.reservations_routes_enabled ? local.users_service_db_environment : {}
+    reservations_service = local.reservations_routes_enabled ? merge(local.users_service_db_environment, { SNS_USER_TOPIC_PREFIX = "${local.name_prefix}-user" }) : {}
     promotions_service   = local.promotions_routes_enabled ? local.users_service_db_environment : {}
     analytics_service    = local.analytics_routes_enabled ? local.users_service_db_environment : {}
     email_worker         = { EMAIL_TOPIC_ARN = aws_sns_topic.email_topic.arn }

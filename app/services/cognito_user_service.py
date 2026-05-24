@@ -12,6 +12,7 @@ from app.exceptions.errors import (
 from app.models.enums import UserRole
 from app.models.user import UserModel
 from app.repositories.user_repository import UserRepository
+from app.services.sns_user_notification_service import SnsUserNotificationService
 from app.services.user_service import UserService
 
 _PRIVILEGE_BODY_KEYS = frozenset(
@@ -42,14 +43,7 @@ def _parse_uuid(value: str | UUID | None, field: str) -> UUID:
 
 
 def _user_payload(user: UserModel) -> dict:
-    return {
-        "id": str(user.id),
-        "email": user.email,
-        "name": user.name,
-        "surname": user.surname,
-        "role": user.role.value,
-        "createdAt": user.created_at.isoformat(),
-    }
+    return user.to_dict()
 
 
 def _default_name(email: str, given_name: str | None) -> str:
@@ -112,6 +106,8 @@ class CognitoUserService:
 
         existing = UserRepository.get_by_cognito_sub(cognito_sub)
         if existing:
+            refreshed_sns = SnsUserNotificationService.refresh_subscription_status(existing)
+            existing = refreshed_sns or existing
             refreshed = UserRepository.get_by_id(existing.id) or existing
             return CognitoProvisionResult(_user_payload(refreshed), created=False)
 
@@ -137,6 +133,7 @@ class CognitoUserService:
             if linked_sub and linked_sub != cognito_sub:
                 raise ConflictError("Email is already linked to another Cognito user.")
             linked = UserRepository.link_cognito_sub(user, cognito_sub=cognito_sub)
+            linked = SnsUserNotificationService.ensure_subscription(linked)
             refreshed = UserRepository.get_by_id(linked.id) or linked
             return CognitoProvisionResult(_user_payload(refreshed), created=False)
 
@@ -148,6 +145,7 @@ class CognitoUserService:
             role=UserRole.CUSTOMER,
             cognito_sub=cognito_sub,
         )
+        created = SnsUserNotificationService.ensure_subscription(created)
         payload = _user_payload(created)
         if account_type == AccountType.RESTAURANT_OWNER:
             payload = {**payload, "nextStep": "restaurant_onboarding"}
@@ -187,6 +185,7 @@ class CognitoUserService:
         user = UserRepository.get_by_id(target_id)
         if not user:
             raise NotFoundError("User not found.", public_message="User not found.")
+        user = SnsUserNotificationService.refresh_subscription_status(user)
         return _user_payload(user)
 
     @staticmethod

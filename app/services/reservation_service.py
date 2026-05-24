@@ -291,15 +291,6 @@ class ReservationService:
             ReservationRepository.rollback()
             raise
         logger.info("Reservation created: id=%s code=%s", reservation.id, code)
-        try:
-            from app.services.notification_service import NotificationService
-
-            NotificationService.send_reservation_confirmation(reservation.id)
-        except Exception:
-            logger.exception(
-                "reservation_confirmation_enqueue_failed",
-                extra={"reservation_id": str(reservation.id)},
-            )
         return ReservationService._to_payload(reservation)
 
     @staticmethod
@@ -391,15 +382,6 @@ class ReservationService:
             raise
 
         logger.info("Guest reservation created: id=%s code=%s", reservation.id, code)
-        try:
-            from app.services.notification_service import NotificationService
-
-            NotificationService.send_reservation_confirmation(reservation.id)
-        except Exception:
-            logger.exception(
-                "reservation_confirmation_enqueue_failed",
-                extra={"reservation_id": str(reservation.id)},
-            )
         return ReservationService._to_payload(reservation)
 
     @staticmethod

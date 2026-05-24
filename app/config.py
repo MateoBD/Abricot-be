@@ -31,6 +31,7 @@ class BaseConfig:
     AWS_S3_BUCKET = ""
     AWS_ACCESS_KEY_ID = ""
     AWS_SECRET_ACCESS_KEY = ""
+    SNS_USER_TOPIC_PREFIX = "abricot-user"
 
 
 class TestingConfig(BaseConfig):
@@ -42,6 +43,7 @@ class TestingConfig(BaseConfig):
     AWS_S3_BUCKET = "abricot-test-bucket"
     AWS_ACCESS_KEY_ID = "test"
     AWS_SECRET_ACCESS_KEY = "test"  # noqa: S105
+    SNS_USER_TOPIC_PREFIX = "abricot-test-user"
 
 
 class ProductionConfig(BaseConfig):
@@ -58,6 +60,10 @@ class ProductionConfig(BaseConfig):
     AWS_S3_BUCKET = os.environ.get("AWS_S3_BUCKET", "")
     AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
     AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+    SNS_USER_TOPIC_PREFIX = os.environ.get(
+        "SNS_USER_TOPIC_PREFIX",
+        BaseConfig.SNS_USER_TOPIC_PREFIX,
+    )
     ALLOWED_ORIGINS = parse_allowed_origins()
     SQLALCHEMY_DATABASE_URI = (
         "postgresql+psycopg2://"
