@@ -151,6 +151,52 @@ jobs:
           echo "lambda_function_names=$(jq -c '.lambda_function_names.value' outputs.json)" >> "$GITHUB_OUTPUT"
           echo "lambda_artifacts_bucket_name=$(jq -r '.lambda_artifacts_bucket_name.value' outputs.json)" >> "$GITHUB_OUTPUT"
 
+      - name: Wait for database proxy target
+        run: |
+          db_instance_id="abricot-tp3-postgres"
+          db_proxy_name="abricot-tp3-users-proxy"
+
+          echo "Waiting for RDS instance $db_instance_id to become available..."
+          aws rds wait db-instance-available \
+            --db-instance-identifier "$db_instance_id" \
+            --region "$AWS_REGION"
+
+          echo "Waiting for RDS Proxy target $db_proxy_name/default to become available..."
+          for attempt in $(seq 1 30); do
+            target_state="$(
+              aws rds describe-db-proxy-targets \
+                --db-proxy-name "$db_proxy_name" \
+                --target-group-name default \
+                --region "$AWS_REGION" \
+                --query 'Targets[0].TargetHealth.State' \
+                --output text 2>/dev/null || true
+            )"
+            target_reason="$(
+              aws rds describe-db-proxy-targets \
+                --db-proxy-name "$db_proxy_name" \
+                --target-group-name default \
+                --region "$AWS_REGION" \
+                --query 'Targets[0].TargetHealth.Reason' \
+                --output text 2>/dev/null || true
+            )"
+
+            if [ "$target_state" = "AVAILABLE" ]; then
+              echo "RDS Proxy target is available."
+              exit 0
+            fi
+
+            echo "RDS Proxy target not ready yet: state=${target_state:-unknown} reason=${target_reason:-unknown} attempt=$attempt/30"
+            sleep 20
+          done
+
+          aws rds describe-db-proxy-targets \
+            --db-proxy-name "$db_proxy_name" \
+            --target-group-name default \
+            --region "$AWS_REGION" \
+            --output json || true
+          echo "Timed out waiting for RDS Proxy target to become available." >&2
+          exit 1
+
       - name: Run database migrations
         env:
           DB_MIGRATION_LAMBDA_NAME: ${{ steps.outputs.outputs.db_migration_lambda_name }}
@@ -160,17 +206,36 @@ jobs:
             exit 0
           fi
 
-          aws lambda invoke \
-            --function-name "$DB_MIGRATION_LAMBDA_NAME" \
-            --payload '{"action":"upgrade"}' \
-            --cli-binary-format raw-in-base64-out \
-            migration-response.json
+          for attempt in $(seq 1 12); do
+            aws lambda invoke \
+              --function-name "$DB_MIGRATION_LAMBDA_NAME" \
+              --payload '{"action":"upgrade"}' \
+              --cli-binary-format raw-in-base64-out \
+              --region "$AWS_REGION" \
+              migration-response.json
 
-          cat migration-response.json
-          if ! jq -e '.statusCode == 200' migration-response.json >/dev/null; then
-            echo "Database migration Lambda failed." >&2
-            exit 1
-          fi
+            cat migration-response.json
+            if jq -e '.statusCode == 200' migration-response.json >/dev/null; then
+              echo "Database migration completed."
+              exit 0
+            fi
+
+            error_code="$(jq -r '(.body | fromjson? | .error) // empty' migration-response.json)"
+            error_message="$(jq -r '(.body | fromjson? | .message) // empty' migration-response.json)"
+            echo "Database migration attempt $attempt/12 failed: ${error_code:-unknown} ${error_message:-no message}"
+
+            if [ "$error_code" = "missing_dependency" ] || [ "$error_code" = "missing_environment" ] || [ "$error_code" = "unsupported_action" ]; then
+              echo "Database migration failed with a non-retryable error." >&2
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 12 ]; then
+              echo "Database migration Lambda failed after retries." >&2
+              exit 1
+            fi
+
+            sleep 30
+          done
 
       - name: Deployment summary
         working-directory: ${{ env.BACKEND_PATH }}/infra

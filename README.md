@@ -81,9 +81,9 @@ Copie **exactamente** estos nombres (respete mayúsculas y guiones):
 | Nombre | Valor recomendado para evaluación |
 |--------|-----------------------------------|
 | `FRONTEND_REPOSITORY` | Dejar vacío (usa default `NaPrado/Abricot-few`) o poner `usuario/Abricot-few` si el frontend está en otro fork |
-| `TERRAFORM_STATE_BUCKET` | Dejar **vacío** (state en cache de Actions; habitual en el lab) |
-| `TERRAFORM_LOCK_TABLE` | Dejar vacío |
 | `CLOUDFRONT_DISTRIBUTION_ID` | Dejar vacío (hosting en S3 website) |
+
+> No configurar `TERRAFORM_STATE_BUCKET` ni `TERRAFORM_LOCK_TABLE`. Para esta entrega, los workflows usan **Terraform state local efímero** dentro del runner de GitHub Actions, sin backend remoto S3 y sin cache de state.
 
 ---
 
@@ -112,7 +112,14 @@ Si *Terraform Plan* falla por credenciales expiradas, renueve los secrets AWS y 
 
 ### 4.2 Workflow **Deploy Production** (despliegue completo)
 
-**Disparadores:** botón manual **Run workflow**, o automático cuando un push a `main`/`dev` termina **Validate** con éxito.
+**Disparador:** solo botón manual **Run workflow**. Este workflow no se ejecuta automáticamente por PR, push ni al terminar **Validate**.
+
+El deploy usa Terraform con **state local efímero**:
+
+- Antes de iniciar Terraform borra `.terraform`, `terraform.tfstate`, backups y planes anteriores del runner.
+- Ejecuta `terraform init -backend=false`; no usa backend remoto S3.
+- Antes de `terraform plan`, reconstruye el state importando recursos determinísticos existentes en la cuenta AWS actual.
+- Si el plan referencia account IDs viejos o contiene acciones `delete`, el workflow bloquea el apply automáticamente.
 
 Pasos:
 
@@ -482,6 +489,8 @@ Solo cuando terminaron la evaluación:
 4. **Run workflow**
 5. Esperar job **Terraform Destroy** en verde
 
+Antes de destruir, el workflow vuelve a usar state local efímero y ejecuta el import recovery para reconstruir el state con los recursos determinísticos que existan en la cuenta AWS actual. Luego vacía completamente los buckets versionados y ejecuta `terraform destroy`.
+
 Esto elimina recursos gestionados por Terraform (API Gateway, Lambdas, RDS, Cognito, buckets de frontend y artefactos Lambda, etc.).
 
 ---
@@ -504,7 +513,9 @@ Región AWS fija en workflows: **`us-east-1`**.
 
 ### Variables (solo nombres)
 
-`FRONTEND_REPOSITORY`, `TERRAFORM_STATE_BUCKET`, `TERRAFORM_LOCK_TABLE`, `CLOUDFRONT_DISTRIBUTION_ID`
+`FRONTEND_REPOSITORY`, `CLOUDFRONT_DISTRIBUTION_ID`
+
+No se usan variables de backend Terraform. En particular, no configurar `TERRAFORM_STATE_BUCKET` ni `TERRAFORM_LOCK_TABLE`.
 
 ### Endpoints útiles tras el deploy
 
