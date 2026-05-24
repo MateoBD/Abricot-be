@@ -25,6 +25,19 @@ aws_text() {
   aws "$@" --output text 2>/dev/null || true
 }
 
+belongs_to_current_account() {
+  local value="${1:-}"
+  local arn_account
+
+  if [[ "${value}" =~ ^arn:aws[^:]*:[^:]+:[^:]*:([0-9]{12}): ]]; then
+    arn_account="${BASH_REMATCH[1]}"
+    [[ "${arn_account}" == "${account_id:-}" ]]
+    return
+  fi
+
+  return 0
+}
+
 state_attr() {
   local address="$1"
   local attr="$2"
@@ -69,6 +82,11 @@ import_if_missing() {
     return 0
   fi
 
+  if ! belongs_to_current_account "${import_id}"; then
+    echo "Skipping ${address}: import id belongs to a different AWS account (${import_id})"
+    return 0
+  fi
+
   if terraform state show "${address}" >/dev/null 2>&1; then
     current_id="$(state_id "${address}")"
     if [[ "${current_id}" == "${import_id}" ]]; then
@@ -88,6 +106,11 @@ import_if_absent() {
   local import_id="$2"
 
   if ! is_real_id "${import_id}"; then
+    return 0
+  fi
+
+  if ! belongs_to_current_account "${import_id}"; then
+    echo "Skipping ${address}: import id belongs to a different AWS account (${import_id})"
     return 0
   fi
 
@@ -290,9 +313,72 @@ terraform_api_routes() {
   ' main.tf
 }
 
+sns_topic_arn_for_name() {
+  local topic_name="$1"
+
+  aws sns list-topics --output json 2>/dev/null \
+    | jq -r --arg suffix ":${topic_name}" '[.Topics[]?.TopicArn | select(endswith($suffix))][0] // empty' \
+    || true
+}
+
+sqs_queue_url_for_name() {
+  local queue_name="$1"
+
+  aws_text sqs get-queue-url \
+    --queue-name "${queue_name}" \
+    --query QueueUrl
+}
+
+sqs_queue_arn_for_url() {
+  local queue_url="$1"
+
+  if ! is_real_id "${queue_url}"; then
+    return 0
+  fi
+
+  aws_text sqs get-queue-attributes \
+    --queue-url "${queue_url}" \
+    --attribute-names QueueArn \
+    --query 'Attributes.QueueArn'
+}
+
+sns_subscription_arn_for_endpoint() {
+  local topic_arn="$1"
+  local protocol="$2"
+  local endpoint="$3"
+
+  if ! is_real_id "${topic_arn}" || ! is_real_id "${endpoint}"; then
+    return 0
+  fi
+
+  aws sns list-subscriptions-by-topic --topic-arn "${topic_arn}" --output json 2>/dev/null \
+    | jq -r --arg protocol "${protocol}" --arg endpoint "${endpoint}" \
+        '[.Subscriptions[]? | select(.Protocol == $protocol and .Endpoint == $endpoint and .SubscriptionArn != "PendingConfirmation") | .SubscriptionArn][0] // empty' \
+    || true
+}
+
+event_source_mapping_uuid() {
+  local event_source_arn="$1"
+  local function_name="$2"
+
+  if ! is_real_id "${event_source_arn}" || ! is_real_id "${function_name}"; then
+    return 0
+  fi
+
+  aws_text lambda list-event-source-mappings \
+    --event-source-arn "${event_source_arn}" \
+    --function-name "${function_name}" \
+    --query 'EventSourceMappings[0].UUID'
+}
+
 echo "Importing existing Abricot resources into Terraform state when present"
 
 account_id="$(aws_text sts get-caller-identity --query Account)"
+if ! is_real_id "${account_id}"; then
+  echo "Could not resolve current AWS account id; cannot rebuild Terraform state safely." >&2
+  exit 1
+fi
+
 frontend_bucket="${NAME_PREFIX}-${account_id}-frontend"
 lambda_artifacts_bucket="${NAME_PREFIX}-${account_id}-lambda-artifacts"
 cognito_domain="${NAME_PREFIX}-${account_id}"
@@ -507,5 +593,51 @@ if aws rds describe-db-proxies --db-proxy-name "${db_proxy}" >/dev/null 2>&1; th
   import_if_absent 'aws_db_proxy_default_target_group.users[0]' "${db_proxy}/default"
   import_if_absent 'aws_db_proxy_target.users[0]' "${db_proxy}/default/RDS_INSTANCE/${db_instance}"
 fi
+
+domain_events_topic_arn="$(sns_topic_arn_for_name "${NAME_PREFIX}-domain-events")"
+email_topic_arn="$(sns_topic_arn_for_name "${NAME_PREFIX}-email-notifications")"
+
+import_if_missing 'aws_sns_topic.domain_events' "${domain_events_topic_arn}"
+import_if_missing 'aws_sns_topic.email_topic' "${email_topic_arn}"
+
+email_events_dlq_url="$(sqs_queue_url_for_name "${NAME_PREFIX}-email-events-dlq")"
+email_events_url="$(sqs_queue_url_for_name "${NAME_PREFIX}-email-events")"
+analytics_events_dlq_url="$(sqs_queue_url_for_name "${NAME_PREFIX}-analytics-events-dlq")"
+analytics_events_url="$(sqs_queue_url_for_name "${NAME_PREFIX}-analytics-events")"
+
+import_if_missing 'aws_sqs_queue.email_events_dlq' "${email_events_dlq_url}"
+import_if_missing 'aws_sqs_queue.email_events' "${email_events_url}"
+import_if_missing 'aws_sqs_queue.analytics_events_dlq' "${analytics_events_dlq_url}"
+import_if_missing 'aws_sqs_queue.analytics_events' "${analytics_events_url}"
+
+if is_real_id "${email_events_url}"; then
+  import_if_absent 'aws_sqs_queue_policy.email_events' "${email_events_url}"
+fi
+
+if is_real_id "${analytics_events_url}"; then
+  import_if_absent 'aws_sqs_queue_policy.analytics_events' "${analytics_events_url}"
+fi
+
+email_events_arn="$(sqs_queue_arn_for_url "${email_events_url}")"
+analytics_events_arn="$(sqs_queue_arn_for_url "${analytics_events_url}")"
+
+email_events_subscription_arn="$(sns_subscription_arn_for_endpoint "${domain_events_topic_arn}" "sqs" "${email_events_arn}")"
+analytics_events_subscription_arn="$(sns_subscription_arn_for_endpoint "${domain_events_topic_arn}" "sqs" "${analytics_events_arn}")"
+
+import_if_absent 'aws_sns_topic_subscription.email_events_sqs' "${email_events_subscription_arn}"
+import_if_absent 'aws_sns_topic_subscription.analytics_events_sqs' "${analytics_events_subscription_arn}"
+
+if [[ -n "${TF_VAR_notification_email:-}" ]]; then
+  email_notification_subscription_arn="$(sns_subscription_arn_for_endpoint "${email_topic_arn}" "email" "${TF_VAR_notification_email}")"
+  import_if_absent 'aws_sns_topic_subscription.email_notification[0]' "${email_notification_subscription_arn}"
+fi
+
+email_worker_function="$(lambda_function_name_for_key "email_worker")"
+analytics_worker_function="$(lambda_function_name_for_key "analytics_worker")"
+email_worker_mapping_uuid="$(event_source_mapping_uuid "${email_events_arn}" "${email_worker_function}")"
+analytics_worker_mapping_uuid="$(event_source_mapping_uuid "${analytics_events_arn}" "${analytics_worker_function}")"
+
+import_if_absent 'aws_lambda_event_source_mapping.email_worker' "${email_worker_mapping_uuid}"
+import_if_absent 'aws_lambda_event_source_mapping.analytics_worker' "${analytics_worker_mapping_uuid}"
 
 echo "Existing-resource import recovery finished"

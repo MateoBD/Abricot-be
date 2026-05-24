@@ -2,6 +2,10 @@
 *.zip
 *.tfstate
 *.tfstate.*
+tfplan
+tfplan.json
+plan.txt
+backend.remote.tf
 *.tfvars
 !terraform.tfvars.example
 crash.log

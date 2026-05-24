@@ -47,3 +47,14 @@ swagger.json
 
 # Reproducible Lambda package output
 /build/
+
+# Terraform local state/plans must never be committed
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+tfplan.json
+plan.txt
+backend.remote.tf
+*.tfvars
+!terraform.tfvars.example

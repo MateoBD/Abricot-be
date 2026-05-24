@@ -1,19 +1,10 @@
 name: Deploy Production
 
 on:
-  workflow_run:
-    workflows:
-      - Validate
-    types:
-      - completed
-    branches:
-      - main
-      - dev
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: production-deploy
@@ -31,7 +22,6 @@ jobs:
   terraform-apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     outputs:
       api_gateway_url: ${{ steps.outputs.outputs.api_gateway_url }}
       cognito_client_id: ${{ steps.outputs.outputs.cognito_user_pool_client_id }}
@@ -49,7 +39,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: ${{ env.BACKEND_PATH }}
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -58,21 +47,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Configure Terraform backend
-        env:
-          TERRAFORM_STATE_BUCKET_VAR: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          TERRAFORM_LOCK_TABLE_VAR: ${{ vars.TERRAFORM_LOCK_TABLE }}
-        run: |
-          if [ -n "$TERRAFORM_STATE_BUCKET_VAR" ]; then
-            echo "TERRAFORM_BACKEND_MODE=remote" >> "$GITHUB_ENV"
-            echo "TERRAFORM_STATE_BUCKET=$TERRAFORM_STATE_BUCKET_VAR" >> "$GITHUB_ENV"
-            echo "TERRAFORM_LOCK_TABLE=${TERRAFORM_LOCK_TABLE_VAR:-}" >> "$GITHUB_ENV"
-          else
-            echo "TERRAFORM_BACKEND_MODE=local" >> "$GITHUB_ENV"
-            echo "TERRAFORM_STATE_BUCKET=" >> "$GITHUB_ENV"
-            echo "TERRAFORM_LOCK_TABLE=" >> "$GITHUB_ENV"
-          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -87,62 +61,12 @@ jobs:
       - name: Build Lambda folders for Terraform archive data sources
         run: bash ./scripts/package_lambdas.sh
 
-      - name: Restore Terraform local state
-        if: env.TERRAFORM_BACKEND_MODE == 'local'
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate.backup
-          key: terraform-state-${{ github.event.workflow_run.head_branch || github.ref_name }}-${{ github.run_id }}
-          restore-keys: |
-            terraform-state-${{ github.event.workflow_run.head_branch || github.ref_name }}-
-
-      - name: Verify Terraform backend exists
-        if: env.TERRAFORM_BACKEND_MODE == 'remote'
-        working-directory: ${{ env.BACKEND_PATH }}/infra
-        run: |
-          if ! aws s3api head-bucket --bucket "$TERRAFORM_STATE_BUCKET" 2>/dev/null; then
-            {
-              echo "Terraform state bucket $TERRAFORM_STATE_BUCKET does not exist or is not accessible."
-              echo "Terraform cannot create its own S3 backend during terraform init."
-              echo "Create this bucket outside Terraform, or run with AWS credentials that can create S3 buckets."
-            } >&2
-            exit 1
-          fi
-
-          if [ -n "$TERRAFORM_LOCK_TABLE" ] && ! aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null 2>&1; then
-            {
-              echo "Terraform lock table $TERRAFORM_LOCK_TABLE does not exist or is not accessible."
-              echo "Create this DynamoDB table outside Terraform, unset TERRAFORM_LOCK_TABLE, or run with AWS credentials that can create DynamoDB tables."
-            } >&2
-            exit 1
-          fi
-
-          cat > backend.remote.tf <<'EOF'
-          terraform {
-            backend "s3" {
-              key     = "abricot-be/terraform.tfstate"
-              region  = "us-east-1"
-              encrypt = true
-            }
-          }
-          EOF
-
       - name: Terraform init
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
           rm -rf .terraform
-          if [ "$TERRAFORM_BACKEND_MODE" = "local" ]; then
-            rm -f backend.remote.tf
-            terraform init -backend=false
-          else
-            init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
-            if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
-              init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
-            fi
-            terraform init -reconfigure "${init_args[@]}"
-          fi
+          rm -f terraform.tfstate terraform.tfstate.backup backend.*.tf tfplan tfplan.json plan.txt
+          terraform init -backend=false
 
       - name: Delete stale scheduled database secret
         run: |
@@ -170,7 +94,6 @@ jobs:
           fi
 
       - name: Import existing AWS resources into local state
-        if: env.TERRAFORM_BACKEND_MODE == 'local'
         working-directory: ${{ env.BACKEND_PATH }}
         env:
           TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
@@ -180,17 +103,33 @@ jobs:
         working-directory: ${{ env.BACKEND_PATH }}/infra
         env:
           TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
-        run: terraform plan -no-color -out=tfplan
+        run: |
+          set -o pipefail
+          terraform plan -no-color -out=tfplan 2>&1 | tee plan.txt
 
       - name: Block destructive Terraform plan
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
           terraform show -json tfplan > tfplan.json
           delete_count="$(jq '[.resource_changes[]? | select((.change.actions // []) | index("delete"))] | length' tfplan.json)"
 
           if [ "$delete_count" -gt 0 ]; then
             echo "Terraform plan contains $delete_count resource change(s) with delete actions. Refusing automatic apply." >&2
             jq -r '.resource_changes[]? | select((.change.actions // []) | index("delete")) | "- \(.address): \(.change.actions | join(","))"' tfplan.json >&2
+            exit 1
+          fi
+
+          stale_account_refs="$(
+            grep -Eo 'arn:aws:[^:]+:[^:]*:[0-9]{12}:|abricot-tp3-[0-9]{12}' plan.txt \
+              | grep -Eo '[0-9]{12}' \
+              | sort -u \
+              | grep -v "^${account_id}$" || true
+          )"
+
+          if [ -n "$stale_account_refs" ]; then
+            echo "Terraform plan references stale Abricot account id(s), refusing apply:" >&2
+            echo "$stale_account_refs" >&2
             exit 1
           fi
 
@@ -243,15 +182,6 @@ jobs:
             echo "- Frontend URL: $(jq -r '.frontend_website_url.value' outputs.json)"
             echo "- Health URL: $(jq -r '.health_url.value' outputs.json)"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Save Terraform local state
-        if: always() && env.TERRAFORM_BACKEND_MODE == 'local'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate.backup
-          key: terraform-state-${{ github.event.workflow_run.head_branch || github.ref_name }}-${{ github.run_id }}
 
   lambda-artifacts:
     name: Lambda Artifacts

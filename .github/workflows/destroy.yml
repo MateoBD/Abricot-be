@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: production-deploy
@@ -45,21 +44,6 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Configure Terraform backend
-        env:
-          TERRAFORM_STATE_BUCKET_VAR: ${{ vars.TERRAFORM_STATE_BUCKET }}
-          TERRAFORM_LOCK_TABLE_VAR: ${{ vars.TERRAFORM_LOCK_TABLE }}
-        run: |
-          if [ -n "$TERRAFORM_STATE_BUCKET_VAR" ]; then
-            echo "TERRAFORM_BACKEND_MODE=remote" >> "$GITHUB_ENV"
-            echo "TERRAFORM_STATE_BUCKET=$TERRAFORM_STATE_BUCKET_VAR" >> "$GITHUB_ENV"
-            echo "TERRAFORM_LOCK_TABLE=${TERRAFORM_LOCK_TABLE_VAR:-}" >> "$GITHUB_ENV"
-          else
-            echo "TERRAFORM_BACKEND_MODE=local" >> "$GITHUB_ENV"
-            echo "TERRAFORM_STATE_BUCKET=" >> "$GITHUB_ENV"
-            echo "TERRAFORM_LOCK_TABLE=" >> "$GITHUB_ENV"
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -73,50 +57,12 @@ jobs:
       - name: Build Lambda folders for Terraform archive data sources
         run: bash ./scripts/package_lambdas.sh
 
-      - name: Restore Terraform local state
-        if: env.TERRAFORM_BACKEND_MODE == 'local'
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate.backup
-          key: terraform-state-${{ github.ref_name }}-${{ github.run_id }}
-          restore-keys: |
-            terraform-state-${{ github.ref_name }}-
-
-      - name: Verify Terraform backend exists
-        if: env.TERRAFORM_BACKEND_MODE == 'remote'
-        working-directory: ${{ env.BACKEND_PATH }}/infra
-        run: |
-          aws s3api head-bucket --bucket "$TERRAFORM_STATE_BUCKET"
-          if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
-            aws dynamodb describe-table --table-name "$TERRAFORM_LOCK_TABLE" >/dev/null
-          fi
-
-          cat > backend.remote.tf <<'EOF'
-          terraform {
-            backend "s3" {
-              key     = "abricot-be/terraform.tfstate"
-              region  = "us-east-1"
-              encrypt = true
-            }
-          }
-          EOF
-
       - name: Terraform init
         working-directory: ${{ env.BACKEND_PATH }}/infra
         run: |
           rm -rf .terraform
-          if [ "$TERRAFORM_BACKEND_MODE" = "local" ]; then
-            rm -f backend.remote.tf
-            terraform init -backend=false
-          else
-            init_args=(-backend-config="bucket=$TERRAFORM_STATE_BUCKET")
-            if [ -n "$TERRAFORM_LOCK_TABLE" ]; then
-              init_args+=(-backend-config="dynamodb_table=$TERRAFORM_LOCK_TABLE")
-            fi
-            terraform init -reconfigure "${init_args[@]}"
-          fi
+          rm -f terraform.tfstate terraform.tfstate.backup backend.*.tf tfplan tfplan.json plan.txt
+          terraform init -backend=false
 
       - name: Allow destroy of protected lab resources
         working-directory: ${{ env.BACKEND_PATH }}/infra
@@ -125,7 +71,6 @@ jobs:
           sed -i '/ignore_changes  = all/d' private_database.tf
 
       - name: Import existing AWS resources into local state before destroy
-        if: env.TERRAFORM_BACKEND_MODE == 'local'
         working-directory: ${{ env.BACKEND_PATH }}
         env:
           TF_VAR_postgres_password: ${{ secrets.TF_VAR_POSTGRES_PASSWORD }}
@@ -200,14 +145,5 @@ jobs:
           {
             echo "## Destroy"
             echo "Terraform-managed Abricot AWS resources were destroyed."
-            echo "Terraform backend mode: $TERRAFORM_BACKEND_MODE."
+            echo "Terraform used ephemeral local state rebuilt by import recovery."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Save Terraform local state
-        if: always() && env.TERRAFORM_BACKEND_MODE == 'local'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate
-            ${{ env.BACKEND_PATH }}/infra/terraform.tfstate.backup
-          key: terraform-state-${{ github.ref_name }}-${{ github.run_id }}
