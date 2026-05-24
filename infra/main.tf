@@ -17,7 +17,6 @@ resource "aws_cognito_user_pool_client" "spa" {
   name         = "${local.name_prefix}-spa-client"
   user_pool_id = aws_cognito_user_pool.main.id
 
-  generate_secret                      = false
   prevent_user_existence_errors        = "ENABLED"
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
@@ -339,6 +338,16 @@ resource "aws_apigatewayv2_route" "restaurants_admin_menus_post" {
 
   api_id             = aws_apigatewayv2_api.http.id
   route_key          = "POST /restaurants/{restaurantId}/admin/menus"
+  target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "restaurants_menus_post" {
+  count = local.restaurants_routes_enabled ? 1 : 0
+
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /restaurants/{restaurantId}/menus"
   target             = "integrations/${aws_apigatewayv2_integration.lambda["restaurants_service"].id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id

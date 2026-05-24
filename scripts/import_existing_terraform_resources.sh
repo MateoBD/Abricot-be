@@ -371,6 +371,29 @@ event_source_mapping_uuid() {
     --query 'EventSourceMappings[0].UUID'
 }
 
+lambda_permission_statement_id_for_api() {
+  local function_name="$1"
+  local source_arn="$2"
+
+  if ! is_real_id "${function_name}" || ! is_real_id "${source_arn}"; then
+    return 0
+  fi
+
+  aws lambda get-policy --function-name "${function_name}" --output json 2>/dev/null \
+    | jq -r --arg source_arn "${source_arn}" '
+        (.Policy | fromjson | .Statement[]?
+          | select((.Principal | if type == "object" then .Service else . end) == "apigateway.amazonaws.com")
+          | select(
+              (.Condition.ArnLike."AWS:SourceArn" // "") == $source_arn
+              or (.Condition.StringLike."AWS:SourceArn" // "") == $source_arn
+            )
+          | .Sid
+        ) // empty
+      ' \
+    | head -n 1 \
+    || true
+}
+
 echo "Importing existing Abricot resources into Terraform state when present"
 
 account_id="$(aws_text sts get-caller-identity --query Account)"
@@ -524,6 +547,12 @@ for key in "${lambda_keys[@]}"; do
   function_name="$(lambda_function_name_for_key "${key}")"
   if aws lambda get-function --function-name "${function_name}" >/dev/null 2>&1; then
     import_if_missing "aws_lambda_function.this[\"${key}\"]" "${function_name}"
+    if ! terraform state show "aws_lambda_function.this[\"${key}\"]" >/dev/null 2>&1; then
+      function_arn="$(aws_text lambda get-function \
+        --function-name "${function_name}" \
+        --query 'Configuration.FunctionArn')"
+      import_if_missing "aws_lambda_function.this[\"${key}\"]" "${function_arn}"
+    fi
   fi
 done
 
@@ -564,6 +593,10 @@ if is_real_id "${api_id}"; then
 
     expected_api_source_arn="arn:aws:execute-api:${AWS_REGION:-us-east-1}:${account_id}:${api_id}/*/*"
     remove_state_if_attr_mismatch "aws_lambda_permission.api_gateway[\"${key}\"]" "source_arn" "${expected_api_source_arn}"
+    permission_sid="$(lambda_permission_statement_id_for_api "${function_name}" "${expected_api_source_arn}")"
+    if is_real_id "${permission_sid}"; then
+      import_if_absent "aws_lambda_permission.api_gateway[\"${key}\"]" "${function_name}/${permission_sid}"
+    fi
   done
 
   while IFS=$'\t' read -r address route_key; do
@@ -590,7 +623,7 @@ import_if_missing 'aws_secretsmanager_secret.db[0]' "${secret_arn}"
 
 if aws rds describe-db-proxies --db-proxy-name "${db_proxy}" >/dev/null 2>&1; then
   import_if_absent 'aws_db_proxy.users[0]' "${db_proxy}"
-  import_if_absent 'aws_db_proxy_default_target_group.users[0]' "${db_proxy}/default"
+  import_if_absent 'aws_db_proxy_default_target_group.users[0]' "${db_proxy}"
   import_if_absent 'aws_db_proxy_target.users[0]' "${db_proxy}/default/RDS_INSTANCE/${db_instance}"
 fi
 
