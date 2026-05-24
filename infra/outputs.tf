@@ -130,7 +130,9 @@ output "rds_proxy_endpoint" {
 
 output "db_migration_lambda_name" {
   description = "Internal Lambda used to run Flask-Migrate/Alembic migrations inside the private VPC."
-  value       = local.lambda_private_attachment_enabled ? aws_lambda_function.this["db_migrate"].function_name : null
+  value = local.lambda_private_attachment_enabled ? lookup({
+    for name, function in aws_lambda_function.this : name => function.function_name
+  }, "db_migrate", null) : null
 }
 
 output "lambda_function_names" {
