@@ -86,12 +86,11 @@ def test_ensure_subscription_creates_user_topic_and_pending_subscription(monkeyp
     assert result.sns_subscription_status == UserSnsSubscriptionStatus.PENDING_CONFIRMATION
 
 
-def test_cognito_provisioning_requests_sns_subscription_for_new_user(monkeypatch):
+def test_cognito_provisioning_does_not_block_on_sns_subscription(monkeypatch):
     user = _user(None)
     user.sns_topic_arn = None
     user.sns_subscription_arn = None
     user.sns_subscription_status = None
-    called = {}
 
     monkeypatch.setattr(
         cognito_user_module.UserRepository,
@@ -105,17 +104,10 @@ def test_cognito_provisioning_requests_sns_subscription_for_new_user(monkeypatch
     )
     monkeypatch.setattr(cognito_user_module.UserRepository, "create", lambda **kwargs: user)
 
-    def ensure_subscription(created_user):
-        called["user_id"] = created_user.id
-        created_user.sns_topic_arn = "arn:aws:sns:us-east-1:123:topic"
-        created_user.sns_subscription_arn = "PendingConfirmation"
-        created_user.sns_subscription_status = UserSnsSubscriptionStatus.PENDING_CONFIRMATION
-        return created_user
-
     monkeypatch.setattr(
         cognito_user_module.SnsUserNotificationService,
         "ensure_subscription",
-        ensure_subscription,
+        lambda created_user: pytest.fail("SNS must not block user provisioning"),
     )
 
     result = CognitoUserService.provision_user(
@@ -125,8 +117,8 @@ def test_cognito_provisioning_requests_sns_subscription_for_new_user(monkeypatch
     )
 
     assert result.created is True
-    assert called["user_id"] == USER_ID
-    assert result.user["snsSubscriptionStatus"] == "PENDING_CONFIRMATION"
+    assert result.user["id"] == str(USER_ID)
+    assert result.user["snsSubscriptionStatus"] is None
 
 
 def test_refresh_subscription_marks_confirmed_when_sns_has_real_arn(monkeypatch):

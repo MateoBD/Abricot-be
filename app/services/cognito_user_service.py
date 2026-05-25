@@ -106,8 +106,6 @@ class CognitoUserService:
 
         existing = UserRepository.get_by_cognito_sub(cognito_sub)
         if existing:
-            refreshed_sns = SnsUserNotificationService.refresh_subscription_status(existing)
-            existing = refreshed_sns or existing
             refreshed = UserRepository.get_by_id(existing.id) or existing
             return CognitoProvisionResult(_user_payload(refreshed), created=False)
 
@@ -133,7 +131,6 @@ class CognitoUserService:
             if linked_sub and linked_sub != cognito_sub:
                 raise ConflictError("Email is already linked to another Cognito user.")
             linked = UserRepository.link_cognito_sub(user, cognito_sub=cognito_sub)
-            linked = SnsUserNotificationService.ensure_subscription(linked)
             refreshed = UserRepository.get_by_id(linked.id) or linked
             return CognitoProvisionResult(_user_payload(refreshed), created=False)
 
@@ -145,7 +142,6 @@ class CognitoUserService:
             role=UserRole.CUSTOMER,
             cognito_sub=cognito_sub,
         )
-        created = SnsUserNotificationService.ensure_subscription(created)
         payload = _user_payload(created)
         if account_type == AccountType.RESTAURANT_OWNER:
             payload = {**payload, "nextStep": "restaurant_onboarding"}
