@@ -19,6 +19,7 @@ _TOPIC_SAFE_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
 
 def _sns_client():
     import boto3
+    from botocore.config import Config
 
     region = current_app.config.get("AWS_REGION") or None
     endpoint_url = (
@@ -26,7 +27,13 @@ def _sns_client():
         if current_app.config.get("USE_LOCALSTACK")
         else None
     )
-    kwargs = {}
+    kwargs = {
+        "config": Config(
+            connect_timeout=1,
+            read_timeout=2,
+            retries={"max_attempts": 1},
+        )
+    }
     if region:
         kwargs["region_name"] = region
     if endpoint_url:
