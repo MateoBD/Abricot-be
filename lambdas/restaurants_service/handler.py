@@ -114,10 +114,11 @@ def _is_admin_menus_collection(event: dict) -> bool:
 def _is_admin_menu_detail(event: dict) -> bool:
     parts = _path_parts(event)
     return (
-        len(parts) == 5
-        and parts[0] == "restaurants"
-        and parts[2] == "admin"
-        and parts[3] == "menus"
+        parts[0] == "restaurants"
+        and (
+            (len(parts) == 5 and parts[2] == "admin" and parts[3] == "menus")
+            or (len(parts) == 4 and parts[2] == "menus")
+        )
     )
 
 
