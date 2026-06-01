@@ -293,7 +293,7 @@ resource "aws_db_proxy" "users" {
   name                   = "${local.name_prefix}-users-proxy"
   engine_family          = "POSTGRESQL"
   idle_client_timeout    = 1800
-  require_tls            = true
+  require_tls            = local.postgres_tls_enabled
   role_arn               = local.lab_role_arn
   vpc_security_group_ids = [aws_security_group.rds_proxy[0].id]
   vpc_subnet_ids         = local.private_db_subnet_ids

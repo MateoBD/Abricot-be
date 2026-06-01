@@ -8,6 +8,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+_TLS_SSLMODES = {"require", "verify-ca", "verify-full", "true", "1"}
+
 REQUIRED_ENV_VARS = (
     "POSTGRES_HOST",
     "POSTGRES_PORT",
@@ -35,6 +37,14 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         action = event.get("action", "upgrade")
         revision = os.environ.get("DB_MIGRATION_REVISION", "head")
         migrations_dir = _migrations_dir()
+        logger.info(
+            "db_migration_connection_config",
+            extra={
+                "postgres_host": os.environ.get("POSTGRES_HOST"),
+                "postgres_port": os.environ.get("POSTGRES_PORT", "5432"),
+                "postgres_sslmode": _pg_sslmode(),
+            },
+        )
 
         app = _create_migration_app()
         with app.app_context():
@@ -160,10 +170,17 @@ def _engine_options() -> dict[str, Any]:
 
 
 def _pg_ssl_context():
-    sslmode = os.environ.get("POSTGRES_SSLMODE", "require").lower()
-    if sslmode == "disable":
+    if _pg_sslmode() not in _TLS_SSLMODES:
         return None
     return ssl._create_unverified_context()  # noqa: S323
+
+
+def _pg_sslmode() -> str:
+    return (
+        os.environ.get("DB_SSL_MODE")
+        or os.environ.get("POSTGRES_SSLMODE")
+        or "disable"
+    ).strip().lower()
 
 
 def _migrations_dir() -> Path:

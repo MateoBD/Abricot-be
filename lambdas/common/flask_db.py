@@ -9,6 +9,8 @@ from sqlalchemy.engine import URL
 
 from app.extensions import db
 
+_TLS_SSLMODES = {"require", "verify-ca", "verify-full", "true", "1"}
+
 _REQUIRED_ENV_VARS = (
     "DB_TARGET",
     "POSTGRES_HOST",
@@ -44,10 +46,17 @@ def _database_uri() -> str:
 
 
 def _pg_ssl_context():
-    sslmode = os.environ.get("POSTGRES_SSLMODE", "require").lower()
-    if sslmode == "disable":
+    if _pg_sslmode() not in _TLS_SSLMODES:
         return None
     return ssl._create_unverified_context()  # noqa: S323
+
+
+def _pg_sslmode() -> str:
+    return (
+        os.environ.get("DB_SSL_MODE")
+        or os.environ.get("POSTGRES_SSLMODE")
+        or "disable"
+    ).strip().lower()
 
 
 def _engine_options() -> dict[str, Any]:
