@@ -197,4 +197,73 @@ locals {
   }
 
   lambda_functions = merge(local.api_lambda_functions, local.private_lambda_functions, local.event_worker_lambda_functions)
+
+  # API Gateway HTTP routes. enabled gates creation per service stack toggle;
+  # jwt selects whether the Cognito JWT authorizer is attached.
+  api_routes = {
+    health                           = { route_key = "GET /health", service = "health", jwt = false, enabled = true }
+    callback                         = { route_key = "GET /callback", service = "users_service", jwt = false, enabled = true }
+    auth_test                        = { route_key = "GET /auth-test", service = "users_service", jwt = true, enabled = true }
+    users_post                       = { route_key = "POST /users", service = "users_service", jwt = true, enabled = local.users_routes_enabled }
+    users_get                        = { route_key = "GET /users/{userId}", service = "users_service", jwt = true, enabled = local.users_routes_enabled }
+    users_put                        = { route_key = "PUT /users/{userId}", service = "users_service", jwt = true, enabled = local.users_routes_enabled }
+    users_restaurants_list           = { route_key = "GET /users/{userId}/restaurants", service = "users_service", jwt = true, enabled = local.users_routes_enabled }
+    restaurants_post                 = { route_key = "POST /restaurants", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    catalog_lookups                  = { route_key = "GET /lookups", service = "catalog_service", jwt = false, enabled = local.catalog_routes_enabled }
+    catalog_restaurants_list         = { route_key = "GET /restaurants", service = "catalog_service", jwt = false, enabled = local.catalog_routes_enabled }
+    catalog_restaurant_detail        = { route_key = "GET /restaurants/{restaurantId}", service = "catalog_service", jwt = false, enabled = local.catalog_routes_enabled }
+    catalog_restaurant_menus         = { route_key = "GET /restaurants/{restaurantId}/menus", service = "catalog_service", jwt = false, enabled = local.catalog_routes_enabled }
+    orders_create                    = { route_key = "POST /restaurants/{restaurantId}/orders", service = "orders_service", jwt = true, enabled = local.orders_routes_enabled }
+    orders_user_list                 = { route_key = "GET /users/{userId}/orders", service = "orders_service", jwt = true, enabled = local.orders_routes_enabled }
+    orders_restaurant_list           = { route_key = "GET /restaurants/{restaurantId}/orders", service = "orders_service", jwt = true, enabled = local.orders_routes_enabled }
+    orders_restaurant_detail         = { route_key = "GET /restaurants/{restaurantId}/orders/{orderId}", service = "orders_service", jwt = true, enabled = local.orders_routes_enabled }
+    orders_restaurant_patch          = { route_key = "PATCH /restaurants/{restaurantId}/orders/{orderId}", service = "orders_service", jwt = true, enabled = local.orders_routes_enabled }
+    restaurants_put                  = { route_key = "PUT /restaurants/{restaurantId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_delete               = { route_key = "DELETE /restaurants/{restaurantId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_review_put           = { route_key = "PUT /restaurants/{restaurantId}/reviews/{userId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admins_list          = { route_key = "GET /restaurants/{restaurantId}/admins", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admins_post          = { route_key = "POST /restaurants/{restaurantId}/admins", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admins_delete        = { route_key = "DELETE /restaurants/{restaurantId}/admins/{userId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admin_menus_list     = { route_key = "GET /restaurants/{restaurantId}/admin/menus", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admin_menus_post     = { route_key = "POST /restaurants/{restaurantId}/admin/menus", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menus_post           = { route_key = "POST /restaurants/{restaurantId}/menus", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admin_menu_get       = { route_key = "GET /restaurants/{restaurantId}/admin/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_get             = { route_key = "GET /restaurants/{restaurantId}/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admin_menu_put       = { route_key = "PUT /restaurants/{restaurantId}/admin/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_put             = { route_key = "PUT /restaurants/{restaurantId}/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admin_menu_patch     = { route_key = "PATCH /restaurants/{restaurantId}/admin/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_patch           = { route_key = "PATCH /restaurants/{restaurantId}/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_admin_menu_delete    = { route_key = "DELETE /restaurants/{restaurantId}/admin/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_delete          = { route_key = "DELETE /restaurants/{restaurantId}/menus/{menuId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_categories_list = { route_key = "GET /restaurants/{restaurantId}/menus/{menuId}/categories", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_categories_post = { route_key = "POST /restaurants/{restaurantId}/menus/{menuId}/categories", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_category_get    = { route_key = "GET /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_category_put    = { route_key = "PUT /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_category_delete = { route_key = "DELETE /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_items_list      = { route_key = "GET /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_items_post      = { route_key = "POST /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_item_get        = { route_key = "GET /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items/{itemId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_item_put        = { route_key = "PUT /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items/{itemId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_menu_item_delete     = { route_key = "DELETE /restaurants/{restaurantId}/menus/{menuId}/categories/{categoryId}/items/{itemId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_tables_list          = { route_key = "GET /restaurants/{restaurantId}/tables", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_tables_post          = { route_key = "POST /restaurants/{restaurantId}/tables", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_table_get            = { route_key = "GET /restaurants/{restaurantId}/tables/{tableId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_table_put            = { route_key = "PUT /restaurants/{restaurantId}/tables/{tableId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_table_delete         = { route_key = "DELETE /restaurants/{restaurantId}/tables/{tableId}", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_business_hours_get   = { route_key = "GET /restaurants/{restaurantId}/business-hours", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_business_hours_put   = { route_key = "PUT /restaurants/{restaurantId}/business-hours", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_availability         = { route_key = "GET /restaurants/{restaurantId}/availability", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
+    restaurants_public_availability  = { route_key = "GET /restaurants/{restaurantId}/public-availability", service = "restaurants_service", jwt = false, enabled = local.restaurants_routes_enabled }
+    reservations_create              = { route_key = "POST /restaurants/{restaurantId}/reservations", service = "reservations_service", jwt = true, enabled = local.reservations_routes_enabled }
+    reservations_create_public       = { route_key = "POST /restaurants/{restaurantId}/public-reservations", service = "reservations_service", jwt = false, enabled = local.reservations_routes_enabled }
+    reservations_restaurant_list     = { route_key = "GET /restaurants/{restaurantId}/reservations", service = "reservations_service", jwt = true, enabled = local.reservations_routes_enabled }
+    reservations_get                 = { route_key = "GET /reservations/{reservationId}", service = "reservations_service", jwt = true, enabled = local.reservations_routes_enabled }
+    reservations_patch               = { route_key = "PATCH /reservations/{reservationId}", service = "reservations_service", jwt = true, enabled = local.reservations_routes_enabled }
+    reservations_user_list           = { route_key = "GET /users/{userId}/reservations", service = "reservations_service", jwt = true, enabled = local.reservations_routes_enabled }
+    promotions_list                  = { route_key = "GET /restaurants/{restaurantId}/promotions", service = "promotions_service", jwt = true, enabled = local.promotions_routes_enabled }
+    promotions_create                = { route_key = "POST /restaurants/{restaurantId}/promotions", service = "promotions_service", jwt = true, enabled = local.promotions_routes_enabled }
+    promotions_get                   = { route_key = "GET /restaurants/{restaurantId}/promotions/{promotionId}", service = "promotions_service", jwt = true, enabled = local.promotions_routes_enabled }
+    promotions_delete                = { route_key = "DELETE /restaurants/{restaurantId}/promotions/{promotionId}", service = "promotions_service", jwt = true, enabled = local.promotions_routes_enabled }
+    analytics_get                    = { route_key = "GET /restaurants/{restaurantId}/analytics", service = "analytics_service", jwt = true, enabled = local.analytics_routes_enabled }
+  }
 }

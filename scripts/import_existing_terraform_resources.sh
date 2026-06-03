@@ -280,37 +280,23 @@ api_route_id_for_key() {
     || true
 }
 
+# Routes are now a single for_each resource (aws_apigatewayv2_route.this) driven
+# by the local.api_routes map in locals.tf. Emit one address/route_key pair per
+# map entry. Disabled routes are emitted too but skipped by the caller because
+# they will not exist in AWS.
 terraform_api_routes() {
   awk '
-    /^resource "aws_apigatewayv2_route"/ {
-      name = $3
-      gsub(/"/, "", name)
-      in_block = 1
-      has_count = 0
-      route_key = ""
-    }
+    /^  api_routes = \{/ { in_map = 1; next }
+    in_map && /^  \}/ { in_map = 0 }
 
-    in_block && /^[[:space:]]*count[[:space:]]*=/ {
-      has_count = 1
-    }
-
-    in_block && /^[[:space:]]*route_key[[:space:]]*=/ {
+    in_map && /route_key[[:space:]]*=/ {
+      key = $1
       route_key = $0
-      sub(/^[^=]*=[[:space:]]*"/, "", route_key)
-      sub(/"[[:space:]]*$/, "", route_key)
+      sub(/^.*route_key[[:space:]]*=[[:space:]]*"/, "", route_key)
+      sub(/".*$/, "", route_key)
+      print "aws_apigatewayv2_route.this[\"" key "\"]\t" route_key
     }
-
-    in_block && /^}/ {
-      if (route_key != "") {
-        address = "aws_apigatewayv2_route." name
-        if (has_count) {
-          address = address "[0]"
-        }
-        print address "\t" route_key
-      }
-      in_block = 0
-    }
-  ' main.tf
+  ' locals.tf
 }
 
 sns_topic_arn_for_name() {
@@ -506,11 +492,13 @@ if is_real_id "${account_id}" && aws s3api head-bucket --bucket "${frontend_buck
   import_if_absent 'aws_s3_bucket_policy.frontend_public_read' "${frontend_bucket}"
 fi
 
+# lambda_artifacts bucket is managed by the external terraform-aws-modules/s3-bucket
+# module, so imports target the module's internal resource addresses.
 if is_real_id "${account_id}" && aws s3api head-bucket --bucket "${lambda_artifacts_bucket}" >/dev/null 2>&1; then
-  import_if_missing 'aws_s3_bucket.lambda_artifacts' "${lambda_artifacts_bucket}"
-  import_if_absent 'aws_s3_bucket_versioning.lambda_artifacts' "${lambda_artifacts_bucket}"
-  import_if_absent 'aws_s3_bucket_public_access_block.lambda_artifacts' "${lambda_artifacts_bucket}"
-  import_if_absent 'aws_s3_bucket_server_side_encryption_configuration.lambda_artifacts' "${lambda_artifacts_bucket}"
+  import_if_missing 'module.lambda_artifacts_bucket.aws_s3_bucket.this[0]' "${lambda_artifacts_bucket}"
+  import_if_absent 'module.lambda_artifacts_bucket.aws_s3_bucket_versioning.this[0]' "${lambda_artifacts_bucket}"
+  import_if_absent 'module.lambda_artifacts_bucket.aws_s3_bucket_public_access_block.this[0]' "${lambda_artifacts_bucket}"
+  import_if_absent 'module.lambda_artifacts_bucket.aws_s3_bucket_server_side_encryption_configuration.this[0]' "${lambda_artifacts_bucket}"
 fi
 
 user_pool_id="$(aws_text cognito-idp list-user-pools \
@@ -545,13 +533,14 @@ lambda_keys=(
 
 for key in "${lambda_keys[@]}"; do
   function_name="$(lambda_function_name_for_key "${key}")"
+  lambda_address="module.lambda[\"${key}\"].aws_lambda_function.this"
   if aws lambda get-function --function-name "${function_name}" >/dev/null 2>&1; then
-    import_if_missing "aws_lambda_function.this[\"${key}\"]" "${function_name}"
-    if ! terraform state show "aws_lambda_function.this[\"${key}\"]" >/dev/null 2>&1; then
+    import_if_missing "${lambda_address}" "${function_name}"
+    if ! terraform state show "${lambda_address}" >/dev/null 2>&1; then
       function_arn="$(aws_text lambda get-function \
         --function-name "${function_name}" \
         --query 'Configuration.FunctionArn')"
-      import_if_missing "aws_lambda_function.this[\"${key}\"]" "${function_arn}"
+      import_if_missing "${lambda_address}" "${function_arn}"
     fi
   fi
 done

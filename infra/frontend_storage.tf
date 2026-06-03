@@ -59,34 +59,30 @@ resource "aws_s3_bucket_policy" "frontend_public_read" {
   depends_on = [aws_s3_bucket_public_access_block.frontend]
 }
 
-resource "aws_s3_bucket" "lambda_artifacts" {
+# External module from the Terraform Registry (authoritative terraform-aws-modules
+# org), version-pinned. Provisions the private, versioned, encrypted bucket that
+# stores Lambda ZIP artifacts, replacing four hand-written S3 resources.
+module "lambda_artifacts_bucket" {
+  source  = "terraform-aws-modules/s3-bucket/aws"
+  version = "~> 4.1"
+
   bucket        = local.lambda_artifacts_bucket_name
   force_destroy = true
-}
 
-resource "aws_s3_bucket_versioning" "lambda_artifacts" {
-  bucket = aws_s3_bucket.lambda_artifacts.id
-
-  versioning_configuration {
-    status = "Enabled"
+  versioning = {
+    enabled = true
   }
-}
-
-resource "aws_s3_bucket_public_access_block" "lambda_artifacts" {
-  bucket = aws_s3_bucket.lambda_artifacts.id
 
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-}
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "lambda_artifacts" {
-  bucket = aws_s3_bucket.lambda_artifacts.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+  server_side_encryption_configuration = {
+    rule = {
+      apply_server_side_encryption_by_default = {
+        sse_algorithm = "AES256"
+      }
     }
   }
 }

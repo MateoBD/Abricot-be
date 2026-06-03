@@ -49,8 +49,8 @@ output "frontend_website_url" {
 }
 
 output "lambda_artifacts_bucket_name" {
-  description = "S3 bucket used to store Lambda ZIP artifacts."
-  value       = aws_s3_bucket.lambda_artifacts.bucket
+  description = "S3 bucket used to store Lambda ZIP artifacts (external module)."
+  value       = module.lambda_artifacts_bucket.s3_bucket_id
 }
 
 output "health_url" {
@@ -131,14 +131,14 @@ output "rds_proxy_endpoint" {
 output "db_migration_lambda_name" {
   description = "Internal Lambda used to run Flask-Migrate/Alembic migrations inside the private VPC."
   value = local.lambda_private_attachment_enabled ? lookup({
-    for name, function in aws_lambda_function.this : name => function.function_name
+    for name, instance in module.lambda : name => instance.function_name
   }, "db_migrate", null) : null
 }
 
 output "lambda_function_names" {
   description = "Lambda function names keyed by local service key."
   value = {
-    for name, function in aws_lambda_function.this : name => function.function_name
+    for name, instance in module.lambda : name => instance.function_name
   }
 }
 
@@ -164,12 +164,12 @@ output "analytics_events_queue_url" {
 
 output "email_worker_lambda_name" {
   description = "Lambda function name for the SQS email worker."
-  value       = lookup({ for name, function in aws_lambda_function.this : name => function.function_name }, "email_worker", null)
+  value       = lookup({ for name, instance in module.lambda : name => instance.function_name }, "email_worker", null)
 }
 
 output "analytics_worker_lambda_name" {
   description = "Lambda function name for the SQS analytics worker."
-  value       = lookup({ for name, function in aws_lambda_function.this : name => function.function_name }, "analytics_worker", null)
+  value       = lookup({ for name, instance in module.lambda : name => instance.function_name }, "analytics_worker", null)
 }
 
 output "notification_email_subscription_note" {
