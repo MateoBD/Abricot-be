@@ -1,7 +1,11 @@
 import logging
 from uuid import UUID
 
-from app.exceptions.errors import NotFoundError, ValidationError
+from app.exceptions.errors import (
+    NotFoundError,
+    UnsupportedMediaTypeError,
+    ValidationError,
+)
 from app.extensions import db
 from app.models.enums import UserRole
 from app.models.restaurant import RestaurantModel
@@ -278,7 +282,7 @@ class RestaurantService:
 
         mime_type = (getattr(file_storage, "mimetype", None) or "").lower()
         if mime_type not in RestaurantService._ALLOWED_PHOTO_MIME_TYPES:
-            raise ValidationError(
+            raise UnsupportedMediaTypeError(
                 "Invalid file format.",
                 {
                     "file": (

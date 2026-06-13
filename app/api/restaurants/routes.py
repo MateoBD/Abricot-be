@@ -843,6 +843,7 @@ class RestaurantPhoto(Resource):
     @namespace.expect(_photo_parser)
     @namespace.response(200, "Photo uploaded successfully.", restaurant_response_model)
     @namespace.response(400, "No file provided.")
+    @namespace.response(415, "Unsupported image media type.")
     @namespace.response(404, "Restaurant not found.")
     @require_restaurant_admin("restaurant_id")
     def put(self, restaurant_id: UUID):

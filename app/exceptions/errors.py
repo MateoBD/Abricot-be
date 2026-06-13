@@ -31,6 +31,12 @@ class ValidationError(AppError):
     code = "VALIDATION_ERROR"
 
 
+class UnsupportedMediaTypeError(AppError):
+    status_code = 415
+    code = "UNSUPPORTED_MEDIA_TYPE"
+    public_message = "Please send the request in a supported format."
+
+
 class UnauthorizedError(AppError):
     status_code = 401
     code = "UNAUTHORIZED"
