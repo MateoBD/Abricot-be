@@ -131,7 +131,10 @@ restaurant_response_model = Model(
             allow_null=True,
         ),
         "photoUrl": fields.String(
-            description="URL de la foto del restaurante.",
+            description=(
+                "URL de la imagen principal del restaurante, reutilizable como logo "
+                "o display publico."
+            ),
             example="https://bucket.s3.us-east-1.amazonaws.com/restaurants/1/abc123.jpg",
             allow_null=True,
         ),
