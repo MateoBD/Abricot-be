@@ -36,8 +36,10 @@ locals {
   private_app_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]
   private_db_subnet_cidrs  = ["10.42.20.0/24", "10.42.21.0/24"]
 
-  postgres_port         = 5432
-  postgres_sslmode      = "require"
+  postgres_port        = 5432
+  postgres_tls_enabled = false
+  postgres_sslmode     = local.postgres_tls_enabled ? "require" : "disable"
+
   rds_instance_class    = "db.t3.micro"
   rds_allocated_storage = 20
 
@@ -57,6 +59,7 @@ locals {
     POSTGRES_USER     = var.postgres_user
     POSTGRES_PASSWORD = var.postgres_password
     POSTGRES_SSLMODE  = local.postgres_sslmode
+    DB_SSL_MODE       = local.postgres_sslmode
   } : {}
 
   db_migration_environment = merge(local.users_service_db_environment, {
