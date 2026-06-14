@@ -2,8 +2,16 @@ import json
 import logging
 from typing import Any
 
+from app.repositories.analytics_repository import AnalyticsRepository
+from common.flask_db import backend_app_context
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Domain events this worker reacts to by recomputing a restaurant's day aggregate.
+_RECOMPUTE_EVENTS = frozenset(
+    {"order.created", "order.status_changed", "reservation.created"}
+)
 
 
 def _parse_json(value: str) -> dict | None:
@@ -29,18 +37,32 @@ def _domain_event_from_sqs_record(record: dict) -> dict | None:
 
 def _process_event(event: dict) -> None:
     event_type = event.get("eventType")
-    if event_type != "order.created":
-        logger.info("analytics_worker_skipped_unknown_event event_type=%s", event_type)
+    if event_type not in _RECOMPUTE_EVENTS:
+        # Explicitly ignore everything else (e.g. promotion.notify).
+        logger.info("analytics_worker_skipped_event event_type=%s", event_type)
         return
 
     data = event.get("data") if isinstance(event.get("data"), dict) else {}
-    logger.info(
-        "analytics_worker_processed_order_created order_id=%s restaurant_id=%s total=%s status=%s",
-        data.get("orderId"),
-        data.get("restaurantId"),
-        data.get("total"),
-        data.get("status"),
-    )
+
+    with backend_app_context():
+        target = AnalyticsRepository.resolve_recompute_target(event_type, data)
+        if target is None:
+            logger.warning(
+                "analytics_worker_skipped_unresolvable event_type=%s order_id=%s reservation_id=%s",
+                event_type,
+                data.get("orderId"),
+                data.get("reservationId"),
+            )
+            return
+
+        restaurant_id, day = target
+        AnalyticsRepository.recompute_day_snapshot(restaurant_id, day)
+        logger.info(
+            "analytics_worker_recomputed event_type=%s restaurant_id=%s period_date=%s",
+            event_type,
+            restaurant_id,
+            day.isoformat(),
+        )
 
 
 def handler(event: dict[str, Any], context):

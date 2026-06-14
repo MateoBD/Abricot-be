@@ -11,6 +11,7 @@ from app.repositories.menu_repository import MenuRepository
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.order_repository import OrderRepository
 from app.repositories.restaurant_repository import RestaurantRepository
+from app.services.domain_event_publisher import publish_domain_event
 from app.utils.list_envelope import paginated_list_envelope
 
 logger = logging.getLogger(__name__)
@@ -228,8 +229,21 @@ class OrderService:
                     {"estimatedReadyAt": "Invalid datetime format"},
                 ) from err
 
+        previous_status = order.status
         OrderRepository.update_status(order, new_status, parsed_eta)
         logger.info("Order status updated: order_id=%s new_status=%s", order_id, new_status)
+        publish_domain_event(
+            "order.status_changed",
+            user_id=order.user_id,
+            restaurant_id=order.restaurant_id,
+            payload={
+                "orderId": str(order.id),
+                "restaurantId": str(order.restaurant_id),
+                "userId": str(order.user_id),
+                "status": new_status.value,
+                "previousStatus": previous_status.value,
+            },
+        )
         return _order_payload(order, include_items=restaurant_id is not None)
 
     @staticmethod

@@ -235,6 +235,6 @@ def _parse_item_ids(menu_item_ids: list | None, restaurant_id: UUID) -> list[UUI
 def _try_notify_promotion(promotion_id: UUID) -> None:
     try:
         from app.services.notification_service import NotificationService
-        NotificationService.send_promotion_notification(promotion_id)
+        NotificationService.publish_promotion_events(promotion_id)
     except Exception:
         logger.warning("Failed to send promotion notification for promo_id=%s", promotion_id)

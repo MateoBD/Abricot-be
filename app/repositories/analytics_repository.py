@@ -1,15 +1,27 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func
 
 from app.extensions import db
+from app.models.analytics_snapshot import AnalyticsSnapshotModel
 from app.models.menu_item import MenuItemModel
 from app.models.order import OrderModel
 from app.models.order_item import OrderItemModel
 from app.models.promotion import PromotionModel
 from app.models.reservation import ReservationModel
+
+
+def _coerce_uuid(value: object) -> UUID | None:
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 class AnalyticsRepository:
@@ -328,4 +340,132 @@ class AnalyticsRepository:
                 "isActive": p.is_active,
             }
             for p in rows
+        ]
+
+    @staticmethod
+    def resolve_recompute_target(
+        event_type: str,
+        data: dict,
+    ) -> tuple[UUID, date] | None:
+        """Resolve the (restaurant_id, day) to recompute for a domain event.
+
+        Looks the operational record up by id so the recompute day matches the
+        record's ``created_at`` date (the column the aggregate buckets on). Returns
+        ``None`` when the event lacks enough info or the record cannot be found, so
+        the caller can skip it gracefully rather than crash the batch.
+        """
+        if event_type in ("order.created", "order.status_changed"):
+            order_id = _coerce_uuid(data.get("orderId"))
+            if order_id is None:
+                return None
+            order = db.session.get(OrderModel, order_id)
+            if order is None or order.restaurant_id is None or order.created_at is None:
+                return None
+            return order.restaurant_id, order.created_at.date()
+
+        if event_type == "reservation.created":
+            reservation_id = _coerce_uuid(data.get("reservationId"))
+            if reservation_id is None:
+                return None
+            reservation = db.session.get(ReservationModel, reservation_id)
+            if (
+                reservation is None
+                or reservation.restaurant_id is None
+                or reservation.created_at is None
+            ):
+                return None
+            return reservation.restaurant_id, reservation.created_at.date()
+
+        return None
+
+    @staticmethod
+    def compute_day_aggregate(restaurant_id: UUID, day: date) -> dict:
+        """Compute a single restaurant+day aggregate from the operational tables.
+
+        Reads orders/reservations created on ``day`` (by ``created_at`` date) and
+        returns the raw counts/revenue. This is the source of truth used both by
+        the snapshot recompute and by the live (today) dashboard path.
+        """
+        order_day = func.date(OrderModel.created_at)
+        order_totals = db.session.execute(
+            db.select(
+                func.count(OrderModel.id).label("orders_count"),
+                func.coalesce(func.sum(OrderModel.total_amount), 0).label("revenue"),
+            ).where(
+                OrderModel.restaurant_id == restaurant_id,
+                order_day == day,
+            )
+        ).one()
+
+        reservation_day = func.date(ReservationModel.created_at)
+        reservation_totals = db.session.execute(
+            db.select(
+                func.count(ReservationModel.id).label("reservations_count"),
+            ).where(
+                ReservationModel.restaurant_id == restaurant_id,
+                reservation_day == day,
+            )
+        ).one()
+
+        return {
+            "ordersCount": int(order_totals.orders_count or 0),
+            "reservationsCount": int(reservation_totals.reservations_count or 0),
+            "revenue": Decimal(order_totals.revenue or 0),
+        }
+
+    @staticmethod
+    def recompute_day_snapshot(restaurant_id: UUID, day: date) -> dict:
+        """Recompute and UPSERT the snapshot row for ``restaurant_id`` on ``day``.
+
+        Recomputes (does NOT increment) from the operational tables, so it is
+        idempotent under SQS redelivery. Returns the resulting snapshot as a dict.
+        """
+        aggregate = AnalyticsRepository.compute_day_aggregate(restaurant_id, day)
+
+        snapshot = db.session.get(AnalyticsSnapshotModel, (restaurant_id, day))
+        now = datetime.now(UTC)
+        if snapshot is None:
+            snapshot = AnalyticsSnapshotModel(
+                restaurant_id=restaurant_id,
+                period_date=day,
+                orders_count=aggregate["ordersCount"],
+                reservations_count=aggregate["reservationsCount"],
+                revenue=aggregate["revenue"],
+                updated_at=now,
+            )
+            db.session.add(snapshot)
+        else:
+            snapshot.orders_count = aggregate["ordersCount"]
+            snapshot.reservations_count = aggregate["reservationsCount"]
+            snapshot.revenue = aggregate["revenue"]
+            snapshot.updated_at = now
+
+        db.session.commit()
+        return snapshot.to_dict()
+
+    @staticmethod
+    def get_snapshots_range(
+        restaurant_id: UUID,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict]:
+        """Return sealed snapshot rows for a restaurant within an inclusive range."""
+        stmt = db.select(AnalyticsSnapshotModel).where(
+            AnalyticsSnapshotModel.restaurant_id == restaurant_id
+        )
+        if start_date is not None:
+            stmt = stmt.where(AnalyticsSnapshotModel.period_date >= start_date)
+        if end_date is not None:
+            stmt = stmt.where(AnalyticsSnapshotModel.period_date <= end_date)
+        stmt = stmt.order_by(AnalyticsSnapshotModel.period_date)
+
+        rows = db.session.execute(stmt).scalars().all()
+        return [
+            {
+                "date": row.period_date.isoformat(),
+                "ordersCount": int(row.orders_count or 0),
+                "reservationsCount": int(row.reservations_count or 0),
+                "revenue": Decimal(row.revenue or 0),
+            }
+            for row in rows
         ]

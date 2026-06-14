@@ -145,6 +145,135 @@ def test_general_metrics_returns_flat_frontend_contract(monkeypatch):
     }
 
 
+def test_snapshot_dashboard_merges_sealed_snapshots_with_live_today(monkeypatch):
+    _stub_restaurant(monkeypatch)
+    today = date(2026, 5, 12)
+
+    def get_snapshots_range(restaurant_id, start_date, end_date):
+        assert restaurant_id == RESTAURANT_ID
+        assert start_date == date(2026, 5, 10)
+        # snapshots stop the day BEFORE today (sealed past only).
+        assert end_date == date(2026, 5, 11)
+        return [
+            {
+                "date": "2026-05-10",
+                "ordersCount": 5,
+                "reservationsCount": 2,
+                "revenue": Decimal("100"),
+            },
+            {
+                "date": "2026-05-11",
+                "ordersCount": 3,
+                "reservationsCount": 1,
+                "revenue": Decimal("50"),
+            },
+        ]
+
+    def compute_day_aggregate(restaurant_id, day):
+        assert day == today
+        return {
+            "ordersCount": 4,
+            "reservationsCount": 6,
+            "revenue": Decimal("200"),
+        }
+
+    monkeypatch.setattr(
+        analytics_service_module.AnalyticsRepository,
+        "get_snapshots_range",
+        get_snapshots_range,
+    )
+    monkeypatch.setattr(
+        analytics_service_module.AnalyticsRepository,
+        "compute_day_aggregate",
+        compute_day_aggregate,
+    )
+
+    result = AnalyticsService.get_snapshot_dashboard(
+        RESTAURANT_ID,
+        start="2026-05-10",
+        end="2026-05-12",
+        today=today,
+    )
+
+    assert result == {
+        "restaurantId": str(RESTAURANT_ID),
+        "period": {"start": "2026-05-10", "end": "2026-05-12"},
+        "totals": {
+            "orders": 12,
+            "reservations": 9,
+            "revenue": "350.00",
+        },
+        "byDay": [
+            {
+                "date": "2026-05-10",
+                "source": "snapshot",
+                "orders": 5,
+                "reservations": 2,
+                "revenue": "100.00",
+            },
+            {
+                "date": "2026-05-11",
+                "source": "snapshot",
+                "orders": 3,
+                "reservations": 1,
+                "revenue": "50.00",
+            },
+            {
+                "date": "2026-05-12",
+                "source": "live",
+                "orders": 4,
+                "reservations": 6,
+                "revenue": "200.00",
+            },
+        ],
+    }
+
+
+def test_snapshot_dashboard_excludes_today_when_outside_range(monkeypatch):
+    _stub_restaurant(monkeypatch)
+    today = date(2026, 5, 20)
+
+    def get_snapshots_range(restaurant_id, start_date, end_date):
+        # End is in the past, so the whole range is sealed; no live day.
+        assert end_date == date(2026, 5, 12)
+        return [
+            {
+                "date": "2026-05-12",
+                "ordersCount": 7,
+                "reservationsCount": 3,
+                "revenue": Decimal("70"),
+            }
+        ]
+
+    def compute_day_aggregate(restaurant_id, day):  # pragma: no cover
+        raise AssertionError("live aggregate must not run for past-only ranges")
+
+    monkeypatch.setattr(
+        analytics_service_module.AnalyticsRepository,
+        "get_snapshots_range",
+        get_snapshots_range,
+    )
+    monkeypatch.setattr(
+        analytics_service_module.AnalyticsRepository,
+        "compute_day_aggregate",
+        compute_day_aggregate,
+    )
+
+    result = AnalyticsService.get_snapshot_dashboard(
+        RESTAURANT_ID,
+        start="2026-05-10",
+        end="2026-05-12",
+        today=today,
+    )
+
+    assert [day["source"] for day in result["byDay"]] == ["snapshot"]
+    assert result["totals"] == {
+        "orders": 7,
+        "reservations": 3,
+        "revenue": "70.00",
+    }
+
+
 def test_order_status_does_not_include_in_preparation():
     assert [status.value for status in OrderStatus] == [
         "PENDING",
