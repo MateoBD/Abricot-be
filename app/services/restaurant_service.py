@@ -9,7 +9,7 @@ from app.exceptions.errors import (
 from app.extensions import db
 from app.models.enums import UserRole
 from app.models.restaurant import RestaurantModel
-from app.integrations.s3 import S3Client
+from app.integrations.s3 import S3Client, object_key_from_value
 from app.repositories.restaurant_admin_repository import RestaurantAdminRepository
 from app.repositories.restaurant_repository import (
     CUISINE_UNSET,
@@ -76,6 +76,12 @@ class RestaurantService:
         review_stats: dict[UUID, tuple[float | None, int]] | None = None,
     ) -> dict:
         payload = restaurant.to_dict()
+        # photo_url stores the S3 object KEY; sign a fresh presigned GET URL on read
+        # (the photos bucket is private, so a plain object URL would 403).
+        photo_key = object_key_from_value(payload.get("photoUrl"))
+        payload["photoUrl"] = (
+            S3Client.get().generate_presigned_get_url(photo_key) if photo_key else None
+        )
         if cuisine_map is None:
             cids = RestaurantRepository.get_cuisine_type_ids_for_restaurant(
                 restaurant.id

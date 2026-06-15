@@ -6,6 +6,7 @@ locals {
 
   frontend_bucket_name         = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-frontend"
   lambda_artifacts_bucket_name = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-lambda-artifacts"
+  images_bucket_name           = "${local.name_prefix}-${data.aws_caller_identity.current.account_id}-images"
   frontend_website_url         = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
   frontend_callback_url        = trimspace(var.frontend_callback_url) != "" ? trimsuffix(var.frontend_callback_url, "/") : "${local.frontend_website_url}/auth/callback"
   frontend_base_url            = trimsuffix(trimsuffix(local.frontend_callback_url, "/auth/callback"), "/")
@@ -30,11 +31,11 @@ locals {
   lambda_security_group_ids         = local.full_private_stack_enabled ? [aws_security_group.lambda[0].id] : []
   rds_proxy_endpoint                = local.full_private_stack_enabled ? aws_db_proxy.users[0].endpoint : null
 
-  vpc_cidr                 = "10.42.0.0/16"
+  vpc_cidr                 = "10.0.0.0/16"
   availability_zones       = ["us-east-1a", "us-east-1b"]
-  public_subnet_cidrs      = ["10.42.0.0/24", "10.42.1.0/24"]
-  private_app_subnet_cidrs = ["10.42.10.0/24", "10.42.11.0/24"]
-  private_db_subnet_cidrs  = ["10.42.20.0/24", "10.42.21.0/24"]
+  public_subnet_cidrs      = ["10.0.1.0/24", "10.0.11.0/24"]
+  private_app_subnet_cidrs = ["10.0.2.0/24", "10.0.12.0/24"]
+  private_db_subnet_cidrs  = ["10.0.3.0/24", "10.0.13.0/24"]
 
   postgres_port        = 5432
   postgres_tls_enabled = false
@@ -79,12 +80,12 @@ locals {
     users_service        = merge(local.users_service_base_environment, local.users_service_db_environment)
     catalog_service      = local.catalog_routes_enabled ? local.users_service_db_environment : {}
     orders_service       = local.orders_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
-    restaurants_service  = local.restaurants_routes_enabled ? local.users_service_db_environment : {}
+    restaurants_service  = local.restaurants_routes_enabled ? merge(local.users_service_db_environment, { AWS_S3_BUCKET = local.images_bucket_name }) : {}
     reservations_service = local.reservations_routes_enabled ? merge(local.users_service_db_environment, { SNS_USER_TOPIC_PREFIX = "${local.name_prefix}-user" }) : {}
     promotions_service   = local.promotions_routes_enabled ? local.users_service_db_environment : {}
     analytics_service    = local.analytics_routes_enabled ? local.users_service_db_environment : {}
     email_worker         = { EMAIL_TOPIC_ARN = aws_sns_topic.email_topic.arn }
-    analytics_worker     = {}
+    analytics_worker     = local.users_service_db_environment
     db_migrate           = local.db_migration_environment
   }
 
@@ -189,10 +190,10 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/analytics_worker"
       excludes           = []
-      timeout            = 10
-      vpc_enabled        = false
-      subnet_ids         = []
-      security_group_ids = []
+      timeout            = 30
+      vpc_enabled        = local.lambda_private_attachment_enabled
+      subnet_ids         = local.private_app_subnet_ids
+      security_group_ids = local.lambda_security_group_ids
     }
   }
 
@@ -254,6 +255,7 @@ locals {
     restaurants_business_hours_put   = { route_key = "PUT /restaurants/{restaurantId}/business-hours", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
     restaurants_availability         = { route_key = "GET /restaurants/{restaurantId}/availability", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
     restaurants_public_availability  = { route_key = "GET /restaurants/{restaurantId}/public-availability", service = "restaurants_service", jwt = false, enabled = local.restaurants_routes_enabled }
+    restaurants_photo                = { route_key = "POST /restaurants/{restaurantId}/photo", service = "restaurants_service", jwt = true, enabled = local.restaurants_routes_enabled }
     reservations_create              = { route_key = "POST /restaurants/{restaurantId}/reservations", service = "reservations_service", jwt = true, enabled = local.reservations_routes_enabled }
     reservations_create_public       = { route_key = "POST /restaurants/{restaurantId}/public-reservations", service = "reservations_service", jwt = false, enabled = local.reservations_routes_enabled }
     reservations_restaurant_list     = { route_key = "GET /restaurants/{restaurantId}/reservations", service = "reservations_service", jwt = true, enabled = local.reservations_routes_enabled }

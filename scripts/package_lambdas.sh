@@ -170,6 +170,8 @@ install_dependencies "email_worker" "${BUILD_DIR}/email_worker"
 
 echo "Copying analytics-worker-lambda source"
 copy_tree "${ROOT_DIR}/lambdas/analytics_worker" "${BUILD_DIR}/analytics_worker"
+copy_tree "${ROOT_DIR}/lambdas/common" "${BUILD_DIR}/analytics_worker/common"
+copy_tree "${ROOT_DIR}/app" "${BUILD_DIR}/analytics_worker/app"
 install_dependencies "analytics_worker" "${BUILD_DIR}/analytics_worker"
 
 echo "Copying db-migrate-lambda source"

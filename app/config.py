@@ -31,6 +31,7 @@ class BaseConfig:
     AWS_S3_BUCKET = ""
     AWS_ACCESS_KEY_ID = ""
     AWS_SECRET_ACCESS_KEY = ""
+    S3_PRESIGNED_EXPIRY = 3600
     SNS_USER_TOPIC_PREFIX = "abricot-user"
 
 
@@ -60,6 +61,9 @@ class ProductionConfig(BaseConfig):
     AWS_S3_BUCKET = os.environ.get("AWS_S3_BUCKET", "")
     AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
     AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+    S3_PRESIGNED_EXPIRY = int(
+        os.environ.get("S3_PRESIGNED_EXPIRY", str(BaseConfig.S3_PRESIGNED_EXPIRY))
+    )
     SNS_USER_TOPIC_PREFIX = os.environ.get(
         "SNS_USER_TOPIC_PREFIX",
         BaseConfig.SNS_USER_TOPIC_PREFIX,

@@ -1,4 +1,5 @@
 import uuid
+from urllib.parse import urlparse
 
 import boto3
 from flask import current_app
@@ -32,13 +33,26 @@ class S3Client:
             self._boto_client = boto3.client("s3", **kwargs)
         return self._boto_client
 
+    def generate_presigned_get_url(self, key: str, expires_in: int | None = None) -> str:
+        """Return a presigned GET URL for an object key in the photos bucket.
+
+        The bucket is private, so a plain object URL 403s; clients must use a
+        short-lived signed URL generated fresh on each read.
+        """
+        bucket = current_app.config.get("AWS_S3_BUCKET")
+        if not bucket:
+            raise ValueError("AWS_S3_BUCKET is not configured.")
+        if expires_in is None:
+            expires_in = int(current_app.config.get("S3_PRESIGNED_EXPIRY", 3600))
+        return self._client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expires_in,
+        )
+
     def upload_restaurant_photo(self, file_storage, restaurant_id: int) -> str:
         bucket = current_app.config.get("AWS_S3_BUCKET")
         region = current_app.config.get("AWS_REGION")
-        use_localstack = bool(current_app.config.get("USE_LOCALSTACK", False))
-        localstack_endpoint = current_app.config.get(
-            "LOCALSTACK_ENDPOINT", "http://localhost:4566"
-        )
 
         if not bucket:
             raise ValueError("AWS_S3_BUCKET is not configured.")
@@ -55,17 +69,12 @@ class S3Client:
             ExtraArgs={"ContentType": file_storage.content_type},
         )
 
-        if use_localstack:
-            return f"{localstack_endpoint}/{bucket}/{key}"
-        return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
+        # Persist the object KEY (not a URL); the read path signs it on demand.
+        return key
 
     def upload_menu_item_photo(self, file_storage, item_id) -> str:
         bucket = current_app.config.get("AWS_S3_BUCKET")
         region = current_app.config.get("AWS_REGION")
-        use_localstack = bool(current_app.config.get("USE_LOCALSTACK", False))
-        localstack_endpoint = current_app.config.get(
-            "LOCALSTACK_ENDPOINT", "http://localhost:4566"
-        )
 
         if not bucket:
             raise ValueError("AWS_S3_BUCKET is not configured.")
@@ -82,12 +91,30 @@ class S3Client:
             ExtraArgs={"ContentType": file_storage.content_type},
         )
 
-        if use_localstack:
-            return f"{localstack_endpoint}/{bucket}/{key}"
-        return f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
+        # Persist the object KEY (not a URL); the read path signs it on demand.
+        return key
 
 
 def _get_extension(filename: str) -> str:
     if filename and "." in filename:
         return "." + filename.rsplit(".", 1)[-1].lower()
     return ""
+
+
+def object_key_from_value(value: str | None) -> str | None:
+    """Coerce a stored photo value into an S3 object key.
+
+    New uploads store the bare key. Legacy rows may hold a full object URL;
+    derive the key from the URL path so we never sign a key that includes the
+    host or bucket. Handles virtual-hosted (``bucket.s3...``) and path-style /
+    LocalStack (``host/bucket/key``) URLs.
+    """
+    if not value:
+        return None
+    if "://" not in value:
+        return value
+    path = urlparse(value).path.lstrip("/")
+    bucket = current_app.config.get("AWS_S3_BUCKET")
+    if bucket and path.startswith(f"{bucket}/"):
+        path = path[len(bucket) + 1 :]
+    return path or None

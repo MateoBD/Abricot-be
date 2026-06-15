@@ -61,16 +61,16 @@ resource "aws_subnet" "private_db" {
 }
 
 resource "aws_eip" "nat" {
-  count = local.full_private_stack_enabled ? 1 : 0
+  count = local.full_private_stack_enabled ? length(local.public_subnet_cidrs) : 0
 
   domain = "vpc"
 }
 
 resource "aws_nat_gateway" "this" {
-  count = local.full_private_stack_enabled ? 1 : 0
+  count = local.full_private_stack_enabled ? length(local.public_subnet_cidrs) : 0
 
-  allocation_id = aws_eip.nat[0].id
-  subnet_id     = aws_subnet.public[0].id
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
 
   depends_on = [aws_route.public_internet]
 }
@@ -86,7 +86,7 @@ resource "aws_route" "private_app_nat" {
 
   route_table_id         = aws_route_table.private_app[count.index].id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.this[0].id
+  nat_gateway_id         = aws_nat_gateway.this[count.index].id
 }
 
 resource "aws_route_table_association" "private_app" {
@@ -107,6 +107,15 @@ resource "aws_route_table_association" "private_db" {
 
   subnet_id      = aws_subnet.private_db[count.index].id
   route_table_id = aws_route_table.private_db[0].id
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  count = local.full_private_stack_enabled ? 1 : 0
+
+  vpc_id            = local.private_vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = concat(aws_route_table.private_app[*].id, aws_route_table.private_db[*].id)
 }
 
 resource "aws_security_group" "lambda" {
