@@ -1,4 +1,5 @@
 import base64
+import io
 import json
 import logging
 from typing import Any, Callable
@@ -70,6 +71,48 @@ def json_body(event: dict) -> dict:
     except json.JSONDecodeError:
         return {}
     return body if isinstance(body, dict) else {}
+
+
+def multipart_file(event: dict, field_name: str = "file"):
+    """Extract an uploaded file from a multipart/form-data request body.
+
+    API Gateway HTTP API delivers binary bodies base64-encoded
+    (``isBase64Encoded`` true). Returns a werkzeug ``FileStorage`` (exposes
+    ``.filename``, ``.content_type``, ``.mimetype`` and ``read()``) or ``None``
+    when the field is absent or the body is not parseable multipart.
+    """
+    raw_body = event.get("body")
+    if not raw_body:
+        return None
+
+    if event.get("isBase64Encoded"):
+        try:
+            body_bytes = base64.b64decode(raw_body)
+        except (ValueError, TypeError):
+            return None
+    elif isinstance(raw_body, bytes):
+        body_bytes = raw_body
+    else:
+        body_bytes = raw_body.encode("utf-8")
+
+    headers = {str(k).lower(): str(v) for k, v in (event.get("headers") or {}).items()}
+    content_type = headers.get("content-type", "")
+    if "multipart/form-data" not in content_type.lower():
+        return None
+
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "CONTENT_TYPE": content_type,
+        "CONTENT_LENGTH": str(len(body_bytes)),
+        "wsgi.input": io.BytesIO(body_bytes),
+    }
+    try:
+        from werkzeug.formparser import parse_form_data
+
+        _stream, _form, files = parse_form_data(environ)
+    except Exception:
+        return None
+    return files.get(field_name)
 
 
 def authorizer_claims(event: dict) -> dict[str, Any]:

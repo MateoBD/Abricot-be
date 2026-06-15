@@ -131,6 +131,10 @@ class CognitoUserService:
             if linked_sub and linked_sub != cognito_sub:
                 raise ConflictError("Email is already linked to another Cognito user.")
             linked = UserRepository.link_cognito_sub(user, cognito_sub=cognito_sub)
+            # Provision the per-user SNS topic + email subscription at account-link
+            # time. ensure_subscription is best-effort (never raises; persists a
+            # FAILED status + logs on error) so it cannot block account linking.
+            linked = SnsUserNotificationService.ensure_subscription(linked)
             refreshed = UserRepository.get_by_id(linked.id) or linked
             return CognitoProvisionResult(_user_payload(refreshed), created=False)
 
@@ -142,6 +146,13 @@ class CognitoUserService:
             role=UserRole.CUSTOMER,
             cognito_sub=cognito_sub,
         )
+        # Provision the per-user SNS topic + email subscription at signup so the
+        # POST /users response carries the ARNs/status and the confirmation email
+        # is sent immediately, instead of leaving every SNS field null until a
+        # later lazy refresh. ensure_subscription persists (committed) and is
+        # best-effort: on failure it records a FAILED status + logs rather than
+        # raising, so signup still succeeds and the failure is surfaced (not null).
+        created = SnsUserNotificationService.ensure_subscription(created)
         payload = _user_payload(created)
         if account_type == AccountType.RESTAURANT_OWNER:
             payload = {**payload, "nextStep": "restaurant_onboarding"}

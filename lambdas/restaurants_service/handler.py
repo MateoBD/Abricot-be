@@ -7,6 +7,7 @@ from common.api import (
     is_cognito_super_admin,
     json_body,
     method,
+    multipart_file,
     path_parameters,
     query_params,
     route_not_found,
@@ -206,6 +207,21 @@ def handler(event, context):
             return 204, None
 
         return with_backend("restaurants_service", "restaurants_delete", operation, logger)
+
+    if restaurant_id and http_method == "POST" and path == f"/restaurants/{restaurant_id}/photo":
+        return with_backend(
+            "restaurants_service",
+            "restaurants_photo",
+            lambda: (
+                200,
+                CognitoRestaurantService.upload_photo(
+                    restaurant_id=restaurant_id,
+                    file_storage=multipart_file(event),
+                    **auth,
+                ),
+            ),
+            logger,
+        )
 
     user_id = _user_id_from_reviews(event)
     if (

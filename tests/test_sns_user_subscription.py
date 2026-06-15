@@ -86,7 +86,7 @@ def test_ensure_subscription_creates_user_topic_and_pending_subscription(monkeyp
     assert result.sns_subscription_status == UserSnsSubscriptionStatus.PENDING_CONFIRMATION
 
 
-def test_cognito_provisioning_does_not_block_on_sns_subscription(monkeypatch):
+def test_cognito_provisioning_provisions_and_persists_sns_for_new_user(monkeypatch):
     user = _user(None)
     user.sns_topic_arn = None
     user.sns_subscription_arn = None
@@ -104,10 +104,20 @@ def test_cognito_provisioning_does_not_block_on_sns_subscription(monkeypatch):
     )
     monkeypatch.setattr(cognito_user_module.UserRepository, "create", lambda **kwargs: user)
 
+    provisioned = {}
+
+    def ensure_subscription(created_user):
+        provisioned["user_id"] = created_user.id
+        created_user.sns_topic_arn = "arn:aws:sns:us-east-1:123:abricot-user-topic"
+        created_user.sns_subscription_arn = "PendingConfirmation"
+        created_user.sns_subscription_status = UserSnsSubscriptionStatus.PENDING_CONFIRMATION
+        created_user.sns_subscription_requested_at = datetime.now(UTC)
+        return created_user
+
     monkeypatch.setattr(
         cognito_user_module.SnsUserNotificationService,
         "ensure_subscription",
-        lambda created_user: pytest.fail("SNS must not block user provisioning"),
+        ensure_subscription,
     )
 
     result = CognitoUserService.provision_user(
@@ -117,8 +127,37 @@ def test_cognito_provisioning_does_not_block_on_sns_subscription(monkeypatch):
     )
 
     assert result.created is True
-    assert result.user["id"] == str(USER_ID)
-    assert result.user["snsSubscriptionStatus"] is None
+    # signup MUST provision the per-user SNS topic/subscription
+    assert provisioned["user_id"] == USER_ID
+    # ...and the POST /users response MUST carry the persisted ARNs/status, not nulls
+    assert result.user["snsTopicArn"] == "arn:aws:sns:us-east-1:123:abricot-user-topic"
+    assert result.user["snsSubscriptionArn"] == "PendingConfirmation"
+    assert result.user["snsSubscriptionStatus"] == "PENDING_CONFIRMATION"
+    assert result.user["snsSubscriptionRequestedAt"] is not None
+
+
+def test_ensure_subscription_failure_surfaces_failed_status_not_null(monkeypatch):
+    user = _user()
+    user.sns_topic_arn = None
+    user.sns_subscription_arn = None
+    user.sns_subscription_status = None
+
+    class ExplodingSns:
+        def create_topic(self, *, Name):
+            raise RuntimeError(
+                "AccessDenied: not authorized to perform sns:CreateTopic"
+            )
+
+    _patch_update(monkeypatch)
+    monkeypatch.setattr(sns_module, "_sns_client", lambda: ExplodingSns())
+    monkeypatch.setattr(sns_module, "_topic_prefix", lambda: "abricot-user")
+
+    # Best-effort: a provisioning failure must NOT raise into signup...
+    result = SnsUserNotificationService.ensure_subscription(user)
+
+    # ...and must be surfaced as FAILED, not swallowed into a null status.
+    assert result.sns_subscription_status is not None
+    assert result.sns_subscription_status == UserSnsSubscriptionStatus.FAILED
 
 
 def test_refresh_subscription_marks_confirmed_when_sns_has_real_arn(monkeypatch):

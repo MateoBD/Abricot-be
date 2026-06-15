@@ -82,7 +82,7 @@ locals {
     orders_service       = local.orders_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
     restaurants_service  = local.restaurants_routes_enabled ? merge(local.users_service_db_environment, { AWS_S3_BUCKET = local.images_bucket_name }) : {}
     reservations_service = local.reservations_routes_enabled ? merge(local.users_service_db_environment, { SNS_USER_TOPIC_PREFIX = "${local.name_prefix}-user" }) : {}
-    promotions_service   = local.promotions_routes_enabled ? local.users_service_db_environment : {}
+    promotions_service   = local.promotions_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
     analytics_service    = local.analytics_routes_enabled ? local.users_service_db_environment : {}
     email_worker         = { EMAIL_TOPIC_ARN = aws_sns_topic.email_topic.arn }
     analytics_worker     = local.users_service_db_environment

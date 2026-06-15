@@ -846,7 +846,7 @@ class RestaurantPhoto(Resource):
     @namespace.response(415, "Unsupported image media type.")
     @namespace.response(404, "Restaurant not found.")
     @require_restaurant_admin("restaurant_id")
-    def put(self, restaurant_id: UUID):
+    def post(self, restaurant_id: UUID):
         """Upload a photo for a restaurant via multipart/form-data."""
         args = _photo_parser.parse_args()
         file = args["file"]
