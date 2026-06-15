@@ -7,5 +7,9 @@ ignore = [
     "S101",  # Allow use of assert statements
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests use throwaway fixture credentials, not real secrets.
+"tests/**" = ["S105", "S106", "S107"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
