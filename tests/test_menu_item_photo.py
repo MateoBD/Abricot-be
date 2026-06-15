@@ -1,8 +1,6 @@
-from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID
 
-import pytest
 from flask import Flask
 
 import app.services.menu_item_service as menu_item_service_module
