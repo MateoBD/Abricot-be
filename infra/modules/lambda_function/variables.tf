@@ -34,6 +34,17 @@ variable "timeout" {
   }
 }
 
+variable "memory_size" {
+  description = "Lambda memory in MB. Also scales CPU; 128 (AWS floor) gives minimal CPU."
+  type        = number
+  default     = 128
+
+  validation {
+    condition     = var.memory_size >= 128 && var.memory_size <= 10240
+    error_message = "memory_size must be between 128 and 10240 MB."
+  }
+}
+
 variable "excludes" {
   description = "Paths excluded from the deployment ZIP."
   type        = list(string)

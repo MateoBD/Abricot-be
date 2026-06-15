@@ -32,6 +32,7 @@ resource "aws_lambda_function" "this" {
   runtime          = var.runtime
   source_code_hash = data.archive_file.this.output_base64sha256
   timeout          = var.timeout
+  memory_size      = var.memory_size
 
   dynamic "environment" {
     for_each = length(var.environment) > 0 ? [1] : []

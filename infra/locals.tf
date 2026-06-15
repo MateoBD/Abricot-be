@@ -95,6 +95,7 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/health"
       excludes           = []
       timeout            = 5
+      memory_size        = 128
       vpc_enabled        = false
       subnet_ids         = []
       security_group_ids = []
@@ -103,7 +104,8 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/users_service"
       excludes           = []
-      timeout            = 10
+      timeout            = 30
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -112,7 +114,8 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/catalog_service"
       excludes           = []
-      timeout            = 15
+      timeout            = 30
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -121,7 +124,8 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/orders_service"
       excludes           = []
-      timeout            = 15
+      timeout            = 30
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -131,6 +135,7 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/restaurants_service"
       excludes           = []
       timeout            = 30
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -139,7 +144,8 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/reservations_service"
       excludes           = []
-      timeout            = 15
+      timeout            = 30
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -148,7 +154,8 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/promotions_service"
       excludes           = []
-      timeout            = 15
+      timeout            = 30
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -157,7 +164,8 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/analytics_service"
       excludes           = []
-      timeout            = 15
+      timeout            = 30
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -170,6 +178,7 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/db_migrate"
       excludes           = []
       timeout            = 120
+      memory_size        = 128
       vpc_enabled        = true
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids
@@ -182,6 +191,7 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/email_worker"
       excludes           = []
       timeout            = 10
+      memory_size        = 128
       vpc_enabled        = false
       subnet_ids         = []
       security_group_ids = []
@@ -191,6 +201,7 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/analytics_worker"
       excludes           = []
       timeout            = 30
+      memory_size        = 128
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids

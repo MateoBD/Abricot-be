@@ -79,6 +79,7 @@ module "lambda" {
   runtime       = local.lambda_runtime
   role_arn      = local.lab_role_arn
   timeout       = each.value.timeout
+  memory_size   = each.value.memory_size
   excludes      = each.value.excludes
   environment   = lookup(local.lambda_environment, each.key, {})
 
