@@ -26,6 +26,35 @@ class PromotionRepository:
         )
 
     @staticmethod
+    def get_active_promos_by_item(
+        restaurant_id: UUID,
+    ) -> dict[UUID, list[PromotionModel]]:
+        """Map each targeted menu item -> its currently-active promos.
+
+        One join (promotion_items -> promotions) filtered to this restaurant,
+        is_active, and today inside [start_date, end_date]. Lets a menu read
+        enrich every item with a single query instead of N per-item lookups.
+        """
+        today = date.today()
+        rows = db.session.execute(
+            select(PromotionItemModel.menu_item_id, PromotionModel)
+            .join(
+                PromotionModel,
+                PromotionModel.id == PromotionItemModel.promotion_id,
+            )
+            .where(
+                PromotionModel.restaurant_id == restaurant_id,
+                PromotionModel.is_active.is_(True),
+                PromotionModel.start_date <= today,
+                PromotionModel.end_date >= today,
+            )
+        ).all()
+        mapping: dict[UUID, list[PromotionModel]] = {}
+        for menu_item_id, promo in rows:
+            mapping.setdefault(menu_item_id, []).append(promo)
+        return mapping
+
+    @staticmethod
     def get_all(restaurant_id: UUID) -> list[PromotionModel]:
         return list(
             db.session.execute(

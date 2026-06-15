@@ -14,6 +14,9 @@ from app.repositories.user_repository import UserRepository
 logger = logging.getLogger(__name__)
 
 _PENDING_ARN = "PendingConfirmation"
+# AWS returns these placeholder strings (not real ARNs) for the SubscriptionArn of
+# an unconfirmed / removed email subscription. Neither means "confirmed".
+_PLACEHOLDER_ARNS = frozenset({_PENDING_ARN, "Deleted"})
 _TOPIC_SAFE_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
 
 
@@ -51,7 +54,7 @@ def _topic_name(user_id: UUID) -> str:
 
 
 def _is_real_subscription_arn(value: str | None) -> bool:
-    return bool(value and value != _PENDING_ARN and value.startswith("arn:"))
+    return bool(value and value not in _PLACEHOLDER_ARNS and value.startswith("arn:"))
 
 
 class SnsUserNotificationService:
@@ -106,6 +109,12 @@ class SnsUserNotificationService:
             return SnsUserNotificationService.ensure_subscription(user)
 
         try:
+            # Scan ALL email subscriptions for this endpoint and prefer a CONFIRMED
+            # one. AWS often leaves stale "PendingConfirmation"/"Deleted" duplicate
+            # rows alongside the confirmed subscription; returning on the first email
+            # match (as before) could report PENDING even though a confirmed row
+            # exists later in the list, leaving the user wrongly blocked.
+            confirmed_arn: str | None = None
             paginator = _sns_client().get_paginator("list_subscriptions_by_topic")
             for page in paginator.paginate(TopicArn=user.sns_topic_arn):
                 for subscription in page.get("Subscriptions", []):
@@ -113,26 +122,23 @@ class SnsUserNotificationService:
                         continue
                     if str(subscription.get("Endpoint", "")).lower() != user.email.lower():
                         continue
+                    arn = subscription.get("SubscriptionArn") or _PENDING_ARN
+                    if _is_real_subscription_arn(arn):
+                        confirmed_arn = arn
+                        break
+                if confirmed_arn:
+                    break
 
-                    subscription_arn = subscription.get("SubscriptionArn") or _PENDING_ARN
-                    status = (
-                        UserSnsSubscriptionStatus.CONFIRMED
-                        if _is_real_subscription_arn(subscription_arn)
-                        else UserSnsSubscriptionStatus.PENDING_CONFIRMATION
-                    )
-                    return UserRepository.update_sns_subscription(
-                        user,
-                        topic_arn=user.sns_topic_arn,
-                        subscription_arn=subscription_arn,
-                        status=status,
-                        requested_at=user.sns_subscription_requested_at,
-                    )
-
+            status = (
+                UserSnsSubscriptionStatus.CONFIRMED
+                if confirmed_arn
+                else UserSnsSubscriptionStatus.PENDING_CONFIRMATION
+            )
             return UserRepository.update_sns_subscription(
                 user,
                 topic_arn=user.sns_topic_arn,
-                subscription_arn=user.sns_subscription_arn,
-                status=UserSnsSubscriptionStatus.PENDING_CONFIRMATION,
+                subscription_arn=confirmed_arn or user.sns_subscription_arn,
+                status=status,
                 requested_at=user.sns_subscription_requested_at,
             )
         except Exception:

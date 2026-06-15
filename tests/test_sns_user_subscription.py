@@ -192,6 +192,83 @@ def test_refresh_subscription_marks_confirmed_when_sns_has_real_arn(monkeypatch)
     assert result.sns_subscription_arn == "arn:aws:sns:us-east-1:123:sub-id"
 
 
+def _refresh_with_subscriptions(monkeypatch, user, subscriptions):
+    class FakePaginator:
+        def paginate(self, *, TopicArn):
+            assert TopicArn == user.sns_topic_arn
+            return [{"Subscriptions": subscriptions}]
+
+    class FakeSns:
+        def get_paginator(self, name):
+            assert name == "list_subscriptions_by_topic"
+            return FakePaginator()
+
+    _patch_update(monkeypatch)
+    monkeypatch.setattr(sns_module, "_sns_client", lambda: FakeSns())
+    return SnsUserNotificationService.refresh_subscription_status(user)
+
+
+def test_refresh_prefers_confirmed_when_stale_pending_duplicate_listed_first(monkeypatch):
+    # Reproduces the production symptom: AWS returns a stale "PendingConfirmation"
+    # duplicate BEFORE the real confirmed subscription for the same email. The old
+    # first-match-wins loop reported PENDING and left the user blocked.
+    user = _user(UserSnsSubscriptionStatus.PENDING_CONFIRMATION)
+    result = _refresh_with_subscriptions(
+        monkeypatch,
+        user,
+        [
+            {
+                "Protocol": "email",
+                "Endpoint": "customer@example.com",
+                "SubscriptionArn": "PendingConfirmation",
+            },
+            {
+                "Protocol": "email",
+                "Endpoint": "customer@example.com",
+                "SubscriptionArn": "arn:aws:sns:us-east-1:123:sub-id",
+            },
+        ],
+    )
+
+    assert result.sns_subscription_status == UserSnsSubscriptionStatus.CONFIRMED
+    assert result.sns_subscription_arn == "arn:aws:sns:us-east-1:123:sub-id"
+
+
+def test_refresh_stays_pending_when_no_confirmed_subscription(monkeypatch):
+    user = _user(UserSnsSubscriptionStatus.PENDING_CONFIRMATION)
+    result = _refresh_with_subscriptions(
+        monkeypatch,
+        user,
+        [
+            {
+                "Protocol": "email",
+                "Endpoint": "customer@example.com",
+                "SubscriptionArn": "PendingConfirmation",
+            }
+        ],
+    )
+
+    assert result.sns_subscription_status == UserSnsSubscriptionStatus.PENDING_CONFIRMATION
+    assert result.sns_subscription_arn == "PendingConfirmation"
+
+
+def test_refresh_treats_deleted_arn_as_not_confirmed(monkeypatch):
+    user = _user(UserSnsSubscriptionStatus.PENDING_CONFIRMATION)
+    result = _refresh_with_subscriptions(
+        monkeypatch,
+        user,
+        [
+            {
+                "Protocol": "email",
+                "Endpoint": "customer@example.com",
+                "SubscriptionArn": "Deleted",
+            }
+        ],
+    )
+
+    assert result.sns_subscription_status == UserSnsSubscriptionStatus.PENDING_CONFIRMATION
+
+
 def test_online_reservation_blocks_until_sns_confirmed(monkeypatch):
     user = _user(UserSnsSubscriptionStatus.PENDING_CONFIRMATION)
     monkeypatch.setattr(
