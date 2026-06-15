@@ -10,8 +10,10 @@ from app.repositories.menu_item_repository import MenuItemRepository
 from app.repositories.menu_repository import MenuRepository
 from app.repositories.order_item_repository import OrderItemRepository
 from app.repositories.order_repository import OrderRepository
+from app.repositories.promotion_repository import PromotionRepository
 from app.repositories.restaurant_repository import RestaurantRepository
 from app.services.domain_event_publisher import publish_domain_event
+from app.services.promotion_pricing import best_promo
 from app.utils.list_envelope import paginated_list_envelope
 
 logger = logging.getLogger(__name__)
@@ -112,6 +114,11 @@ class OrderService:
                 },
             )
 
+        # Price every line server-side with the CURRENT active promos -- the same
+        # lookup the menu read path uses -- so checkout charges the discounted price
+        # the customer saw. Never trust any client-sent price.
+        promo_map = PromotionRepository.get_active_promos_by_item(restaurant_id)
+
         total = Decimal("0")
         order_items: list[dict] = []
         for item_id, qty, item_notes in parsed_items:
@@ -122,13 +129,24 @@ class OrderService:
                     {"menuItemId": f"{item_id} not available"},
                 )
 
-            snapshot_price = menu_item.price
-            total += snapshot_price * qty
+            base_price = menu_item.price
+            chosen = best_promo(base_price, promo_map.get(menu_item.id, []))
+            if chosen is None:
+                effective_price = base_price
+                applied_promotion_id = None
+            else:
+                effective_price, promo = chosen
+                applied_promotion_id = promo.id
+
+            total += effective_price * qty
             order_items.append(
                 {
                     "menu_item_id": menu_item.id,
+                    "item_name": menu_item.name,
                     "quantity": qty,
-                    "unit_price": snapshot_price,
+                    "unit_price": effective_price,
+                    "base_unit_price": base_price,
+                    "applied_promotion_id": applied_promotion_id,
                     "notes": item_notes,
                 }
             )
