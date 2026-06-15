@@ -78,7 +78,7 @@ locals {
   lambda_environment = {
     health               = {}
     users_service        = merge(local.users_service_base_environment, local.users_service_db_environment)
-    catalog_service      = local.catalog_routes_enabled ? local.users_service_db_environment : {}
+    catalog_service      = local.catalog_routes_enabled ? merge(local.users_service_db_environment, { AWS_S3_BUCKET = local.images_bucket_name }) : {}
     orders_service       = local.orders_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
     restaurants_service  = local.restaurants_routes_enabled ? merge(local.users_service_db_environment, { AWS_S3_BUCKET = local.images_bucket_name }) : {}
     reservations_service = local.reservations_routes_enabled ? merge(local.users_service_db_environment, { SNS_USER_TOPIC_PREFIX = "${local.name_prefix}-user" }) : {}

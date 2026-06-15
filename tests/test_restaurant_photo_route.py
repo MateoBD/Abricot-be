@@ -89,6 +89,112 @@ def test_post_photo_admin_reaches_upload_and_returns_presigned(monkeypatch):
     assert captured["bytes"] == b"\xff\xd8\xff\xe0FAKEIMAGEBYTES"
 
 
+def test_post_photo_real_path_reaches_s3_put_when_config_present(monkeypatch):
+    """End-to-end: real base64 multipart -> real S3Client -> (fake boto) put -> 200.
+
+    Exercises the path that 500'd in production: S3Client reads AWS_S3_BUCKET/
+    AWS_REGION from current_app.config. We push a Flask app context carrying that
+    config (as the fixed lambdas/common/flask_db.py now does from env) and inject a
+    fake boto client. Without the config this raises ValueError -> 500.
+    """
+    from contextlib import contextmanager as _cm
+
+    from flask import Flask
+
+    import app.services.cognito_restaurant_service as crs
+    import app.services.restaurant_service as restaurant_service_module
+    from app.integrations.s3 import S3Client
+
+    calls: dict[str, object] = {}
+
+    @_cm
+    def _config_context():
+        app = Flask("test_lambda_ctx")
+        app.config.update(AWS_S3_BUCKET="abricot-test-images", AWS_REGION="us-east-1")
+        with app.app_context():
+            yield
+
+    monkeypatch.setattr(common_api, "backend_app_context", _config_context)
+
+    # Auth passes.
+    monkeypatch.setattr(
+        crs.CognitoAuthorizationService,
+        "principal_user",
+        lambda cognito_sub: SimpleNamespace(id=UUID(RID)),
+    )
+    monkeypatch.setattr(
+        crs.CognitoAuthorizationService, "require_restaurant_admin", lambda **kwargs: None
+    )
+
+    # DB stubbed.
+    class _FakeRestaurant:
+        def __init__(self):
+            self.id = UUID(RID)
+            self.photo_url = None
+
+        def to_dict(self):
+            return {"id": str(self.id), "name": "Abricot", "photoUrl": self.photo_url}
+
+    restaurant = _FakeRestaurant()
+
+    def _update_photo(updated, photo_url):
+        updated.photo_url = photo_url
+        return updated
+
+    monkeypatch.setattr(
+        restaurant_service_module.RestaurantRepository, "get_by_id", lambda rid: restaurant
+    )
+    monkeypatch.setattr(
+        restaurant_service_module.RestaurantRepository, "update_photo", _update_photo
+    )
+    monkeypatch.setattr(
+        restaurant_service_module.RestaurantRepository,
+        "get_cuisine_type_ids_for_restaurant",
+        lambda rid: [],
+    )
+    monkeypatch.setattr(
+        restaurant_service_module.RestaurantReviewRepository,
+        "get_stats_by_restaurant_ids",
+        lambda rids: {UUID(RID): (None, 0)},
+    )
+
+    # Fake boto so the REAL S3Client.upload_restaurant_photo / presign run and read config.
+    class _FakeBoto:
+        def upload_fileobj(self, fileobj, Bucket, Key, ExtraArgs=None):
+            calls["put"] = {
+                "bucket": Bucket,
+                "key": Key,
+                "content_type": (ExtraArgs or {}).get("ContentType"),
+                "bytes": fileobj.read(),
+            }
+
+        def generate_presigned_url(self, op, Params, ExpiresIn):
+            calls["presign"] = {"op": op, "Params": Params, "ExpiresIn": ExpiresIn}
+            return (
+                f"https://{Params['Bucket']}.s3.amazonaws.com/{Params['Key']}"
+                f"?X-Amz-Signature=deadbeef&X-Amz-Expires={ExpiresIn}"
+            )
+
+    def _fresh_s3():
+        inst = S3Client()
+        inst._boto_client = _FakeBoto()
+        return inst
+
+    monkeypatch.setattr(restaurant_service_module.S3Client, "get", staticmethod(_fresh_s3))
+
+    resp = handler_module.handler(_multipart_event(), None)
+
+    assert resp["statusCode"] == 200
+    # reached the S3 put with the parsed multipart bytes, into the configured bucket
+    assert calls["put"]["bucket"] == "abricot-test-images"
+    assert calls["put"]["bytes"] == b"\xff\xd8\xff\xe0FAKEIMAGEBYTES"
+    assert calls["put"]["content_type"] == "image/jpeg"
+    # DB stored the bare key (not a URL); response carries a freshly-signed URL
+    assert "://" not in restaurant.photo_url
+    body = json.loads(resp["body"])
+    assert "X-Amz-Signature=" in body["photoUrl"]
+
+
 def test_post_photo_non_admin_forbidden(monkeypatch):
     monkeypatch.setattr(common_api, "backend_app_context", _noop_context)
     import app.services.cognito_restaurant_service as crs

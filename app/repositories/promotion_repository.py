@@ -1,9 +1,10 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.extensions import db
+from app.models.notification_event import NotificationEventModel
 from app.models.promotion import PromotionModel
 from app.models.promotion_item import PromotionItemModel
 
@@ -100,10 +101,21 @@ class PromotionRepository:
 
     @staticmethod
     def delete(promo: PromotionModel) -> None:
+        # promotions.id has two FK children with RESTRICT semantics; both must be
+        # cleared first or Postgres raises IntegrityError on the promo delete.
+        # 1) promotion_items are owned by the promo (the "platos en alcance"
+        #    targeting links) -> delete them.
         db.session.execute(
             delete(PromotionItemModel).where(
                 PromotionItemModel.promotion_id == promo.id
             )
+        )
+        # 2) notification_events is an audit log -> keep the rows, null the
+        #    dangling promotion_id (nullable) so history survives the delete.
+        db.session.execute(
+            update(NotificationEventModel)
+            .where(NotificationEventModel.promotion_id == promo.id)
+            .values(promotion_id=None)
         )
         db.session.delete(promo)
         db.session.commit()

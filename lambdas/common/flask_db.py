@@ -66,6 +66,29 @@ def _engine_options() -> dict[str, Any]:
     return {"connect_args": {"ssl_context": ssl_context}}
 
 
+# Runtime config the domain layer reads from ``current_app.config`` (S3 integration
+# and the per-user SNS service). The deployed Lambda env (set in infra/locals.tf,
+# plus AWS_REGION injected by the Lambda runtime) must be mirrored into the Flask
+# config here, otherwise S3Client/SNS see None and raise (e.g. upload_photo ->
+# "AWS_S3_BUCKET is not configured." -> 500). USE_LOCALSTACK/LOCALSTACK_ENDPOINT are
+# intentionally excluded: they are unset in Lambda and a string "false" would be
+# truthy.
+_RUNTIME_CONFIG_ENV_VARS = (
+    "AWS_REGION",
+    "AWS_S3_BUCKET",
+    "S3_PRESIGNED_EXPIRY",
+    "SNS_USER_TOPIC_PREFIX",
+)
+
+
+def _runtime_config_from_env() -> dict[str, str]:
+    return {
+        name: os.environ[name]
+        for name in _RUNTIME_CONFIG_ENV_VARS
+        if os.environ.get(name)
+    }
+
+
 @lru_cache(maxsize=1)
 def _lambda_app() -> Flask:
     _validate_db_env()
@@ -75,6 +98,7 @@ def _lambda_app() -> Flask:
         SQLALCHEMY_DATABASE_URI=_database_uri(),
         SQLALCHEMY_ENGINE_OPTIONS=_engine_options(),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        **_runtime_config_from_env(),
     )
 
     db.init_app(app)
