@@ -128,6 +128,16 @@ output "rds_proxy_endpoint" {
   value       = local.rds_proxy_endpoint
 }
 
+output "vpc_endpoints_summary" {
+  description = "Final VPC egress state: 2 interface endpoints (SNS, Secrets Manager) over PrivateLink + 1 S3 gateway endpoint + retained NAT for the Cognito Hosted-UI /oauth2/token call."
+  value = local.full_private_stack_enabled ? {
+    interface_secretsmanager = aws_vpc_endpoint.secretsmanager[0].id
+    interface_sns            = aws_vpc_endpoint.sns[0].id
+    gateway_s3               = aws_vpc_endpoint.s3[0].id
+    nat_retained_for         = "cognito-hosted-ui-oauth2-token"
+  } : null
+}
+
 output "db_migration_lambda_name" {
   description = "Internal Lambda used to run Flask-Migrate/Alembic migrations inside the private VPC."
   value = local.lambda_private_attachment_enabled ? lookup({

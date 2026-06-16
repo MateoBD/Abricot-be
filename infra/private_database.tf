@@ -140,6 +140,79 @@ resource "aws_vpc_endpoint" "s3" {
   tags = { Name = "${local.name_prefix}-s3-gw-endpoint" }
 }
 
+# Interface VPC endpoints (PrivateLink). Move the in-VPC Lambdas' SNS and Secrets
+# Manager traffic OFF the NAT onto the AWS backbone. private_dns_enabled=true makes
+# the SDK default hostnames (sns/secretsmanager.<region>.amazonaws.com) resolve to
+# these endpoint ENIs, so that traffic does NOT fall back to the NAT — the endpoint
+# SG (443 from lambda-sg) and Private DNS must both be correct or those calls fail
+# silently. The NAT STAYS: it is still required for the users_service Cognito
+# Hosted-UI /oauth2/token exchange, which no VPC endpoint can serve. S3 keeps its
+# free Gateway endpoint above. Final state: 2 interface endpoints (SNS, Secrets
+# Manager) + 1 S3 gateway endpoint + retained NAT (Cognito Hosted-UI).
+resource "aws_security_group" "vpce" {
+  count = local.full_private_stack_enabled ? 1 : 0
+
+  name        = "${local.name_prefix}-vpce-sg"
+  description = "Interface VPC endpoint ENIs: HTTPS from DB-backed Lambdas only."
+  vpc_id      = local.private_vpc_id
+  ingress     = []
+  egress      = []
+
+  tags = { Name = "${local.name_prefix}-vpce-sg" }
+
+  lifecycle {
+    ignore_changes = [ingress, egress]
+  }
+}
+
+resource "aws_security_group_rule" "vpce_from_lambda" {
+  count = local.full_private_stack_enabled ? 1 : 0
+
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.vpce[0].id
+  source_security_group_id = aws_security_group.lambda[0].id
+}
+
+resource "aws_security_group_rule" "vpce_egress" {
+  count = local.full_private_stack_enabled ? 1 : 0
+
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.vpce[0].id
+}
+
+resource "aws_vpc_endpoint" "secretsmanager" {
+  count = local.full_private_stack_enabled ? 1 : 0
+
+  vpc_id              = local.private_vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = local.private_app_subnet_ids
+  security_group_ids  = [aws_security_group.vpce[0].id]
+  private_dns_enabled = true
+
+  tags = { Name = "${local.name_prefix}-secretsmanager-endpoint" }
+}
+
+resource "aws_vpc_endpoint" "sns" {
+  count = local.full_private_stack_enabled ? 1 : 0
+
+  vpc_id              = local.private_vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.sns"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = local.private_app_subnet_ids
+  security_group_ids  = [aws_security_group.vpce[0].id]
+  private_dns_enabled = true
+
+  tags = { Name = "${local.name_prefix}-sns-endpoint" }
+}
+
 resource "aws_security_group" "lambda" {
   count = local.full_private_stack_enabled ? 1 : 0
 
