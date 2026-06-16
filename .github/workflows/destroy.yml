@@ -129,8 +129,8 @@ jobs:
             done
           }
 
-          frontend_bucket="abricot-tp3-${account_id}-frontend"
-          lambda_artifacts_bucket="abricot-tp3-${account_id}-lambda-artifacts"
+          frontend_bucket="abricot-${account_id}-frontend"
+          lambda_artifacts_bucket="abricot-${account_id}-lambda-artifacts"
 
           empty_versioned_bucket "$frontend_bucket"
           empty_versioned_bucket "$lambda_artifacts_bucket"

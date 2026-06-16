@@ -7,7 +7,7 @@ INFRA_DIR="${ROOT_DIR}/infra"
 
 cd "${INFRA_DIR}"
 
-NAME_PREFIX="${NAME_PREFIX:-abricot-tp3}"
+NAME_PREFIX="${NAME_PREFIX:-abricot}"
 VPC_CIDR="${VPC_CIDR:-10.42.0.0/16}"
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 
@@ -393,7 +393,7 @@ lambda_artifacts_bucket="${NAME_PREFIX}-${account_id}-lambda-artifacts"
 cognito_domain="${NAME_PREFIX}-${account_id}"
 db_subnet_group="${NAME_PREFIX}-private-db"
 db_instance="${NAME_PREFIX}-postgres"
-db_proxy="${NAME_PREFIX}-users-proxy"
+db_proxy="${NAME_PREFIX}-rds-proxy"
 db_secret="${NAME_PREFIX}/postgres"
 
 existing_vpc_id="$(aws_text rds describe-db-subnet-groups \
