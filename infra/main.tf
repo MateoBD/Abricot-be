@@ -42,7 +42,7 @@ resource "aws_apigatewayv2_api" "http" {
 
   cors_configuration {
     allow_headers = ["Authorization", "Content-Type"]
-    allow_methods = ["GET", "POST", "PUT", "PATCH", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allow_origins = distinct([local.frontend_base_url, "http://localhost:5173"])
     max_age       = 300
   }
