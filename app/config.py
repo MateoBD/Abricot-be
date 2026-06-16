@@ -32,7 +32,8 @@ class BaseConfig:
     AWS_ACCESS_KEY_ID = ""
     AWS_SECRET_ACCESS_KEY = ""
     S3_PRESIGNED_EXPIRY = 3600
-    SNS_USER_TOPIC_PREFIX = "abricot-user"
+    # ARN of the single shared SNS notification topic (Terraform-injected at runtime).
+    EMAIL_NOTIFICATIONS_TOPIC_ARN = ""
 
 
 class TestingConfig(BaseConfig):
@@ -44,7 +45,7 @@ class TestingConfig(BaseConfig):
     AWS_S3_BUCKET = "abricot-test-bucket"
     AWS_ACCESS_KEY_ID = "test"
     AWS_SECRET_ACCESS_KEY = "test"  # noqa: S105
-    SNS_USER_TOPIC_PREFIX = "abricot-test-user"
+    EMAIL_NOTIFICATIONS_TOPIC_ARN = "arn:aws:sns:us-east-1:000000000000:abricot-email-notifications"
 
 
 class ProductionConfig(BaseConfig):
@@ -64,9 +65,9 @@ class ProductionConfig(BaseConfig):
     S3_PRESIGNED_EXPIRY = int(
         os.environ.get("S3_PRESIGNED_EXPIRY", str(BaseConfig.S3_PRESIGNED_EXPIRY))
     )
-    SNS_USER_TOPIC_PREFIX = os.environ.get(
-        "SNS_USER_TOPIC_PREFIX",
-        BaseConfig.SNS_USER_TOPIC_PREFIX,
+    EMAIL_NOTIFICATIONS_TOPIC_ARN = os.environ.get(
+        "EMAIL_NOTIFICATIONS_TOPIC_ARN",
+        BaseConfig.EMAIL_NOTIFICATIONS_TOPIC_ARN,
     )
     ALLOWED_ORIGINS = parse_allowed_origins()
     SQLALCHEMY_DATABASE_URI = (

@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, date, datetime, time
 from uuid import UUID
 
@@ -13,12 +14,17 @@ from app.models.restaurant import RestaurantModel
 from app.models.user import UserModel
 from app.services.cognito_user_service import AccountType, CognitoUserService
 from app.services.cognito_reservation_service import CognitoReservationService
-from app.services.sns_user_notification_service import SnsUserNotificationService
+from app.services.sns_user_notification_service import (
+    SnsUserNotificationService,
+    publish_user_notification,
+)
 
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000101")
 RESTAURANT_ID = UUID("00000000-0000-0000-0000-000000000202")
 RESERVATION_ID = UUID("00000000-0000-0000-0000-000000000303")
+# All users share ONE notification topic; targeting is by filter policy.
+SHARED_TOPIC_ARN = "arn:aws:sns:us-east-1:123:abricot-email-notifications"
 
 
 def _user(status=None):
@@ -30,7 +36,7 @@ def _user(status=None):
         surname="Test",
         role=UserRole.CUSTOMER,
         cognito_sub="sub-123",
-        sns_topic_arn="arn:aws:sns:us-east-1:123:abricot-user",
+        sns_topic_arn=SHARED_TOPIC_ARN,
         sns_subscription_arn="PendingConfirmation",
         sns_subscription_status=status,
         sns_subscription_requested_at=datetime.now(UTC),
@@ -49,7 +55,11 @@ def _patch_update(monkeypatch):
     monkeypatch.setattr(sns_module.UserRepository, "update_sns_subscription", update)
 
 
-def test_ensure_subscription_creates_user_topic_and_pending_subscription(monkeypatch):
+def _patch_shared_topic(monkeypatch):
+    monkeypatch.setattr(sns_module, "_shared_topic_arn", lambda: SHARED_TOPIC_ARN)
+
+
+def test_ensure_subscription_subscribes_to_shared_topic_with_user_filter_policy(monkeypatch):
     user = _user()
     user.sns_topic_arn = None
     user.sns_subscription_arn = None
@@ -57,33 +67,57 @@ def test_ensure_subscription_creates_user_topic_and_pending_subscription(monkeyp
     calls = {}
 
     class FakeSns:
-        def create_topic(self, *, Name):
-            calls["topic_name"] = Name
-            return {"TopicArn": "arn:aws:sns:us-east-1:123:abricot-user-topic"}
-
-        def subscribe(self, *, TopicArn, Protocol, Endpoint, ReturnSubscriptionArn):
+        def subscribe(self, *, TopicArn, Protocol, Endpoint, Attributes, ReturnSubscriptionArn):
             calls["subscribe"] = {
                 "TopicArn": TopicArn,
                 "Protocol": Protocol,
                 "Endpoint": Endpoint,
+                "Attributes": Attributes,
                 "ReturnSubscriptionArn": ReturnSubscriptionArn,
             }
             return {"SubscriptionArn": "PendingConfirmation"}
 
     _patch_update(monkeypatch)
+    _patch_shared_topic(monkeypatch)
     monkeypatch.setattr(sns_module, "_sns_client", lambda: FakeSns())
-    monkeypatch.setattr(sns_module, "_topic_prefix", lambda: "abricot-user")
 
     result = SnsUserNotificationService.ensure_subscription(user)
 
-    assert calls["topic_name"] == f"abricot-user-{USER_ID}-notifications"
-    assert calls["subscribe"] == {
-        "TopicArn": "arn:aws:sns:us-east-1:123:abricot-user-topic",
-        "Protocol": "email",
-        "Endpoint": "customer@example.com",
-        "ReturnSubscriptionArn": True,
+    # Subscribes the user's EMAIL to the ONE shared topic...
+    assert calls["subscribe"]["TopicArn"] == SHARED_TOPIC_ARN
+    assert calls["subscribe"]["Protocol"] == "email"
+    assert calls["subscribe"]["Endpoint"] == "customer@example.com"
+    assert calls["subscribe"]["ReturnSubscriptionArn"] is True
+    # ...with a filter policy that targets exactly this user's id.
+    assert json.loads(calls["subscribe"]["Attributes"]["FilterPolicy"]) == {
+        "userId": [str(USER_ID)]
     }
+    # The persisted topic ARN is the shared topic (not a per-user topic).
+    assert result.sns_topic_arn == SHARED_TOPIC_ARN
     assert result.sns_subscription_status == UserSnsSubscriptionStatus.PENDING_CONFIRMATION
+
+
+def test_publish_user_notification_always_sets_user_id_attribute(monkeypatch):
+    captured = {}
+
+    class FakeSns:
+        def publish(self, **kwargs):
+            captured.update(kwargs)
+            return {"MessageId": "mid-1"}
+
+    _patch_shared_topic(monkeypatch)
+    monkeypatch.setattr(sns_module, "_sns_client", lambda: FakeSns())
+
+    message_id = publish_user_notification(USER_ID, "Asunto", "Cuerpo")
+
+    assert message_id == "mid-1"
+    assert captured["TopicArn"] == SHARED_TOPIC_ARN
+    # The userId attribute is mandatory: a filter policy drops the message
+    # silently if it is missing.
+    assert captured["MessageAttributes"]["userId"] == {
+        "DataType": "String",
+        "StringValue": str(USER_ID),
+    }
 
 
 def test_cognito_provisioning_provisions_and_persists_sns_for_new_user(monkeypatch):
@@ -108,7 +142,7 @@ def test_cognito_provisioning_provisions_and_persists_sns_for_new_user(monkeypat
 
     def ensure_subscription(created_user):
         provisioned["user_id"] = created_user.id
-        created_user.sns_topic_arn = "arn:aws:sns:us-east-1:123:abricot-user-topic"
+        created_user.sns_topic_arn = SHARED_TOPIC_ARN
         created_user.sns_subscription_arn = "PendingConfirmation"
         created_user.sns_subscription_status = UserSnsSubscriptionStatus.PENDING_CONFIRMATION
         created_user.sns_subscription_requested_at = datetime.now(UTC)
@@ -127,10 +161,10 @@ def test_cognito_provisioning_provisions_and_persists_sns_for_new_user(monkeypat
     )
 
     assert result.created is True
-    # signup MUST provision the per-user SNS topic/subscription
+    # signup MUST subscribe the user to the shared topic
     assert provisioned["user_id"] == USER_ID
     # ...and the POST /users response MUST carry the persisted ARNs/status, not nulls
-    assert result.user["snsTopicArn"] == "arn:aws:sns:us-east-1:123:abricot-user-topic"
+    assert result.user["snsTopicArn"] == SHARED_TOPIC_ARN
     assert result.user["snsSubscriptionArn"] == "PendingConfirmation"
     assert result.user["snsSubscriptionStatus"] == "PENDING_CONFIRMATION"
     assert result.user["snsSubscriptionRequestedAt"] is not None
@@ -143,14 +177,12 @@ def test_ensure_subscription_failure_surfaces_failed_status_not_null(monkeypatch
     user.sns_subscription_status = None
 
     class ExplodingSns:
-        def create_topic(self, *, Name):
-            raise RuntimeError(
-                "AccessDenied: not authorized to perform sns:CreateTopic"
-            )
+        def subscribe(self, **kwargs):
+            raise RuntimeError("AccessDenied: not authorized to perform sns:Subscribe")
 
     _patch_update(monkeypatch)
+    _patch_shared_topic(monkeypatch)
     monkeypatch.setattr(sns_module, "_sns_client", lambda: ExplodingSns())
-    monkeypatch.setattr(sns_module, "_topic_prefix", lambda: "abricot-user")
 
     # Best-effort: a provisioning failure must NOT raise into signup...
     result = SnsUserNotificationService.ensure_subscription(user)
@@ -165,14 +197,14 @@ def test_refresh_subscription_marks_confirmed_when_sns_has_real_arn(monkeypatch)
 
     class FakePaginator:
         def paginate(self, *, TopicArn):
-            assert TopicArn == user.sns_topic_arn
+            assert TopicArn == SHARED_TOPIC_ARN
             return [
                 {
                     "Subscriptions": [
                         {
                             "Protocol": "email",
                             "Endpoint": "customer@example.com",
-                            "SubscriptionArn": "arn:aws:sns:us-east-1:123:sub-id",
+                            "SubscriptionArn": "arn:aws:sns:us-east-1:123:abricot-email-notifications:sub-id",
                         }
                     ]
                 }
@@ -184,18 +216,19 @@ def test_refresh_subscription_marks_confirmed_when_sns_has_real_arn(monkeypatch)
             return FakePaginator()
 
     _patch_update(monkeypatch)
+    _patch_shared_topic(monkeypatch)
     monkeypatch.setattr(sns_module, "_sns_client", lambda: FakeSns())
 
     result = SnsUserNotificationService.refresh_subscription_status(user)
 
     assert result.sns_subscription_status == UserSnsSubscriptionStatus.CONFIRMED
-    assert result.sns_subscription_arn == "arn:aws:sns:us-east-1:123:sub-id"
+    assert result.sns_subscription_arn == "arn:aws:sns:us-east-1:123:abricot-email-notifications:sub-id"
 
 
 def _refresh_with_subscriptions(monkeypatch, user, subscriptions):
     class FakePaginator:
         def paginate(self, *, TopicArn):
-            assert TopicArn == user.sns_topic_arn
+            assert TopicArn == SHARED_TOPIC_ARN
             return [{"Subscriptions": subscriptions}]
 
     class FakeSns:
@@ -204,14 +237,15 @@ def _refresh_with_subscriptions(monkeypatch, user, subscriptions):
             return FakePaginator()
 
     _patch_update(monkeypatch)
+    _patch_shared_topic(monkeypatch)
     monkeypatch.setattr(sns_module, "_sns_client", lambda: FakeSns())
     return SnsUserNotificationService.refresh_subscription_status(user)
 
 
 def test_refresh_prefers_confirmed_when_stale_pending_duplicate_listed_first(monkeypatch):
-    # Reproduces the production symptom: AWS returns a stale "PendingConfirmation"
-    # duplicate BEFORE the real confirmed subscription for the same email. The old
-    # first-match-wins loop reported PENDING and left the user blocked.
+    # AWS may return a stale "PendingConfirmation" duplicate BEFORE the real
+    # confirmed subscription for the same email. First-match-wins would wrongly
+    # report PENDING and leave the user blocked.
     user = _user(UserSnsSubscriptionStatus.PENDING_CONFIRMATION)
     result = _refresh_with_subscriptions(
         monkeypatch,
@@ -225,13 +259,37 @@ def test_refresh_prefers_confirmed_when_stale_pending_duplicate_listed_first(mon
             {
                 "Protocol": "email",
                 "Endpoint": "customer@example.com",
-                "SubscriptionArn": "arn:aws:sns:us-east-1:123:sub-id",
+                "SubscriptionArn": "arn:aws:sns:us-east-1:123:abricot-email-notifications:sub-id",
             },
         ],
     )
 
     assert result.sns_subscription_status == UserSnsSubscriptionStatus.CONFIRMED
-    assert result.sns_subscription_arn == "arn:aws:sns:us-east-1:123:sub-id"
+    assert result.sns_subscription_arn == "arn:aws:sns:us-east-1:123:abricot-email-notifications:sub-id"
+
+
+def test_refresh_ignores_other_users_subscriptions_on_shared_topic(monkeypatch):
+    # The shared topic lists EVERY user's subscription; only this user's email
+    # endpoint counts. A confirmed sub for a different email must not confirm us.
+    user = _user(UserSnsSubscriptionStatus.PENDING_CONFIRMATION)
+    result = _refresh_with_subscriptions(
+        monkeypatch,
+        user,
+        [
+            {
+                "Protocol": "email",
+                "Endpoint": "someone-else@example.com",
+                "SubscriptionArn": "arn:aws:sns:us-east-1:123:abricot-email-notifications:other",
+            },
+            {
+                "Protocol": "email",
+                "Endpoint": "customer@example.com",
+                "SubscriptionArn": "PendingConfirmation",
+            },
+        ],
+    )
+
+    assert result.sns_subscription_status == UserSnsSubscriptionStatus.PENDING_CONFIRMATION
 
 
 def test_refresh_stays_pending_when_no_confirmed_subscription(monkeypatch):
@@ -292,7 +350,7 @@ def test_online_reservation_blocks_until_sns_confirmed(monkeypatch):
     assert exc.value.public_message == "Confirma la suscripcion de email antes de reservar."
 
 
-def test_online_reservation_publishes_only_principal_topic_when_confirmed(monkeypatch):
+def test_online_reservation_publishes_only_for_principal_when_confirmed(monkeypatch):
     user = _user(UserSnsSubscriptionStatus.CONFIRMED)
     created_payload = {"id": str(RESERVATION_ID), "restaurantId": str(RESTAURANT_ID)}
     published = []
@@ -328,9 +386,8 @@ def test_online_reservation_publishes_only_principal_topic_when_confirmed(monkey
     assert published == [RESERVATION_ID]
 
 
-def test_sns_reservation_confirmation_publishes_to_user_topic(monkeypatch):
+def test_sns_reservation_confirmation_publishes_to_shared_topic_with_user_filter(monkeypatch):
     user = _user(UserSnsSubscriptionStatus.CONFIRMED)
-    user.sns_topic_arn = "arn:aws:sns:us-east-1:123:user-a-topic"
     reservation = ReservationModel(
         id=RESERVATION_ID,
         restaurant_id=RESTAURANT_ID,
@@ -352,6 +409,7 @@ def test_sns_reservation_confirmation_publishes_to_user_topic(monkeypatch):
     class FakeSns:
         def publish(self, **kwargs):
             publishes.append(kwargs)
+            return {"MessageId": "mid-2"}
 
     monkeypatch.setattr(
         sns_module.ReservationRepository,
@@ -364,10 +422,45 @@ def test_sns_reservation_confirmation_publishes_to_user_topic(monkeypatch):
         "get_by_id",
         lambda restaurant_id: restaurant,
     )
+    _patch_shared_topic(monkeypatch)
     monkeypatch.setattr(sns_module, "_sns_client", lambda: FakeSns())
 
     SnsUserNotificationService.publish_reservation_confirmation(RESERVATION_ID)
 
-    assert publishes[0]["TopicArn"] == "arn:aws:sns:us-east-1:123:user-a-topic"
+    assert publishes[0]["TopicArn"] == SHARED_TOPIC_ARN
+    assert publishes[0]["MessageAttributes"]["userId"]["StringValue"] == str(USER_ID)
     assert "ABCD1234" in publishes[0]["Message"]
     assert "Abricot" in publishes[0]["Message"]
+
+
+def test_sns_reservation_confirmation_skipped_when_not_confirmed(monkeypatch):
+    # The synchronous path must verify a CONFIRMED subscription before publishing.
+    user = _user(UserSnsSubscriptionStatus.PENDING_CONFIRMATION)
+    reservation = ReservationModel(
+        id=RESERVATION_ID,
+        restaurant_id=RESTAURANT_ID,
+        user_id=USER_ID,
+        party_size=2,
+        date=date(2026, 6, 1),
+        time_slot=time(21, 0),
+        confirmation_code="ZZZZ9999",
+    )
+    publishes = []
+
+    class FakeSns:
+        def publish(self, **kwargs):
+            publishes.append(kwargs)
+            return {"MessageId": "should-not-happen"}
+
+    monkeypatch.setattr(
+        sns_module.ReservationRepository,
+        "get_by_id",
+        lambda reservation_id: reservation,
+    )
+    monkeypatch.setattr(sns_module.UserRepository, "get_by_id", lambda user_id: user)
+    _patch_shared_topic(monkeypatch)
+    monkeypatch.setattr(sns_module, "_sns_client", lambda: FakeSns())
+
+    SnsUserNotificationService.publish_reservation_confirmation(RESERVATION_ID)
+
+    assert publishes == []

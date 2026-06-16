@@ -4,12 +4,16 @@ resource "aws_vpc" "private" {
   cidr_block           = local.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
+
+  tags = { Name = "${local.name_prefix}-vpc" }
 }
 
 resource "aws_internet_gateway" "private" {
   count = local.full_private_stack_enabled ? 1 : 0
 
   vpc_id = aws_vpc.private[0].id
+
+  tags = { Name = "${local.name_prefix}-igw" }
 }
 
 resource "aws_subnet" "public" {
@@ -19,12 +23,16 @@ resource "aws_subnet" "public" {
   cidr_block              = local.public_subnet_cidrs[count.index]
   availability_zone       = local.availability_zones[count.index]
   map_public_ip_on_launch = true
+
+  tags = { Name = "${local.name_prefix}-public-${local.az_suffixes[count.index]}" }
 }
 
 resource "aws_route_table" "public" {
   count = local.full_private_stack_enabled ? 1 : 0
 
   vpc_id = local.private_vpc_id
+
+  tags = { Name = "${local.name_prefix}-public-rt" }
 }
 
 resource "aws_route" "public_internet" {
@@ -49,6 +57,8 @@ resource "aws_subnet" "private_app" {
   cidr_block              = local.private_app_subnet_cidrs[count.index]
   availability_zone       = local.availability_zones[count.index]
   map_public_ip_on_launch = false
+
+  tags = { Name = "${local.name_prefix}-private-lambda-${local.az_suffixes[count.index]}" }
 }
 
 resource "aws_subnet" "private_db" {
@@ -58,12 +68,16 @@ resource "aws_subnet" "private_db" {
   cidr_block              = local.private_db_subnet_cidrs[count.index]
   availability_zone       = local.availability_zones[count.index]
   map_public_ip_on_launch = false
+
+  tags = { Name = "${local.name_prefix}-private-rds-${local.az_suffixes[count.index]}" }
 }
 
 resource "aws_eip" "nat" {
   count = local.full_private_stack_enabled ? length(local.public_subnet_cidrs) : 0
 
   domain = "vpc"
+
+  tags = { Name = "${local.name_prefix}-nat-eip-${local.az_suffixes[count.index]}" }
 }
 
 resource "aws_nat_gateway" "this" {
@@ -73,12 +87,16 @@ resource "aws_nat_gateway" "this" {
   subnet_id     = aws_subnet.public[count.index].id
 
   depends_on = [aws_route.public_internet]
+
+  tags = { Name = "${local.name_prefix}-nat-${local.az_suffixes[count.index]}" }
 }
 
 resource "aws_route_table" "private_app" {
   count = local.full_private_stack_enabled ? length(local.private_app_subnet_cidrs) : 0
 
   vpc_id = local.private_vpc_id
+
+  tags = { Name = "${local.name_prefix}-private-lambda-rt-${local.az_suffixes[count.index]}" }
 }
 
 resource "aws_route" "private_app_nat" {
@@ -100,6 +118,8 @@ resource "aws_route_table" "private_db" {
   count = local.full_private_stack_enabled ? 1 : 0
 
   vpc_id = local.private_vpc_id
+
+  tags = { Name = "${local.name_prefix}-private-rds-rt" }
 }
 
 resource "aws_route_table_association" "private_db" {
@@ -116,6 +136,8 @@ resource "aws_vpc_endpoint" "s3" {
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = concat(aws_route_table.private_app[*].id, aws_route_table.private_db[*].id)
+
+  tags = { Name = "${local.name_prefix}-s3-gw-endpoint" }
 }
 
 resource "aws_security_group" "lambda" {
@@ -126,6 +148,8 @@ resource "aws_security_group" "lambda" {
   vpc_id      = local.private_vpc_id
   ingress     = []
   egress      = []
+
+  tags = { Name = "${local.name_prefix}-lambda-sg" }
 
   lifecycle {
     ignore_changes = [ingress, egress]
@@ -141,6 +165,8 @@ resource "aws_security_group" "rds_proxy" {
   ingress     = []
   egress      = []
 
+  tags = { Name = "${local.name_prefix}-rds-proxy-sg" }
+
   lifecycle {
     ignore_changes = [ingress, egress]
   }
@@ -154,6 +180,8 @@ resource "aws_security_group" "rds" {
   vpc_id      = local.private_vpc_id
   ingress     = []
   egress      = []
+
+  tags = { Name = "${local.name_prefix}-rds-sg" }
 
   lifecycle {
     ignore_changes = [ingress, egress]
@@ -243,6 +271,9 @@ resource "aws_db_instance" "postgres" {
   multi_az               = true
   deletion_protection    = false
   skip_final_snapshot    = true
+  storage_encrypted      = true
+
+  tags = { Name = "${local.name_prefix}-postgres" }
 
   lifecycle {
     precondition {
@@ -281,7 +312,7 @@ resource "aws_secretsmanager_secret_version" "db" {
 resource "aws_db_proxy" "users" {
   count = local.full_private_stack_enabled ? 1 : 0
 
-  name                   = "${local.name_prefix}-users-proxy"
+  name                   = "${local.name_prefix}-rds-proxy"
   engine_family          = "POSTGRESQL"
   idle_client_timeout    = 1800
   require_tls            = local.postgres_tls_enabled
@@ -294,6 +325,8 @@ resource "aws_db_proxy" "users" {
     iam_auth    = "DISABLED"
     secret_arn  = aws_secretsmanager_secret.db[0].arn
   }
+
+  tags = { Name = "${local.name_prefix}-rds-proxy" }
 }
 
 resource "aws_db_proxy_default_target_group" "users" {

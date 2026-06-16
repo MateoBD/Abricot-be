@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import Any
 
 import boto3
@@ -8,8 +9,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Event types this worker turns into customer emails. reservation.created is
-# intentionally excluded: the reservation flow emails synchronously via the
-# user's per-user SNS topic (see sns_user_notification_service).
+# intentionally excluded: the reservation flow emails synchronously
+# (see sns_user_notification_service.publish_reservation_confirmation).
 _HANDLED_EVENT_TYPES = {"order.created", "order.status_changed", "promotion.notify"}
 
 _SNS_CLIENT = None
@@ -20,6 +21,38 @@ def _sns_client():
     if _SNS_CLIENT is None:
         _SNS_CLIENT = boto3.client("sns")
     return _SNS_CLIENT
+
+
+def _shared_topic_arn() -> str:
+    return (os.environ.get("EMAIL_NOTIFICATIONS_TOPIC_ARN") or "").strip()
+
+
+def _publish_user_notification(user_id: str, subject: str, message: str) -> None:
+    """Publish to the shared topic, ALWAYS setting the userId message attribute.
+
+    Mirrors app.services.sns_user_notification_service.publish_user_notification;
+    this worker is packaged without the app layer, so it cannot import it. The
+    shared topic's per-subscription filter policy delivers only to the matching
+    confirmed subscription. The userId attribute is mandatory: a filter policy
+    drops the message silently if it is missing.
+    """
+    topic_arn = _shared_topic_arn()
+    if not topic_arn:
+        logger.error("email_worker_publish_skipped_missing_topic user_id=%s", user_id)
+        return
+    response = _sns_client().publish(
+        TopicArn=topic_arn,
+        Subject=subject[:100],
+        Message=message,
+        MessageAttributes={
+            "userId": {"DataType": "String", "StringValue": str(user_id)}
+        },
+    )
+    logger.info(
+        "email_worker_publish_succeeded user_id=%s message_id=%s",
+        user_id,
+        response.get("MessageId"),
+    )
 
 
 def _parse_json(value: str) -> dict | None:
@@ -92,27 +125,14 @@ def _process_event(event: dict) -> None:
         logger.info("email_worker_skipped_event event_type=%s", event_type)
         return
 
-    user_topic_arn = (event.get("userTopicArn") or "").strip()
-    if not user_topic_arn:
-        # No confirmed per-user topic for this recipient -> nothing to deliver.
-        logger.info(
-            "email_worker_skipped_no_user_topic event_type=%s user_id=%s",
-            event_type,
-            event.get("userId"),
-        )
+    user_id = str(event.get("userId") or "").strip()
+    if not user_id:
+        # Without a userId the filter policy can't target a recipient.
+        logger.info("email_worker_skipped_no_user_id event_type=%s", event_type)
         return
 
     subject, message = _format_message(event_type, event.get("data") or {})
-    response = _sns_client().publish(
-        TopicArn=user_topic_arn,
-        Subject=subject[:100],
-        Message=message,
-    )
-    logger.info(
-        "email_worker_publish_succeeded event_type=%s message_id=%s",
-        event_type,
-        response.get("MessageId"),
-    )
+    _publish_user_notification(user_id, subject, message)
 
 
 def handler(event: dict[str, Any], context):

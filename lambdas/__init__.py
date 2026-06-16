@@ -1,1 +1,1 @@
-"""Lambda source packages for Abricot TP3."""
+"""Lambda source packages for Abricot."""

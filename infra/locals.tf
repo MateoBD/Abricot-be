@@ -37,6 +37,10 @@ locals {
   private_app_subnet_cidrs = ["10.0.2.0/24", "10.0.12.0/24"]
   private_db_subnet_cidrs  = ["10.0.3.0/24", "10.0.13.0/24"]
 
+  # AZ suffix derived from each AZ name for self-documenting Name tags:
+  # "us-east-1a" -> "1a", "us-east-1b" -> "1b". Indexed by count.index.
+  az_suffixes = [for az in local.availability_zones : element(split("-", az), 2)]
+
   postgres_port        = 5432
   postgres_tls_enabled = false
   postgres_sslmode     = local.postgres_tls_enabled ? "require" : "disable"
@@ -45,22 +49,24 @@ locals {
   rds_allocated_storage = 20
 
   users_service_base_environment = {
-    API_GATEWAY_CALLBACK_URL = local.api_gateway_callback_url
-    COGNITO_CLIENT_ID        = aws_cognito_user_pool_client.spa.id
-    COGNITO_DOMAIN           = local.cognito_domain
-    FRONTEND_CALLBACK_URL    = local.frontend_callback_url
-    SNS_USER_TOPIC_PREFIX    = "${local.name_prefix}-user"
+    API_GATEWAY_CALLBACK_URL      = local.api_gateway_callback_url
+    COGNITO_CLIENT_ID             = aws_cognito_user_pool_client.spa.id
+    COGNITO_DOMAIN                = local.cognito_domain
+    FRONTEND_CALLBACK_URL         = local.frontend_callback_url
+    EMAIL_NOTIFICATIONS_TOPIC_ARN = aws_sns_topic.email_topic.arn
   }
 
+  # DB password is no longer injected as plaintext env. Lambdas fetch it at cold
+  # start from Secrets Manager (DB_SECRET_NAME) and cache it at module scope.
   users_service_db_environment = local.lambda_private_attachment_enabled ? {
-    DB_TARGET         = "RDS_PROXY"
-    POSTGRES_HOST     = local.rds_proxy_endpoint
-    POSTGRES_PORT     = tostring(local.postgres_port)
-    POSTGRES_DB       = var.postgres_db
-    POSTGRES_USER     = var.postgres_user
-    POSTGRES_PASSWORD = var.postgres_password
-    POSTGRES_SSLMODE  = local.postgres_sslmode
-    DB_SSL_MODE       = local.postgres_sslmode
+    DB_TARGET        = "RDS_PROXY"
+    POSTGRES_HOST    = local.rds_proxy_endpoint
+    POSTGRES_PORT    = tostring(local.postgres_port)
+    POSTGRES_DB      = var.postgres_db
+    POSTGRES_USER    = var.postgres_user
+    DB_SECRET_NAME   = aws_secretsmanager_secret.db[0].name
+    POSTGRES_SSLMODE = local.postgres_sslmode
+    DB_SSL_MODE      = local.postgres_sslmode
   } : {}
 
   db_migration_environment = merge(local.users_service_db_environment, {
@@ -81,10 +87,10 @@ locals {
     catalog_service      = local.catalog_routes_enabled ? merge(local.users_service_db_environment, { AWS_S3_BUCKET = local.images_bucket_name }) : {}
     orders_service       = local.orders_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
     restaurants_service  = local.restaurants_routes_enabled ? merge(local.users_service_db_environment, { AWS_S3_BUCKET = local.images_bucket_name }) : {}
-    reservations_service = local.reservations_routes_enabled ? merge(local.users_service_db_environment, { SNS_USER_TOPIC_PREFIX = "${local.name_prefix}-user" }) : {}
+    reservations_service = local.reservations_routes_enabled ? merge(local.users_service_db_environment, { EMAIL_NOTIFICATIONS_TOPIC_ARN = aws_sns_topic.email_topic.arn }) : {}
     promotions_service   = local.promotions_routes_enabled ? merge(local.users_service_db_environment, { DOMAIN_EVENTS_TOPIC_ARN = aws_sns_topic.domain_events.arn }) : {}
     analytics_service    = local.analytics_routes_enabled ? local.users_service_db_environment : {}
-    email_worker         = { EMAIL_TOPIC_ARN = aws_sns_topic.email_topic.arn }
+    email_worker         = { EMAIL_NOTIFICATIONS_TOPIC_ARN = aws_sns_topic.email_topic.arn }
     analytics_worker     = local.users_service_db_environment
     db_migrate           = local.db_migration_environment
   }
@@ -190,8 +196,8 @@ locals {
       handler            = "handler.handler"
       source_dir         = "${path.module}/../build/lambdas/email_worker"
       excludes           = []
-      timeout            = 10
-      memory_size        = 128
+      timeout            = 30
+      memory_size        = 512
       vpc_enabled        = false
       subnet_ids         = []
       security_group_ids = []
@@ -201,7 +207,7 @@ locals {
       source_dir         = "${path.module}/../build/lambdas/analytics_worker"
       excludes           = []
       timeout            = 30
-      memory_size        = 128
+      memory_size        = 512
       vpc_enabled        = local.lambda_private_attachment_enabled
       subnet_ids         = local.private_app_subnet_ids
       security_group_ids = local.lambda_security_group_ids

@@ -148,7 +148,12 @@ output "domain_events_topic_arn" {
 }
 
 output "email_topic_arn" {
-  description = "SNS topic ARN used by email-worker for native SNS email delivery."
+  description = "Shared SNS notification topic ARN (all user emails; filter-policy targeted)."
+  value       = aws_sns_topic.email_topic.arn
+}
+
+output "notification_topic_arn" {
+  description = "Shared notification topic ARN passed to Lambdas as EMAIL_NOTIFICATIONS_TOPIC_ARN."
   value       = aws_sns_topic.email_topic.arn
 }
 
@@ -172,7 +177,7 @@ output "analytics_worker_lambda_name" {
   value       = lookup({ for name, instance in module.lambda : name => instance.function_name }, "analytics_worker", null)
 }
 
-output "notification_email_subscription_note" {
-  description = "SNS email delivery confirmation note."
-  value       = trimspace(var.notification_email) != "" ? "SNS sent a confirmation email to ${var.notification_email}. The recipient must confirm it before emails are delivered." : "notification_email is empty, so Terraform did not create an SNS email subscription."
+output "notification_subscription_note" {
+  description = "How users get subscribed to the shared notification topic."
+  value       = "Users are subscribed to the shared notification topic on signup with a per-user FilterPolicy {\"userId\":[<id>]}. Each must confirm the SNS email before delivery."
 }

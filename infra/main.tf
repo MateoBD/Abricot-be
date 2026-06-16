@@ -126,16 +126,13 @@ resource "aws_sns_topic" "domain_events" {
   name = "${local.name_prefix}-domain-events"
 }
 
+# THE single shared notification topic. Every user-facing email is delivered
+# here; per-subscription FilterPolicy {"userId":[...]} targets the recipient.
+# Replaces the former per-user-topic antipattern. SES would be the ideal
+# transactional-email path but is unavailable in the Academy Learner Lab, so a
+# shared topic + filter policies is the best practice within that constraint.
 resource "aws_sns_topic" "email_topic" {
   name = "${local.name_prefix}-email-notifications"
-}
-
-resource "aws_sns_topic_subscription" "email_notification" {
-  count = trimspace(var.notification_email) != "" ? 1 : 0
-
-  topic_arn = aws_sns_topic.email_topic.arn
-  protocol  = "email"
-  endpoint  = var.notification_email
 }
 
 resource "aws_sqs_queue" "email_events_dlq" {
@@ -146,7 +143,7 @@ resource "aws_sqs_queue" "email_events_dlq" {
 resource "aws_sqs_queue" "email_events" {
   name                       = "${local.name_prefix}-email-events"
   message_retention_seconds  = 345600
-  visibility_timeout_seconds = 45
+  visibility_timeout_seconds = 180
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.email_events_dlq.arn
@@ -162,7 +159,7 @@ resource "aws_sqs_queue" "analytics_events_dlq" {
 resource "aws_sqs_queue" "analytics_events" {
   name                       = "${local.name_prefix}-analytics-events"
   message_retention_seconds  = 345600
-  visibility_timeout_seconds = 45
+  visibility_timeout_seconds = 180
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.analytics_events_dlq.arn
