@@ -530,6 +530,12 @@ No se usan variables de backend Terraform. En particular, no configurar `TERRAFO
 
 Listado completo en [`infra/main.tf`](infra/main.tf). Detalle técnico: [`infra/README.md`](infra/README.md).
 
+### Referencia rápida para la corrección de IaC
+
+- **Módulos** — custom: [`infra/modules/lambda_function`](infra/modules/lambda_function/README.md) (usado con `for_each` para 11 Lambdas); externo: `terraform-aws-modules/s3-bucket/aws` (pineado `~> 4.1`) en [`infra/frontend_storage.tf`](infra/frontend_storage.tf).
+- **Funciones y meta-argumentos** — explicados con tabla en [`infra/README.md`](infra/README.md) (secciones *Terraform Functions* y *Meta-Arguments*).
+- **Diagrama de arquitectura** — [`infra/architecture.svg`](infra/architecture.svg).
+
 ---
 
 ## 14. Anexo: revisión de código local (opcional)

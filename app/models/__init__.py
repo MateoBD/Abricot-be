@@ -1,5 +1,6 @@
 """Import all ORM models so Flask-Migrate can detect them during migrations."""
 
+from app.models.analytics_snapshot import AnalyticsSnapshotModel  # noqa: F401
 from app.models.business_hours import BusinessHoursModel  # noqa: F401
 from app.models.cuisine_type import CuisineTypeModel  # noqa: F401
 from app.models.enums import (  # noqa: F401
@@ -30,6 +31,7 @@ from app.models.table import TableModel  # noqa: F401
 from app.models.user import UserModel  # noqa: F401
 
 __all__ = [
+	"AnalyticsSnapshotModel",
 	"BusinessHoursModel",
 	"CityModel",
 	"CountryModel",

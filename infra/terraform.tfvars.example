@@ -1,4 +1,4 @@
-project_name = "abricot-tp3"
+project_name = "abricot"
 aws_region   = "us-east-1"
 
 # Optional. Leave empty to use the Terraform-managed S3 website callback URL.
@@ -13,7 +13,7 @@ postgres_db       = "abricot"
 postgres_user     = "abricot_app"
 postgres_password = "CHANGE_ME_STRONG_PASSWORD"
 
-# Normal TP3 deliverable path: final private architecture on.
+# Normal deliverable path: final private architecture on.
 enable_full_private_stack = true
 
 # Emergency only: use true for a two-phase recovery if AWS rejects adding

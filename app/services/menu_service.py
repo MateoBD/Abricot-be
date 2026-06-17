@@ -5,15 +5,45 @@ from app.exceptions.errors import NotFoundError, ValidationError
 from app.repositories.menu_category_repository import MenuCategoryRepository
 from app.repositories.menu_item_repository import MenuItemRepository
 from app.repositories.menu_repository import MenuRepository
+from app.repositories.promotion_repository import PromotionRepository
 from app.repositories.restaurant_repository import RestaurantRepository
+from app.services.menu_item_service import menu_item_payload
+from app.services.promotion_pricing import best_promo
 from app.utils.list_envelope import list_envelope
 
 logger = logging.getLogger(__name__)
 
 
-def _category_detail(category) -> dict:
+def _item_with_promo(item, promo_map: dict) -> dict:
+    """Item payload enriched with the best active promo (if any).
+
+    Always adds `discountedPrice` and `discount`: null when no active promo
+    targets the item, so the base `price` stands.
+    """
+    payload = menu_item_payload(item)
+    chosen = best_promo(item.price, promo_map.get(item.id, []))
+    if chosen is None:
+        payload["discountedPrice"] = None
+        payload["discount"] = None
+        return payload
+    effective, promo = chosen
+    payload["discountedPrice"] = f"{effective:.2f}"
+    payload["discount"] = {
+        "promotionId": str(promo.id),
+        "title": promo.title,
+        "discountType": promo.discount_type.value,
+        "discountValue": f"{promo.discount_value:.2f}",
+    }
+    return payload
+
+
+def _category_detail(category, promo_map: dict | None = None) -> dict:
+    promo_map = promo_map or {}
     items = MenuItemRepository.get_all(category.id)
-    return {**category.to_dict(), "items": [i.to_dict() for i in items]}
+    return {
+        **category.to_dict(),
+        "items": [_item_with_promo(i, promo_map) for i in items],
+    }
 
 
 class MenuService:
@@ -41,7 +71,11 @@ class MenuService:
         if not menu:
             raise NotFoundError(f"Menu with id={menu_id} not found.")
         categories = MenuCategoryRepository.get_all(menu.id)
-        return {**menu.to_dict(), "categories": [_category_detail(c) for c in categories]}
+        promo_map = PromotionRepository.get_active_promos_by_item(restaurant_id)
+        return {
+            **menu.to_dict(),
+            "categories": [_category_detail(c, promo_map) for c in categories],
+        }
 
     @staticmethod
     def create(restaurant_id: UUID, name: str) -> dict:
@@ -109,4 +143,8 @@ class MenuService:
         if not menu:
             return None
         categories = MenuCategoryRepository.get_all(menu.id)
-        return {**menu.to_dict(), "categories": [_category_detail(c) for c in categories]}
+        promo_map = PromotionRepository.get_active_promos_by_item(restaurant_id)
+        return {
+            **menu.to_dict(),
+            "categories": [_category_detail(c, promo_map) for c in categories],
+        }

@@ -1,7 +1,7 @@
 variable "project_name" {
   description = "Short project name used in AWS resource names."
   type        = string
-  default     = "abricot-tp3"
+  default     = "abricot"
 }
 
 variable "aws_region" {
@@ -51,7 +51,7 @@ variable "postgres_password" {
 }
 
 variable "enable_full_private_stack" {
-  description = "Create the final TP3 private architecture: VPC, NAT, private RDS, RDS Proxy, Lambda VPC attachment, and protected /users routes."
+  description = "Create the final private architecture: VPC, NAT, private RDS, RDS Proxy, Lambda VPC attachment, and protected /users routes."
   type        = bool
   default     = true
 }

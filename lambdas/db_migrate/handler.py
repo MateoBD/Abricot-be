@@ -10,13 +10,48 @@ logger.setLevel(logging.INFO)
 
 _TLS_SSLMODES = {"require", "verify-ca", "verify-full", "true", "1"}
 
+# Password is fetched from Secrets Manager (DB_SECRET_NAME) at cold start and
+# cached at module scope; it is never injected as a plaintext env var.
 REQUIRED_ENV_VARS = (
     "POSTGRES_HOST",
     "POSTGRES_PORT",
     "POSTGRES_DB",
     "POSTGRES_USER",
-    "POSTGRES_PASSWORD",
+    "DB_SECRET_NAME",
 )
+
+_DB_PASSWORD: str | None = None
+
+
+def _fetch_secret_password(secret_name: str) -> str:
+    import boto3
+
+    region = os.environ.get("AWS_REGION") or None
+    client = boto3.client("secretsmanager", **({"region_name": region} if region else {}))
+    try:
+        response = client.get_secret_value(SecretId=secret_name)
+    except Exception as exc:
+        logger.error("db_secret_fetch_failed secret=%s error=%s", secret_name, exc)
+        raise RuntimeError(f"db_secret_fetch_failed:{secret_name}") from exc
+
+    raw = response.get("SecretString")
+    if not raw:
+        raise RuntimeError(f"db_secret_empty:{secret_name}")
+    try:
+        data = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return raw
+    password = data.get("password")
+    if not password:
+        raise RuntimeError(f"db_secret_missing_password:{secret_name}")
+    return password
+
+
+def _db_password() -> str:
+    global _DB_PASSWORD
+    if _DB_PASSWORD is None:
+        _DB_PASSWORD = _fetch_secret_password(os.environ["DB_SECRET_NAME"])
+    return _DB_PASSWORD
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -154,7 +189,7 @@ def _database_uri() -> str:
     url = URL.create(
         "postgresql+pg8000",
         username=os.environ["POSTGRES_USER"],
-        password=os.environ["POSTGRES_PASSWORD"],
+        password=_db_password(),
         host=os.environ["POSTGRES_HOST"],
         port=int(os.environ.get("POSTGRES_PORT", "5432")),
         database=os.environ["POSTGRES_DB"],
@@ -236,9 +271,9 @@ def _json_response(status_code: int, payload: dict[str, Any]) -> dict[str, Any]:
 
 def _safe_error(exc: Exception) -> str:
     message = str(exc)
-    password = os.environ.get("POSTGRES_PASSWORD")
-    if password:
-        message = message.replace(password, "***")
+    # Scrub the fetched secret password if it was loaded this cold start.
+    if _DB_PASSWORD:
+        message = message.replace(_DB_PASSWORD, "***")
     return message
 
 

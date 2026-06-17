@@ -6,6 +6,7 @@ from app.repositories.menu_category_repository import MenuCategoryRepository
 from app.repositories.menu_item_repository import MenuItemRepository
 from app.repositories.menu_repository import MenuRepository
 from app.repositories.restaurant_repository import RestaurantRepository
+from app.services.menu_item_service import menu_item_payload
 from app.utils.list_envelope import list_envelope
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,9 @@ class MenuCategoryService:
         cat = _get_category_or_raise(menu_id, category_id)
         return {
             **cat.to_dict(),
-            "items": [i.to_dict() for i in MenuItemRepository.get_all(category_id)],
+            "items": [
+                menu_item_payload(i) for i in MenuItemRepository.get_all(category_id)
+            ],
         }
 
     @staticmethod

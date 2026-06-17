@@ -111,6 +111,23 @@ class CognitoRestaurantService:
         RestaurantService.delete(restaurant_uuid)
 
     @staticmethod
+    def upload_photo(
+        *,
+        restaurant_id: str | UUID,
+        file_storage,
+        cognito_sub: str | None,
+        is_cognito_admin: bool = False,
+    ) -> dict:
+        restaurant_uuid = _parse_uuid(restaurant_id, "restaurantId")
+        principal = CognitoAuthorizationService.principal_user(cognito_sub)
+        CognitoAuthorizationService.require_restaurant_admin(
+            principal=principal,
+            restaurant_id=restaurant_uuid,
+            is_cognito_admin=is_cognito_admin,
+        )
+        return RestaurantService.upload_photo(restaurant_uuid, file_storage)
+
+    @staticmethod
     def put_review(
         *,
         restaurant_id: str | UUID,

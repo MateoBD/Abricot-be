@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.models.notification_event import NotificationEventStatus, NotificationEventType
 from app.repositories.notification_event_repository import NotificationEventRepository
+from app.services.domain_event_publisher import publish_domain_event
 
 logger = logging.getLogger(__name__)
 
@@ -355,9 +356,27 @@ class NotificationService:
     @staticmethod
     def send_promotion_notification(promotion_id: UUID) -> None:
         """
-        Send promotion notification to all subscribed users.
+        Notify all subscribed users about a promotion via the domain event pipeline.
 
-        Queries notification_preferences to find users who opted in to receive promotions.
+        Resolves the set of users subscribed to promotion notifications for the
+        promotion's restaurant and emits one ``promotion.notify`` domain event per
+        recipient (so each event targets that user's per-user SNS topic). The email
+        worker downstream reads ``title`` and ``description`` from the payload.
+
+        Replaces the legacy MockSES/AsyncNotificationWorker email path for promotions.
+
+        Args:
+            promotion_id: UUID of the promotion.
+        """
+        NotificationService.publish_promotion_events(promotion_id)
+
+    @staticmethod
+    def publish_promotion_events(promotion_id: UUID) -> None:
+        """
+        Resolve subscribed recipients and publish one ``promotion.notify`` domain
+        event per user.
+
+        Best-effort: a lookup/messaging failure must not break promotion creation.
 
         Args:
             promotion_id: UUID of the promotion.
@@ -365,41 +384,36 @@ class NotificationService:
         from app.extensions import db
 
         from app.models.promotion import PromotionModel
-        from app.repositories.notification_preference_repository import NotificationPreferenceRepository
 
         promo = db.session.get(PromotionModel, promotion_id)
         if not promo:
             logger.warning("promotion_notification_event_not_found", extra={"promotion_id": str(promotion_id)})
             return
 
-        emails = NotificationPreferenceRepository.get_subscribed_emails(promo.restaurant_id, "receive_promotions")
+        user_ids = NotificationService._get_subscribed_user_ids(promo.restaurant_id, "receive_promotions")
 
-        if not emails:
+        if not user_ids:
             logger.info("promotion_notification_no_subscribers", extra={"promotion_id": str(promotion_id)})
             return
 
-        subject = f"Promoción: {promo.title}"
-        body = (
-            f"Nueva promoción disponible: {promo.title}\n"
-            f"{promo.description or ''}\n"
-            f"Válida del {promo.start_date} al {promo.end_date}\n"
-        )
+        payload = {
+            "promotionId": str(promo.id),
+            "restaurantId": str(promo.restaurant_id),
+            "title": promo.title,
+            "description": promo.description or "",
+        }
 
-        for email in emails:
-            event = NotificationEventRepository.log_event(
-                event_type=NotificationEventType.PROMOTION_NOTIFICATION,
-                recipient_email=email,
-                subject=subject,
-                body=body,
-                status=NotificationEventStatus.PENDING,
+        for user_id in user_ids:
+            publish_domain_event(
+                "promotion.notify",
+                user_id=user_id,
                 restaurant_id=promo.restaurant_id,
-                promotion_id=promotion_id,
+                payload=payload,
             )
-            _send_email_async(email, subject, body, event_id=event.id)
 
         logger.info(
-            "promotion_notification_broadcast_queued",
-            extra={"promotion_id": str(promotion_id), "recipient_count": len(emails)},
+            "promotion_notification_broadcast_published",
+            extra={"promotion_id": str(promotion_id), "recipient_count": len(user_ids)},
         )
 
     @staticmethod
@@ -417,3 +431,44 @@ class NotificationService:
         from app.repositories.notification_preference_repository import NotificationPreferenceRepository
 
         return NotificationPreferenceRepository.get_subscribed_emails(restaurant_id, preference_field)
+
+    @staticmethod
+    def _get_subscribed_user_ids(restaurant_id: UUID, preference_field: str) -> list[UUID]:
+        """
+        Get list of user ids for users subscribed to a specific notification type.
+
+        Mirrors ``_get_subscribed_user_emails`` recipient selection, but keyed by
+        user id so each recipient's per-user SNS topic can be resolved when
+        publishing domain events.
+
+        Args:
+            restaurant_id: UUID of the restaurant.
+            preference_field: Preference field name (e.g., 'receive_promotions').
+
+        Returns:
+            List of subscribed user ids.
+        """
+        from sqlalchemy import select
+
+        from app.extensions import db
+        from app.models.notification_preference import NotificationPreferenceModel
+        from app.models.user import UserModel
+        from app.repositories.notification_preference_repository import (
+            NotificationPreferenceRepository,
+        )
+
+        col = NotificationPreferenceRepository._FIELD_MAP.get(preference_field)
+        if col is None:
+            return []
+        rows = db.session.execute(
+            select(UserModel.id)
+            .join(
+                NotificationPreferenceModel,
+                NotificationPreferenceModel.user_id == UserModel.id,
+            )
+            .where(
+                NotificationPreferenceModel.restaurant_id == restaurant_id,
+                col.is_(True),
+            )
+        ).all()
+        return [r[0] for r in rows if r[0]]

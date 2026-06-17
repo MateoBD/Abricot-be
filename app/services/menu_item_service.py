@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from app.exceptions.errors import NotFoundError, ValidationError
-from app.integrations.s3 import S3Client
+from app.integrations.s3 import S3Client, object_key_from_value
 from app.repositories.menu_category_repository import MenuCategoryRepository
 from app.repositories.menu_item_repository import MenuItemRepository
 from app.repositories.menu_repository import MenuRepository
@@ -12,6 +12,21 @@ from app.repositories.restaurant_repository import RestaurantRepository
 logger = logging.getLogger(__name__)
 
 _ALLOWED_PHOTO_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def menu_item_payload(item) -> dict:
+    """Serialize a menu item, signing its photo on read.
+
+    photo_url stores the S3 object KEY; the photos bucket is private, so a plain
+    object URL 403s. Sign a fresh presigned GET URL each read (None when absent).
+    Shared by every menu-item read path (item, category detail, menu detail).
+    """
+    payload = item.to_dict()
+    photo_key = object_key_from_value(payload.get("photoUrl"))
+    payload["photoUrl"] = (
+        S3Client.get().generate_presigned_get_url(photo_key) if photo_key else None
+    )
+    return payload
 
 
 def _get_category_or_raise(restaurant_id: UUID, menu_id: UUID, category_id: UUID):
@@ -49,7 +64,7 @@ class MenuItemService:
         _get_category_or_raise(restaurant_id, menu_id, category_id)
         items = MenuItemRepository.get_all(category_id)
         return {
-            "data": [i.to_dict() for i in items],
+            "data": [menu_item_payload(i) for i in items],
             "total": len(items),
             "page": 1,
             "perPage": len(items) or 1,
@@ -64,7 +79,7 @@ class MenuItemService:
     ) -> dict:
         _get_category_or_raise(restaurant_id, menu_id, category_id)
         item = _get_item_or_raise(category_id, item_id)
-        return item.to_dict()
+        return menu_item_payload(item)
 
     @staticmethod
     def create_for_category(
@@ -101,7 +116,7 @@ class MenuItemService:
         item.is_available = is_available
         MenuItemRepository.save(item)
         logger.info("MenuItem updated: item_id=%s", item_id)
-        return item.to_dict()
+        return menu_item_payload(item)
 
     @staticmethod
     def delete_for_category(
@@ -118,14 +133,14 @@ class MenuItemService:
     @staticmethod
     def get_all(category_id: UUID) -> list[dict]:
         items = MenuItemRepository.get_all(category_id)
-        return [i.to_dict() for i in items]
+        return [menu_item_payload(i) for i in items]
 
     @staticmethod
     def get_by_id(item_id: UUID) -> dict:
         item = MenuItemRepository.get_by_id(item_id)
         if not item:
             raise NotFoundError(f"Menu item with id={item_id} not found.")
-        return item.to_dict()
+        return menu_item_payload(item)
 
     @staticmethod
     def create(
@@ -149,7 +164,7 @@ class MenuItemService:
             is_available=is_available,
         )
         logger.info("MenuItem created: category_id=%s item_id=%s", category_id, item.id)
-        return item.to_dict()
+        return menu_item_payload(item)
 
     @staticmethod
     def update(
@@ -171,7 +186,7 @@ class MenuItemService:
         item.is_available = is_available
         MenuItemRepository.save(item)
         logger.info("MenuItem updated: item_id=%s", item_id)
-        return item.to_dict()
+        return menu_item_payload(item)
 
     @staticmethod
     def delete(item_id: UUID) -> None:
@@ -194,11 +209,11 @@ class MenuItemService:
         item = MenuItemRepository.get_by_id(item_id)
         if not item:
             raise NotFoundError(f"Menu item with id={item_id} not found.")
-        url = S3Client.get().upload_menu_item_photo(file_storage, item_id)
-        item.photo_url = url
+        key = S3Client.get().upload_menu_item_photo(file_storage, item_id)
+        item.photo_url = key
         MenuItemRepository.save(item)
         logger.info("MenuItem photo uploaded: item_id=%s", item_id)
-        return item.to_dict()
+        return menu_item_payload(item)
 
     @staticmethod
     def set_availability(item_id: UUID, is_available: bool) -> dict:
@@ -208,4 +223,4 @@ class MenuItemService:
         item.is_available = is_available
         MenuItemRepository.save(item)
         logger.info("MenuItem availability set: item_id=%s is_available=%s", item_id, is_available)
-        return item.to_dict()
+        return menu_item_payload(item)

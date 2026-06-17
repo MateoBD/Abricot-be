@@ -26,8 +26,11 @@ class OrderRepository:
             order_item = OrderItemModel(
                 order_id=order.id,
                 menu_item_id=row["menu_item_id"],
+                item_name=row.get("item_name"),
                 quantity=row["quantity"],
                 unit_price=row["unit_price"],
+                base_unit_price=row.get("base_unit_price"),
+                applied_promotion_id=row.get("applied_promotion_id"),
                 notes=row.get("notes"),
             )
             db.session.add(order_item)

@@ -44,6 +44,46 @@ Terraform does not create IAM roles and does not use `data.aws_iam_role`.
 Both Lambda and RDS Proxy use the AWS Academy `LabRole` ARN derived from the
 current account ID through `data.aws_caller_identity.current.account_id`.
 
+## Terraform Modules
+
+| Module | Type | Source | Version | Purpose |
+|--------|------|--------|---------|---------|
+| `module.lambda` | **Custom** | `./modules/lambda_function` | local | Reusable Lambda building block: packages source (`archive_file`), creates `aws_lambda_function`, optional env vars + optional VPC attachment via `dynamic` blocks. Called once per service with `for_each` over `local.lambda_functions` (11 functions). |
+| `module.lambda_artifacts_bucket` | **External** | `terraform-aws-modules/s3-bucket/aws` | `~> 4.1` | Registry module (authoritative `terraform-aws-modules` org), version-pinned. Provisions the private, versioned, AES256-encrypted bucket that stores Lambda ZIP artifacts. |
+
+The custom module has its own `variables.tf`, `outputs.tf`, `main.tf`, and
+`README.md` under `modules/lambda_function/`. The external module is fetched by
+`terraform init` from the Terraform Registry.
+
+## Terraform Functions
+
+At least four functions are used; the stack uses 13. Representative examples:
+
+| Function | Where | Why |
+|----------|-------|-----|
+| `merge` | `locals.tf` `lambda_environment` | Combine base + DB env maps per service. |
+| `lookup` | `main.tf` `module.lambda` env, `outputs.tf` | Read a map key with a safe default. |
+| `length` | `private_database.tf` subnet `count` | Derive resource counts from CIDR lists. |
+| `replace` | `main.tf` `function_name` | Turn `users_service` into `users-service`. |
+| `jsonencode` | SQS/S3/Secrets policies | Build IAM/redrive JSON documents. |
+| `trimspace` / `trimsuffix` | `locals.tf` URLs | Normalize callback/base URLs. |
+| `distinct` | `main.tf` CORS origins | De-duplicate allowed origins. |
+| `join` / `urlencode` | `outputs.tf` `cognito_login_url` | Build the Hosted UI login URL. |
+| `tostring` | `locals.tf` `POSTGRES_PORT` | Cast port number to string env var. |
+| `try` | `private_database.tf` preconditions | Guard optional values safely. |
+| `lower` | `locals.tf` `name_prefix` | Normalize the resource name prefix. |
+
+## Meta-Arguments
+
+All four meta-arguments are used meaningfully:
+
+| Meta-arg | Where | Why |
+|----------|-------|-----|
+| `for_each` | `module.lambda`, `aws_apigatewayv2_integration.lambda`, `aws_apigatewayv2_route.this`, `aws_lambda_permission.api_gateway` | Build N resources from maps (lambdas, 64 routes). |
+| `count` | private VPC/subnets/SG/RDS/proxy, `aws_sns_topic_subscription.email_notification` | Toggle the private stack and the optional email subscription on/off. |
+| `depends_on` | `aws_sns_topic_subscription.*_sqs`, `aws_nat_gateway.this`, `aws_db_proxy_target.users`, `aws_s3_bucket_policy.frontend_public_read` | Enforce ordering where it is not inferred from references. |
+| `lifecycle` | `aws_security_group.*` (`ignore_changes`), `aws_db_subnet_group.private` (`ignore_changes`), `aws_db_instance.postgres` (`precondition`) | Avoid spurious diffs and fail fast on missing DB credentials. |
+
 ## Architecture
 
 1. User opens the frontend from S3 website hosting or local dev.
@@ -67,6 +107,9 @@ current account ID through `data.aws_caller_identity.current.account_id`.
     delivery starts.
 
 ## Diagram
+
+A standalone rendered diagram lives at [`architecture.svg`](architecture.svg).
+The equivalent source is below.
 
 ```mermaid
 flowchart LR
@@ -163,15 +206,21 @@ Terraform does not require exporting `AWS_DEFAULT_REGION` or `AWS_REGION`.
 
 ## Deploy From Zero
 
+> **STEP 1 — REQUIRED FIRST: build the Lambda packages.**
+> Terraform's custom `lambda_function` module zips `build/lambdas/*` with
+> `archive_file`. That folder is generated and gitignored, so
+> **`terraform plan` / `apply` fail until you run `./scripts/package_lambdas.sh`.**
+> Run it before any Terraform command.
+
 The Lambda packages use `pg8000`, a pure-Python PostgreSQL driver. This avoids
 native `_psycopg` binary compatibility issues and lets `package_lambdas.sh` run
 with the available `python3` as long as Python and pip are installed.
 
-From `/Repositorio/Abricot-be`:
+From the repository root:
 
 ```bash
 python3 --version
-./scripts/package_lambdas.sh
+./scripts/package_lambdas.sh   # STEP 1 — generates build/lambdas/* (required)
 cd infra
 cp terraform.tfvars.example terraform.tfvars
 ```
@@ -309,7 +358,9 @@ aws apigatewayv2 get-apis --region us-east-1
 
 ## Destroy And Recreate
 
-The stack is designed to be destroyable and recreateable:
+The stack is fully destroyable and recreateable. No resource carries
+`prevent_destroy`, so a single `terraform destroy` tears the whole stack down
+(buckets use `force_destroy`, RDS uses `skip_final_snapshot`):
 
 ```bash
 terraform destroy

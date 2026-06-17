@@ -49,8 +49,8 @@ output "frontend_website_url" {
 }
 
 output "lambda_artifacts_bucket_name" {
-  description = "S3 bucket used to store Lambda ZIP artifacts."
-  value       = aws_s3_bucket.lambda_artifacts.bucket
+  description = "S3 bucket used to store Lambda ZIP artifacts (external module)."
+  value       = module.lambda_artifacts_bucket.s3_bucket_id
 }
 
 output "health_url" {
@@ -128,17 +128,27 @@ output "rds_proxy_endpoint" {
   value       = local.rds_proxy_endpoint
 }
 
+output "vpc_endpoints_summary" {
+  description = "Final VPC egress state: 2 interface endpoints (SNS, Secrets Manager) over PrivateLink + 1 S3 gateway endpoint + retained NAT for the Cognito Hosted-UI /oauth2/token call."
+  value = local.full_private_stack_enabled ? {
+    interface_secretsmanager = aws_vpc_endpoint.secretsmanager[0].id
+    interface_sns            = aws_vpc_endpoint.sns[0].id
+    gateway_s3               = aws_vpc_endpoint.s3[0].id
+    nat_retained_for         = "cognito-hosted-ui-oauth2-token"
+  } : null
+}
+
 output "db_migration_lambda_name" {
   description = "Internal Lambda used to run Flask-Migrate/Alembic migrations inside the private VPC."
   value = local.lambda_private_attachment_enabled ? lookup({
-    for name, function in aws_lambda_function.this : name => function.function_name
+    for name, instance in module.lambda : name => instance.function_name
   }, "db_migrate", null) : null
 }
 
 output "lambda_function_names" {
   description = "Lambda function names keyed by local service key."
   value = {
-    for name, function in aws_lambda_function.this : name => function.function_name
+    for name, instance in module.lambda : name => instance.function_name
   }
 }
 
@@ -148,7 +158,12 @@ output "domain_events_topic_arn" {
 }
 
 output "email_topic_arn" {
-  description = "SNS topic ARN used by email-worker for native SNS email delivery."
+  description = "Shared SNS notification topic ARN (all user emails; filter-policy targeted)."
+  value       = aws_sns_topic.email_topic.arn
+}
+
+output "notification_topic_arn" {
+  description = "Shared notification topic ARN passed to Lambdas as EMAIL_NOTIFICATIONS_TOPIC_ARN."
   value       = aws_sns_topic.email_topic.arn
 }
 
@@ -164,15 +179,15 @@ output "analytics_events_queue_url" {
 
 output "email_worker_lambda_name" {
   description = "Lambda function name for the SQS email worker."
-  value       = lookup({ for name, function in aws_lambda_function.this : name => function.function_name }, "email_worker", null)
+  value       = lookup({ for name, instance in module.lambda : name => instance.function_name }, "email_worker", null)
 }
 
 output "analytics_worker_lambda_name" {
   description = "Lambda function name for the SQS analytics worker."
-  value       = lookup({ for name, function in aws_lambda_function.this : name => function.function_name }, "analytics_worker", null)
+  value       = lookup({ for name, instance in module.lambda : name => instance.function_name }, "analytics_worker", null)
 }
 
-output "notification_email_subscription_note" {
-  description = "SNS email delivery confirmation note."
-  value       = trimspace(var.notification_email) != "" ? "SNS sent a confirmation email to ${var.notification_email}. The recipient must confirm it before emails are delivered." : "notification_email is empty, so Terraform did not create an SNS email subscription."
+output "notification_subscription_note" {
+  description = "How users get subscribed to the shared notification topic."
+  value       = "Users are subscribed to the shared notification topic on signup with a per-user FilterPolicy {\"userId\":[<id>]}. Each must confirm the SNS email before delivery."
 }

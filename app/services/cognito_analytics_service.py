@@ -45,7 +45,15 @@ class CognitoAnalyticsService:
                 start=query.get("start"),
                 end=query.get("end"),
             )
+        if report == "dashboard":
+            # Snapshot-backed daily dashboard: sealed snapshots for past days
+            # (written by the analytics worker) + live SQL for today.
+            return AnalyticsService.get_snapshot_dashboard(
+                restaurant_id=restaurant_uuid,
+                start=query.get("start"),
+                end=query.get("end"),
+            )
         raise ValidationError(
             "Invalid analytics report.",
-            {"report": "Must be one of: orders, metrics"},
+            {"report": "Must be one of: orders, metrics, dashboard"},
         )

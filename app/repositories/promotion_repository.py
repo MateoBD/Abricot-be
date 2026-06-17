@@ -1,9 +1,10 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.extensions import db
+from app.models.notification_event import NotificationEventModel
 from app.models.promotion import PromotionModel
 from app.models.promotion_item import PromotionItemModel
 
@@ -24,6 +25,35 @@ class PromotionRepository:
                 .order_by(PromotionModel.start_date.desc())
             ).scalars()
         )
+
+    @staticmethod
+    def get_active_promos_by_item(
+        restaurant_id: UUID,
+    ) -> dict[UUID, list[PromotionModel]]:
+        """Map each targeted menu item -> its currently-active promos.
+
+        One join (promotion_items -> promotions) filtered to this restaurant,
+        is_active, and today inside [start_date, end_date]. Lets a menu read
+        enrich every item with a single query instead of N per-item lookups.
+        """
+        today = date.today()
+        rows = db.session.execute(
+            select(PromotionItemModel.menu_item_id, PromotionModel)
+            .join(
+                PromotionModel,
+                PromotionModel.id == PromotionItemModel.promotion_id,
+            )
+            .where(
+                PromotionModel.restaurant_id == restaurant_id,
+                PromotionModel.is_active.is_(True),
+                PromotionModel.start_date <= today,
+                PromotionModel.end_date >= today,
+            )
+        ).all()
+        mapping: dict[UUID, list[PromotionModel]] = {}
+        for menu_item_id, promo in rows:
+            mapping.setdefault(menu_item_id, []).append(promo)
+        return mapping
 
     @staticmethod
     def get_all(restaurant_id: UUID) -> list[PromotionModel]:
@@ -71,10 +101,21 @@ class PromotionRepository:
 
     @staticmethod
     def delete(promo: PromotionModel) -> None:
+        # promotions.id has two FK children with RESTRICT semantics; both must be
+        # cleared first or Postgres raises IntegrityError on the promo delete.
+        # 1) promotion_items are owned by the promo (the "platos en alcance"
+        #    targeting links) -> delete them.
         db.session.execute(
             delete(PromotionItemModel).where(
                 PromotionItemModel.promotion_id == promo.id
             )
+        )
+        # 2) notification_events is an audit log -> keep the rows, null the
+        #    dangling promotion_id (nullable) so history survives the delete.
+        db.session.execute(
+            update(NotificationEventModel)
+            .where(NotificationEventModel.promotion_id == promo.id)
+            .values(promotion_id=None)
         )
         db.session.delete(promo)
         db.session.commit()

@@ -71,7 +71,7 @@ jobs:
 
       - name: Delete stale scheduled database secret
         run: |
-          secret_name="abricot-tp3/postgres"
+          secret_name="abricot/postgres"
           deleted_date="$(aws secretsmanager describe-secret \
             --secret-id "$secret_name" \
             --query 'DeletedDate' \
@@ -122,7 +122,7 @@ jobs:
           fi
 
           stale_account_refs="$(
-            grep -Eo 'arn:aws:[^:]+:[^:]*:[0-9]{12}:|abricot-tp3-[0-9]{12}' plan.txt \
+            grep -Eo 'arn:aws:[^:]+:[^:]*:[0-9]{12}:|abricot-[0-9]{12}' plan.txt \
               | grep -Eo '[0-9]{12}' \
               | sort -u \
               | grep -v "^${account_id}$" || true
@@ -154,8 +154,12 @@ jobs:
 
       - name: Wait for database proxy target
         run: |
-          db_instance_id="abricot-tp3-postgres"
-          db_proxy_name="abricot-tp3-users-proxy"
+          # Post-rename names. TODO: these are deterministic but hardcoded — a stale
+          # hardcode here is exactly what broke this step after the rename. Prefer
+          # reading from Terraform outputs once added (e.g. a db_instance_identifier
+          # output and a db_proxy_name output), like the migrate/lambda/frontend steps.
+          db_instance_id="abricot-postgres"
+          db_proxy_name="abricot-rds-proxy"
 
           echo "Waiting for RDS instance $db_instance_id to become available..."
           aws rds wait db-instance-available \
